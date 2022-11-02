@@ -55,6 +55,8 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern DMA_HandleTypeDef hdma_adc1;
+extern CAN_HandleTypeDef hcan;
 extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim8;
 extern UART_HandleTypeDef huart1;
@@ -199,6 +201,76 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32f3xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles DMA1 channel1 global interrupt.
+  */
+void DMA1_Channel1_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc1);
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USB high priority or CAN_TX interrupts.
+  */
+void USB_HP_CAN_TX_IRQHandler(void)
+{
+  /* USER CODE BEGIN USB_HP_CAN_TX_IRQn 0 */
+
+  /* USER CODE END USB_HP_CAN_TX_IRQn 0 */
+  HAL_CAN_IRQHandler(&hcan);
+  /* USER CODE BEGIN USB_HP_CAN_TX_IRQn 1 */
+
+  /* USER CODE END USB_HP_CAN_TX_IRQn 1 */
+}
+
+/**
+  * @brief This function handles USB low priority or CAN_RX0 interrupts.
+  */
+void USB_LP_CAN_RX0_IRQHandler(void)
+{
+  /* USER CODE BEGIN USB_LP_CAN_RX0_IRQn 0 */
+
+  /* USER CODE END USB_LP_CAN_RX0_IRQn 0 */
+  HAL_CAN_IRQHandler(&hcan);
+  /* USER CODE BEGIN USB_LP_CAN_RX0_IRQn 1 */
+
+  /* USER CODE END USB_LP_CAN_RX0_IRQn 1 */
+}
+
+/**
+  * @brief This function handles CAN RX1 interrupt.
+  */
+void CAN_RX1_IRQHandler(void)
+{
+  /* USER CODE BEGIN CAN_RX1_IRQn 0 */
+
+  /* USER CODE END CAN_RX1_IRQn 0 */
+  HAL_CAN_IRQHandler(&hcan);
+  /* USER CODE BEGIN CAN_RX1_IRQn 1 */
+
+  /* USER CODE END CAN_RX1_IRQn 1 */
+}
+
+/**
+  * @brief This function handles CAN SCE interrupt.
+  */
+void CAN_SCE_IRQHandler(void)
+{
+  /* USER CODE BEGIN CAN_SCE_IRQn 0 */
+
+  /* USER CODE END CAN_SCE_IRQn 0 */
+  HAL_CAN_IRQHandler(&hcan);
+  /* USER CODE BEGIN CAN_SCE_IRQn 1 */
+
+  /* USER CODE END CAN_SCE_IRQn 1 */
+}
 
 /**
   * @brief This function handles TIM1 update and TIM16 interrupts.

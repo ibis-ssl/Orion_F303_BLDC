@@ -20,6 +20,7 @@
 #include "main.h"
 #include "adc.h"
 #include "can.h"
+#include "dma.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -120,19 +121,6 @@ void setOutputPhaseRadian(float out_rad, float voltage)
 		voltage = 0;
 	}
 	voltage_propotional_cnt = voltage / 24 * pwm_cnt_centor;
-	/*if(out_rad < 0){
-		out_rad += 2*M_PI;
-	}
-	if(out_rad > 2*M_PI){
-		out_rad -= 2*M_PI;
-	}*/
-	/*
-	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_cnt_centor + voltage_propotional_cnt * sin(out_rad));
-	  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, pwm_cnt_centor + voltage_propotional_cnt * sin(out_rad + M_PI * 2 / 3));
-	  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, pwm_cnt_centor + voltage_propotional_cnt * sin(out_rad - M_PI * 2 / 3));
-	  */
-
-	// not effect
 
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 	uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
@@ -143,9 +131,6 @@ void setOutputPhaseRadian(float out_rad, float voltage)
 	htim1.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
 	htim1.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 	print_mapped = rad_mapped;
-	//__HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, pwm_cnt_centor + voltage_propotional_cnt * fast_sin(out_rad));
-	//__HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_2, pwm_cnt_centor + voltage_propotional_cnt * fast_sin(out_rad + M_PI * 2 / 3));
-	//__HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_3, pwm_cnt_centor + voltage_propotional_cnt * fast_sin(out_rad - M_PI * 2 / 3));
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 }
 
@@ -206,10 +191,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
+uint32_t can_rx_cnt = 0;
+uint8_t can_rx_data[8];
+CAN_RxHeaderTypeDef   can_rx_header;
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_data) != HAL_OK)
+  {
+    /* Reception Error */
+    Error_Handler();
+  }
+	can_rx_cnt++;
+}
+
 float max_speed_p = 0, max_speed_m = 0;
 float max_offset_p = 0, max_offset_m = 0;
 float motor_accel = 0;
 float user_offet_radian = 0;
+
+
+static uint16_t adc_raw_array[2] = {0};
 
 void runMode(void)
 {
@@ -254,7 +254,6 @@ void runMode(void)
 		// output_voltage += 0.01;
 	}
 
-	//進角�??り替????��?��??��?��???��?��??��?��?
 	if (output_voltage > 0)
 	{
 		// 2.4
@@ -283,7 +282,8 @@ void runMode(void)
 	// printf("spd %+7.3f diff %6d, enc %+7.3f\n",spd_rps,diff_cnt,(float)enc_raw/65556);
 	// printf("rps = %+7.3f\n",spd_rps);
 	// printf("spd %+6d rps = %+7.3f max+ = %+7.3f max- = %+7.3f raw = %6d elec = %6d out %4.3f offset %4.3f maped %3d masked %3d\n",diff_cnt,spd_rps,max_offset_p,max_offset_m,enc_raw,enc_elec,output_radian,offset_radian,print_mapped,print_mapped & 0xFF);
-	printf("raw %6d max %+8d min %+8d rps = %+7.3f offset %4.3f, voltage %+6.3f\n", enc_raw >> 2, diff_accel_max, diff_accel_min, spd_rps, offset_radian, output_voltage * 2.7);
+	printf("%8d %8d ",adc_raw_array[0],adc_raw_array[1]);
+	printf("raw %6d max %+8d min %+8d rps = %+7.3f offset %4.3f, voltage %+6.3f, rx %8ld \n", enc_raw >> 2, diff_accel_max, diff_accel_min, spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
 	diff_accel_max = -5000;
 	diff_accel_min = 5000;
 }
@@ -331,6 +331,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_ADC3_Init();
@@ -341,8 +342,8 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_CAN_Start(&hcan);
-
+  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  HAL_ADC_Start_DMA(&hadc1,(uint32_t *)adc_raw_array,2);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
@@ -391,6 +392,26 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
+
+	CAN_FilterTypeDef  sFilterConfig;
+	sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
+	sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
+	sFilterConfig.FilterBank = 0;
+	sFilterConfig.FilterIdHigh = 0x100<<5;
+	sFilterConfig.FilterIdLow = 0x300<<5;
+	sFilterConfig.FilterMaskIdHigh = 0x010<<5;
+	sFilterConfig.FilterMaskIdLow = 0x110<<5;
+	sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+	sFilterConfig.FilterActivation = ENABLE;
+	sFilterConfig.SlaveStartFilterBank = 0;
+	if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK){
+		Error_Handler();
+	}
+	if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK){
+		Error_Handler();
+	}
+
+	  HAL_CAN_Start(&hcan);
   /* USER CODE END 2 */
 
   /* Infinite loop */
