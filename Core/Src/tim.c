@@ -21,6 +21,7 @@
 #include "tim.h"
 
 /* USER CODE BEGIN 0 */
+#include <math.h>
 
 /* USER CODE END 0 */
 
@@ -309,5 +310,52 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* tim_pwmHandle)
 }
 
 /* USER CODE BEGIN 1 */
+float rad_to_sin_cnv_array[1024] = {0};
+void initFirstSin(void){
+  for (int i = 0; i < 1024; i++)
+  {
+    float temp_rad = (float)i / 256 * M_PI * 2;
+    rad_to_sin_cnv_array[i] = sin(temp_rad);
+    // printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
+    // HAL_Delay(1);
+  }
+}
 
+void setOutputRadianTIM1(float out_rad, float output_voltage, float battery_voltage){
+  int voltage_propotional_cnt;
+  const int pwm_cnt_centor = 700;
+  if (output_voltage < 0)
+  {
+    output_voltage = -output_voltage;
+  }
+  if (output_voltage > 24)
+  {
+    output_voltage = 0;
+  }
+  voltage_propotional_cnt = output_voltage / 24 * pwm_cnt_centor;
+
+  uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
+  htim1.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
+  htim1.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
+  htim1.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
+}
+
+void setOutputRadianTIM8(float out_rad, float output_voltage, float battery_voltage){
+  int voltage_propotional_cnt;
+  const int pwm_cnt_centor = 700;
+  if (output_voltage < 0)
+  {
+    output_voltage = -output_voltage;
+  }
+  if (output_voltage > 24)
+  {
+    output_voltage = 0;
+  }
+  voltage_propotional_cnt = output_voltage / 24 * pwm_cnt_centor;
+
+  uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
+  htim8.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
+  htim8.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
+  htim8.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
+}
 /* USER CODE END 1 */

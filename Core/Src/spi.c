@@ -117,5 +117,37 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
 }
 
 /* USER CODE BEGIN 1 */
+inline void updateMA702(ma702_t ma702);
+{
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
+  ma702_0.enc_raw = hspi1.Instance->DR;
+  hspi1.Instance->DR = 0;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
+  {
+  }
+  ma702_0.enc_raw = hspi1.Instance->DR & 0xFFFC;
+
+  ma702_0.enc_elec = 5461 - (ma702_0.enc_raw % 5461);
+  ma702_0.output_radian = (float)ma702_0.enc_elec / 5461 * 2 * M_PI;
+
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+}
+
+inline void updateMA702_M1(void)
+{
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+
+  ma702_1.enc_raw = hspi1.Instance->DR;
+  hspi1.Instance->DR = 0;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
+  {
+  }
+  ma702_1.enc_raw = hspi1.Instance->DR & 0xFFFC;
+
+  ma702_1.enc_elec = 5461 - (ma702_1.enc_raw % 5461);
+  ma702_1.output_radian = (float)ma702_1.enc_elec / 5461 * 2 * M_PI;
+
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+}
 /* USER CODE END 1 */

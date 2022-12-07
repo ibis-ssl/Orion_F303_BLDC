@@ -30,6 +30,25 @@ extern "C" {
 
 /* USER CODE BEGIN Includes */
 
+typedef struct can_rx_buf_t
+{
+  union
+  {
+    uint8_t data[8];
+    float speed;
+    float power;
+  }motor_cmd;
+  union
+  {
+    uint8_t data[8];
+    uint8_t index;
+    float value;
+    uint8_t reserved[3];
+  }motor_param;
+};
+
+can_rx_buf_t can_buf;
+
 /* USER CODE END Includes */
 
 extern CAN_HandleTypeDef hcan;
@@ -41,6 +60,9 @@ extern CAN_HandleTypeDef hcan;
 void MX_CAN_Init(void);
 
 /* USER CODE BEGIN Prototypes */
+
+void CAN_Filter_Init(uint16_t board_addr);
+void updateCANRXBuffer(void);
 
 /* USER CODE END Prototypes */
 

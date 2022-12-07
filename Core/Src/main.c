@@ -108,6 +108,7 @@ float fast_sin(float rad)
 	return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)];
 }
 
+/*
 int voltage_propotional_cnt;
 void setOutputPhaseRadian(float out_rad, float voltage)
 {
@@ -133,7 +134,7 @@ void setOutputPhaseRadian(float out_rad, float voltage)
 	print_mapped = rad_mapped;
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 }
-
+*/
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	static uint32_t speed_calc_cycle = 0;
@@ -141,22 +142,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if (htim == &htim8)
 	{
 		// ->
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-
-		enc_raw = hspi1.Instance->DR;
-		hspi1.Instance->DR = 0;
-		while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-		{
-		}
-		enc_raw = hspi1.Instance->DR & 0xFFFC;
-
-		enc_elec = 5461 - (enc_raw % 5461);
-		// enc_elec = 5461 - ((enc_raw * 315) >> 12);
-		output_radian = (float)enc_elec / 5461 * 2 * M_PI;
+		updateMA702_M0();
 
 		// ->5us
-		setOutputPhaseRadian(output_radian + offset_radian, output_voltage);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+		setOutputRadianTIM8(ma702_0.output_radian + offset_radian, output_voltage,24);
 
 		speed_calc_cycle++;
 		if (speed_calc_cycle >= 200)
@@ -343,24 +332,17 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-  HAL_ADC_Start_DMA(&hadc1,(uint32_t *)adc_raw_array,2);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
-	HAL_Delay(500);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_raw_array, 2);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
+  HAL_Delay(500);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);
 
+  printf("Orion VV driver V1 start! \n");
 
-	printf("Orion VV driver V1 start! \n");
-	for (int i = 0; i < 1024; i++)
-	{
-		float temp_rad = (float)i / 256 * M_PI * 2;
-		rad_to_sin_cnv_array[i] = sin(temp_rad);
-		// printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
-		// HAL_Delay(1);
-	}
 	/*
 	  printf("complete convert\n");
 	  for(int i=0;i<1024;i++){
@@ -393,29 +375,13 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
-	CAN_FilterTypeDef  sFilterConfig;
-	sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
-	sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
-	sFilterConfig.FilterBank = 0;
-	sFilterConfig.FilterIdHigh = 0x100<<5;
-	sFilterConfig.FilterIdLow = 0x300<<5;
-	sFilterConfig.FilterMaskIdHigh = 0x010<<5;
-	sFilterConfig.FilterMaskIdLow = 0x110<<5;
-	sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
-	sFilterConfig.FilterActivation = ENABLE;
-	sFilterConfig.SlaveStartFilterBank = 0;
-	if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK){
-		Error_Handler();
-	}
-	if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK){
-		Error_Handler();
-	}
+	CAN_Filter_Init(0);
 
-	  HAL_CAN_Start(&hcan);
-  /* USER CODE END 2 */
+	HAL_CAN_Start(&hcan);
+	/* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
 	// offset_radian = 1.8;
 	while (1)
 	{

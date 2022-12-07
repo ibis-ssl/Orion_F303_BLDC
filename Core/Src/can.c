@@ -127,5 +127,26 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
 }
 
 /* USER CODE BEGIN 1 */
-
+void CAN_Filter_Init(uint16_t board_addr)
+{
+  CAN_FilterTypeDef sFilterConfig;
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
+  sFilterConfig.FilterBank = 0;
+  sFilterConfig.FilterIdHigh = (0x100 + board_addr) << 5;
+  sFilterConfig.FilterIdLow = (0x300 + board_addr) << 5;
+  sFilterConfig.FilterMaskIdHigh = 0x010 << 5;
+  sFilterConfig.FilterMaskIdLow = 0x110 << 5;
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.FilterActivation = ENABLE;
+  sFilterConfig.SlaveStartFilterBank = 0;
+  if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
 /* USER CODE END 1 */
