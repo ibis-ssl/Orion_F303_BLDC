@@ -91,7 +91,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 // 0 ~ M_PI*2 * 4
-float rad_to_sin_cnv_array[1024] = {0};
 uint16_t enc_raw = 0, enc_elec = 0;
 float offset_radian = 0;
 float output_radian = 0;
@@ -103,10 +102,6 @@ int diff_accel_min = 0, diff_accel_max = 0;
 
 bool calibration_mode = false;
 
-float fast_sin(float rad)
-{
-	return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)];
-}
 
 /*
 int voltage_propotional_cnt;
@@ -145,7 +140,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		updateMA702_M0();
 
 		// ->5us
-		setOutputRadianTIM8(ma702_0.output_radian + offset_radian, output_voltage,24);
+		setOutputRadianTIM8(getRadianM702_M0() + offset_radian, output_voltage,24);
 
 		speed_calc_cycle++;
 		if (speed_calc_cycle >= 200)

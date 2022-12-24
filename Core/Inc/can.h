@@ -30,6 +30,15 @@ extern "C" {
 
 /* USER CODE BEGIN Includes */
 
+#include <stdint.h>
+
+
+/* USER CODE END Includes */
+
+extern CAN_HandleTypeDef hcan;
+
+/* USER CODE BEGIN Private defines */
+
 typedef struct can_rx_buf_t
 {
   union
@@ -47,13 +56,6 @@ typedef struct can_rx_buf_t
   }motor_param;
 };
 
-can_rx_buf_t can_buf;
-
-/* USER CODE END Includes */
-
-extern CAN_HandleTypeDef hcan;
-
-/* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */
 

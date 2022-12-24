@@ -321,6 +321,11 @@ void initFirstSin(void){
   }
 }
 
+float fast_sin(float rad)
+{
+  return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)];
+}
+
 void setOutputRadianTIM1(float out_rad, float output_voltage, float battery_voltage){
   int voltage_propotional_cnt;
   const int pwm_cnt_centor = 700;

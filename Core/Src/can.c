@@ -22,6 +22,7 @@
 
 /* USER CODE BEGIN 0 */
 
+struct can_rx_buf_t can_buf;
 /* USER CODE END 0 */
 
 CAN_HandleTypeDef hcan;

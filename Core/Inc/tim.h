@@ -48,6 +48,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE BEGIN Prototypes */
 
 void initFirstSin(void);
+float fast_sin(float rad);
+
 void setOutputRadianTIM1(float out_rad, float output_voltage, float battery_voltage);
 void setOutputRadianTIM8(float out_rad, float output_voltage, float battery_voltage);
 
