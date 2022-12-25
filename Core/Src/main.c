@@ -141,6 +141,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		// ->5us
 		setOutputRadianTIM8(getRadianM702_M0() + offset_radian, output_voltage,24);
+		setOutputRadianTIM1(getRadianM702_M0() + offset_radian, output_voltage,24);
 
 		speed_calc_cycle++;
 		if (speed_calc_cycle >= 200)
@@ -267,7 +268,7 @@ void runMode(void)
 	// printf("rps = %+7.3f\n",spd_rps);
 	// printf("spd %+6d rps = %+7.3f max+ = %+7.3f max- = %+7.3f raw = %6d elec = %6d out %4.3f offset %4.3f maped %3d masked %3d\n",diff_cnt,spd_rps,max_offset_p,max_offset_m,enc_raw,enc_elec,output_radian,offset_radian,print_mapped,print_mapped & 0xFF);
 	printf("%8d %8d ",adc_raw_array[0],adc_raw_array[1]);
-	printf("raw %6d max %+8d min %+8d rps = %+7.3f offset %4.3f, voltage %+6.3f, rx %8ld \n", enc_raw >> 2, diff_accel_max, diff_accel_min, spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
+	printf("raw %+6.3f max %+8d min %+8d rps = %+7.3f offset %4.3f, voltage %+6.3f, rx %8ld \n", getRadianM702_M0(), diff_accel_max, diff_accel_min, spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
 	diff_accel_max = -5000;
 	diff_accel_min = 5000;
 }
@@ -326,6 +327,8 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  initFirstSin();
+
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_raw_array, 2);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
@@ -373,10 +376,10 @@ int main(void)
 	CAN_Filter_Init(0);
 
 	HAL_CAN_Start(&hcan);
-	/* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 	// offset_radian = 1.8;
 	while (1)
 	{
