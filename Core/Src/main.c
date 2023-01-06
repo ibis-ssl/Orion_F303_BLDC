@@ -134,14 +134,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	static uint32_t speed_calc_cycle = 0;
 	static int32_t pre_diff_cnt = 0, diff_accel;
-	if (htim == &htim8)
+	if (htim == &htim1)
 	{
 		// ->
 		updateMA702_M0();
 
 		// ->5us
 		setOutputRadianTIM8(getRadianM702_M0() + offset_radian, output_voltage,24);
-		setOutputRadianTIM1(getRadianM702_M0() + offset_radian, output_voltage,24);
 
 		speed_calc_cycle++;
 		if (speed_calc_cycle >= 200)
@@ -173,6 +172,44 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				diff_accel_min = diff_accel;
 			}
 		}
+	}else if(htim == &htim8){
+		updateMA702_M1();
+
+		// ->5us
+		setOutputRadianTIM1(getRadianM702_M1() + offset_radian, output_voltage, 24);
+
+		speed_calc_cycle++;
+		if (speed_calc_cycle >= 200)
+		{
+			speed_calc_cycle = 0;
+			int temp_diff_cnt = enc_raw - pre_enc_raw;
+			pre_enc_raw = enc_raw;
+			if (temp_diff_cnt > 30000)
+			{
+				diff_cnt = temp_diff_cnt - 65535;
+			}
+			else if (temp_diff_cnt < -30000)
+			{
+				diff_cnt = temp_diff_cnt + 65535;
+			}
+			else
+			{
+				diff_cnt = temp_diff_cnt;
+			}
+			diff_accel = diff_cnt - pre_diff_cnt;
+			pre_diff_cnt = 0;
+
+			if (diff_accel > diff_accel_max)
+			{
+				diff_accel_max = diff_accel;
+			}
+			if (diff_accel < diff_accel_min)
+			{
+				diff_accel_min = diff_accel;
+			}
+		}
+		  HAL_ADC_Start(&hadc2); //M1
+		HAL_ADC_Start(&hadc1);	//M0
 	}
 }
 
@@ -267,8 +304,9 @@ void runMode(void)
 	// printf("spd %+7.3f diff %6d, enc %+7.3f\n",spd_rps,diff_cnt,(float)enc_raw/65556);
 	// printf("rps = %+7.3f\n",spd_rps);
 	// printf("spd %+6d rps = %+7.3f max+ = %+7.3f max- = %+7.3f raw = %6d elec = %6d out %4.3f offset %4.3f maped %3d masked %3d\n",diff_cnt,spd_rps,max_offset_p,max_offset_m,enc_raw,enc_elec,output_radian,offset_radian,print_mapped,print_mapped & 0xFF);
-	printf("%8d %8d ",adc_raw_array[0],adc_raw_array[1]);
-	printf("raw %+6.3f max %+8d min %+8d rps = %+7.3f offset %4.3f, voltage %+6.3f, rx %8ld \n", getRadianM702_M0(), diff_accel_max, diff_accel_min, spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
+	printf("M0cs %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1)/*,HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3)*/);
+	printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
+	printf("M0raw %8ld M1raw %8ld offset %4.3f, voltage %+6.3f\n", getRawM702_M0(),getRawM702_M1(), spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
 	diff_accel_max = -5000;
 	diff_accel_min = 5000;
 }
@@ -329,8 +367,8 @@ int main(void)
 
   initFirstSin();
 
-  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_raw_array, 2);
+  //HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  //HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_raw_array, 2);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
@@ -373,7 +411,12 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
+	  HAL_ADC_Start(&hadc1);
+	  HAL_ADC_Start(&hadc2);
+	  HAL_ADC_Start(&hadc3);
+
 	CAN_Filter_Init(0);
+
 
 	HAL_CAN_Start(&hcan);
   /* USER CODE END 2 */

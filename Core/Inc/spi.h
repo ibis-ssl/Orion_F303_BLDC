@@ -55,6 +55,8 @@ void updateMA702_M1(void);
 
 float getRadianM702_M0(void);
 float getRadianM702_M1(void);
+int getRawM702_M0(void);
+int getRawM702_M1(void);
 
 /* USER CODE END Prototypes */
 
