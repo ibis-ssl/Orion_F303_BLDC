@@ -39,18 +39,22 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#ifdef __GNUC__
+/*#ifdef __GNUC__
 #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 #define GETCHAR_PROTOTYPE int __io_getchar(void)
 #else
 #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
 #define GETCHAR_PROTOTYPE int f getc(FILE *f)
 #endif
+*/
+int _write(int file, char *ptr, int len){
+	HAL_UART_Transmit_DMA(&huart1, ptr, len);
+}
 
-void __io_putchar(uint8_t ch)
+/*void __io_putchar(uint8_t ch)
 {
 	HAL_UART_Transmit(&huart1, &ch, 1, 1);
-}
+}*/
 
 /* USER CODE END PTD */
 
@@ -103,39 +107,33 @@ int diff_accel_min = 0, diff_accel_max = 0;
 bool calibration_mode = false;
 
 
-/*
-int voltage_propotional_cnt;
-void setOutputPhaseRadian(float out_rad, float voltage)
-{
-	const int pwm_cnt_centor = 700;
-	if (voltage < 0)
-	{
-		voltage = -voltage;
+//printf("M0cs %6d %6d %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3));
+//printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
+int adc_raw_cs_m0,adc_raw_cs_m1,adc_raw_batt_v,adc_raw_temp_m0,adc_raw_temp_m1;
+void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
+	if(hadc == &hadc1){
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+		adc_raw_cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1);
+		adc_raw_temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2);
+		adc_raw_temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3);
 	}
-	if (voltage > 24)
-	{
-		voltage = 0;
-	}
-	voltage_propotional_cnt = voltage / 24 * pwm_cnt_centor;
 
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-	uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-	htim8.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-	htim8.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-	htim8.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
-	htim1.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-	htim1.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-	htim1.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
-	print_mapped = rad_mapped;
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+	if(hadc == &hadc2){
+		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_14);
+		adc_raw_cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1);
+
+	}
+	if(hadc == &hadc3){
+		adc_raw_batt_v = HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1);
+	}
 }
-*/
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	static uint32_t speed_calc_cycle = 0;
 	static int32_t pre_diff_cnt = 0, diff_accel;
 	if (htim == &htim1)
 	{
+		  //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 		// ->
 		updateMA702_M0();
 
@@ -172,7 +170,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				diff_accel_min = diff_accel;
 			}
 		}
+		  //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
 	}else if(htim == &htim8){
+
+		 // HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 		updateMA702_M1();
 
 		// ->5us
@@ -208,8 +209,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				diff_accel_min = diff_accel;
 			}
 		}
-		  HAL_ADC_Start(&hadc2); //M1
-		HAL_ADC_Start(&hadc1);	//M0
+
+		 // HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
 	}
 }
 
@@ -231,7 +232,6 @@ float motor_accel = 0;
 float user_offet_radian = 0;
 
 
-static uint16_t adc_raw_array[2] = {0};
 
 void runMode(void)
 {
@@ -279,7 +279,7 @@ void runMode(void)
 	if (output_voltage > 0)
 	{
 		// 2.4
-		offset_radian = 2.4 + user_offet_radian;
+		offset_radian = -2.4 + user_offet_radian;
 	}
 	else
 	{
@@ -304,9 +304,11 @@ void runMode(void)
 	// printf("spd %+7.3f diff %6d, enc %+7.3f\n",spd_rps,diff_cnt,(float)enc_raw/65556);
 	// printf("rps = %+7.3f\n",spd_rps);
 	// printf("spd %+6d rps = %+7.3f max+ = %+7.3f max- = %+7.3f raw = %6d elec = %6d out %4.3f offset %4.3f maped %3d masked %3d\n",diff_cnt,spd_rps,max_offset_p,max_offset_m,enc_raw,enc_elec,output_radian,offset_radian,print_mapped,print_mapped & 0xFF);
-	printf("M0cs %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1)/*,HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3)*/);
-	printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
-	printf("M0raw %8ld M1raw %8ld offset %4.3f, voltage %+6.3f\n", getRawM702_M0(),getRawM702_M1(), spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
+	//printf("%6d ", HAL_ADC_GetValue(&hadc3));
+	//printf("M0cs %6d %6d %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3));
+	//printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
+	printf("CS M0 %6d M1 %6d / BV %6d Temp %6d %6d \n",adc_raw_cs_m0,adc_raw_cs_m1,adc_raw_batt_v,adc_raw_temp_m0,adc_raw_temp_m1);
+	//printf("M0raw %8d M1raw %8d rps %+6.2f offset %4.3f, voltage %+6.3f rx %6ld\n", getRawM702_M0(),getRawM702_M1(), spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
 	diff_accel_max = -5000;
 	diff_accel_min = 5000;
 }
@@ -322,6 +324,19 @@ void calibrationMode(void)
 	{
 		offset_radian = 0;
 	}
+}
+
+void forceStop(void){
+	HAL_TIM_Base_Stop_IT(&htim1);
+	HAL_TIM_Base_Stop_IT(&htim8);
+	htim8.Instance->CCR1 = 0;
+	htim8.Instance->CCR2 = 0;
+	htim8.Instance->CCR3 = 0;
+	htim1.Instance->CCR1 = 0;
+	htim1.Instance->CCR2 = 0;
+	htim1.Instance->CCR3 = 0;
+	__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
+	__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
 }
 
 /* USER CODE END 0 */
@@ -392,6 +407,14 @@ int main(void)
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 
+
+	  HAL_ADC_Start(&hadc1);
+	  HAL_ADC_Start(&hadc2);
+	  HAL_ADC_Start(&hadc3);
+	    HAL_ADCEx_InjectedStart_IT(&hadc1);
+	    HAL_ADCEx_InjectedStart_IT(&hadc2);
+	    HAL_ADCEx_InjectedStart_IT(&hadc3);
+
 	HAL_TIM_PWM_Init(&htim8);
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
 	HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
@@ -406,19 +429,22 @@ int main(void)
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_4);
+
+	htim1.Instance->CNT = 0;
+	htim8.Instance->CNT = 1000;
 
 	HAL_TIM_Base_Start_IT(&htim1);
 	HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
-	  HAL_ADC_Start(&hadc1);
-	  HAL_ADC_Start(&hadc2);
-	  HAL_ADC_Start(&hadc3);
 
 	CAN_Filter_Init(0);
 
 
 	HAL_CAN_Start(&hcan);
+	printf("start main loop!\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -465,16 +491,7 @@ int main(void)
 				break;
 			case '0':
 				printf("enter sleep!\n");
-				HAL_TIM_Base_Stop_IT(&htim1);
-				HAL_TIM_Base_Stop_IT(&htim8);
-				htim8.Instance->CCR1 = 0;
-				htim8.Instance->CCR2 = 0;
-				htim8.Instance->CCR3 = 0;
-				htim1.Instance->CCR1 = 0;
-				htim1.Instance->CCR2 = 0;
-				htim1.Instance->CCR3 = 0;
-				__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
-				__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
+				forceStop();
 				while (1)
 					;
 				break;
@@ -489,6 +506,11 @@ int main(void)
 		else
 		{
 			runMode();
+			if(HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1) > 3000){
+				forceStop();
+				printf("over current!!\n");
+				while(1);
+			}
 			HAL_Delay(1);
 
 			can_header.StdId = 0x00;
@@ -525,7 +547,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -537,17 +559,16 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM8|RCC_PERIPHCLK_ADC34;
+                              |RCC_PERIPHCLK_TIM8;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-  PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
