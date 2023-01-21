@@ -106,35 +106,19 @@ int diff_accel_min = 0, diff_accel_max = 0;
 
 bool calibration_mode = false;
 
-
-//printf("M0cs %6d %6d %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3));
-//printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
 int adc_raw_cs_m0,adc_raw_cs_m1,adc_raw_batt_v,adc_raw_temp_m0,adc_raw_temp_m1;
-void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
-	if(hadc == &hadc1){
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-		adc_raw_cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1);
-		adc_raw_temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2);
-		adc_raw_temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3);
-	}
+int pre_cs_m0;
 
-	if(hadc == &hadc2){
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_14);
-		adc_raw_cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1);
 
-	}
-	if(hadc == &hadc3){
-		adc_raw_batt_v = HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1);
-	}
-}
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	static uint32_t speed_calc_cycle = 0;
 	static int32_t pre_diff_cnt = 0, diff_accel;
 	if (htim == &htim1)
 	{
-		  //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+
 		// ->
+		/*
 		updateMA702_M0();
 
 		// ->5us
@@ -170,10 +154,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				diff_accel_min = diff_accel;
 			}
 		}
-		  //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+		*/
 	}else if(htim == &htim8){
 
-		 // HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+		  pre_cs_m0 = adc_raw_cs_m0;
+		adc_raw_batt_v = HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1);
+		adc_raw_cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1);
+		adc_raw_cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1);
+		adc_raw_temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2);
+		adc_raw_temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3);
+		HAL_ADCEx_InjectedStart(&hadc1);
+		HAL_ADCEx_InjectedStart(&hadc2);
+		HAL_ADCEx_InjectedStart(&hadc3);
+		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 		updateMA702_M1();
 
 		// ->5us
@@ -210,7 +206,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			}
 		}
 
-		 // HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
 	}
 }
 
@@ -304,9 +300,9 @@ void runMode(void)
 	// printf("spd %+7.3f diff %6d, enc %+7.3f\n",spd_rps,diff_cnt,(float)enc_raw/65556);
 	// printf("rps = %+7.3f\n",spd_rps);
 	// printf("spd %+6d rps = %+7.3f max+ = %+7.3f max- = %+7.3f raw = %6d elec = %6d out %4.3f offset %4.3f maped %3d masked %3d\n",diff_cnt,spd_rps,max_offset_p,max_offset_m,enc_raw,enc_elec,output_radian,offset_radian,print_mapped,print_mapped & 0xFF);
-	//printf("%6d ", HAL_ADC_GetValue(&hadc3));
 	//printf("M0cs %6d %6d %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3));
 	//printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
+	//printf("diff %+4d \n",pre_cs_m0-adc_raw_cs_m0);
 	printf("CS M0 %6d M1 %6d / BV %6d Temp %6d %6d \n",adc_raw_cs_m0,adc_raw_cs_m1,adc_raw_batt_v,adc_raw_temp_m0,adc_raw_temp_m1);
 	//printf("M0raw %8d M1raw %8d rps %+6.2f offset %4.3f, voltage %+6.3f rx %6ld\n", getRawM702_M0(),getRawM702_M1(), spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
 	diff_accel_max = -5000;
@@ -407,13 +403,12 @@ int main(void)
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 
-
-	  HAL_ADC_Start(&hadc1);
-	  HAL_ADC_Start(&hadc2);
-	  HAL_ADC_Start(&hadc3);
-	    HAL_ADCEx_InjectedStart_IT(&hadc1);
-	    HAL_ADCEx_InjectedStart_IT(&hadc2);
-	    HAL_ADCEx_InjectedStart_IT(&hadc3);
+	HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+	HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
+	HAL_ADCEx_Calibration_Start(&hadc3, ADC_SINGLE_ENDED);
+	HAL_ADC_Start(&hadc1);
+	HAL_ADC_Start(&hadc2);
+	HAL_ADC_Start(&hadc3);
 
 	HAL_TIM_PWM_Init(&htim8);
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
