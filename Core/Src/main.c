@@ -112,53 +112,22 @@ int pre_cs_m0;
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	static uint32_t speed_calc_cycle = 0;
-	static int32_t pre_diff_cnt = 0, diff_accel;
 	if (htim == &htim1)
 	{
 
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 		// ->
-		/*
+
 		updateMA702_M0();
 
 		// ->5us
 		setOutputRadianTIM8(getRadianM702_M0() + offset_radian, output_voltage,24);
 
-		speed_calc_cycle++;
-		if (speed_calc_cycle >= 200)
-		{
-			speed_calc_cycle = 0;
-			int temp_diff_cnt = enc_raw - pre_enc_raw;
-			pre_enc_raw = enc_raw;
-			if (temp_diff_cnt > 30000)
-			{
-				diff_cnt = temp_diff_cnt - 65535;
-			}
-			else if (temp_diff_cnt < -30000)
-			{
-				diff_cnt = temp_diff_cnt + 65535;
-			}
-			else
-			{
-				diff_cnt = temp_diff_cnt;
-			}
-			diff_accel = diff_cnt - pre_diff_cnt;
-			pre_diff_cnt = 0;
-
-			if (diff_accel > diff_accel_max)
-			{
-				diff_accel_max = diff_accel;
-			}
-			if (diff_accel < diff_accel_min)
-			{
-				diff_accel_min = diff_accel;
-			}
-		}
-		*/
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
 	}else if(htim == &htim8){
 
-		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-		  pre_cs_m0 = adc_raw_cs_m0;
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+		pre_cs_m0 = adc_raw_cs_m0;
 		adc_raw_batt_v = HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1);
 		adc_raw_cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1);
 		adc_raw_cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1);
@@ -167,45 +136,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		HAL_ADCEx_InjectedStart(&hadc1);
 		HAL_ADCEx_InjectedStart(&hadc2);
 		HAL_ADCEx_InjectedStart(&hadc3);
-		  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
 		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 		updateMA702_M1();
 
 		// ->5us
 		setOutputRadianTIM1(getRadianM702_M1() + offset_radian, output_voltage, 24);
-
-		speed_calc_cycle++;
-		if (speed_calc_cycle >= 200)
-		{
-			speed_calc_cycle = 0;
-			int temp_diff_cnt = enc_raw - pre_enc_raw;
-			pre_enc_raw = enc_raw;
-			if (temp_diff_cnt > 30000)
-			{
-				diff_cnt = temp_diff_cnt - 65535;
-			}
-			else if (temp_diff_cnt < -30000)
-			{
-				diff_cnt = temp_diff_cnt + 65535;
-			}
-			else
-			{
-				diff_cnt = temp_diff_cnt;
-			}
-			diff_accel = diff_cnt - pre_diff_cnt;
-			pre_diff_cnt = 0;
-
-			if (diff_accel > diff_accel_max)
-			{
-				diff_accel_max = diff_accel;
-			}
-			if (diff_accel < diff_accel_min)
-			{
-				diff_accel_min = diff_accel;
-			}
-		}
-
 		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
 	}
 }
@@ -303,8 +240,8 @@ void runMode(void)
 	//printf("M0cs %6d %6d %6d ",HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_2),HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_3));
 	//printf("M1cs %6d batt %6d ",HAL_ADCEx_InjectedGetValue(&hadc2,ADC_INJECTED_RANK_1),HAL_ADCEx_InjectedGetValue(&hadc3,ADC_INJECTED_RANK_1));
 	//printf("diff %+4d \n",pre_cs_m0-adc_raw_cs_m0);
-	printf("CS M0 %6d M1 %6d / BV %6d Temp %6d %6d \n",adc_raw_cs_m0,adc_raw_cs_m1,adc_raw_batt_v,adc_raw_temp_m0,adc_raw_temp_m1);
-	//printf("M0raw %8d M1raw %8d rps %+6.2f offset %4.3f, voltage %+6.3f rx %6ld\n", getRawM702_M0(),getRawM702_M1(), spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
+	printf("CS M0 %6d M1 %6d / BV %6d Temp %6d %6d ",adc_raw_cs_m0,adc_raw_cs_m1,adc_raw_batt_v,adc_raw_temp_m0,adc_raw_temp_m1);
+	printf("M0raw %8d M1raw %8d rps %+6.2f offset %4.3f, voltage %+6.3f rx %6ld\n", getRawM702_M0(),getRawM702_M1(), spd_rps, offset_radian, output_voltage * 2.7,can_rx_cnt);
 	diff_accel_max = -5000;
 	diff_accel_min = 5000;
 }
@@ -325,12 +262,31 @@ void calibrationMode(void)
 void forceStop(void){
 	HAL_TIM_Base_Stop_IT(&htim1);
 	HAL_TIM_Base_Stop_IT(&htim8);
+
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_3);
+
+	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_3);
+
+	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
+	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_3);
+
+	HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_1);
+	HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
+	HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
+
+
 	htim8.Instance->CCR1 = 0;
 	htim8.Instance->CCR2 = 0;
 	htim8.Instance->CCR3 = 0;
 	htim1.Instance->CCR1 = 0;
 	htim1.Instance->CCR2 = 0;
 	htim1.Instance->CCR3 = 0;
+
 	__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
 	__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
 }
@@ -424,8 +380,6 @@ int main(void)
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_4);
 
 	htim1.Instance->CNT = 0;
 	htim8.Instance->CNT = 1000;
@@ -501,9 +455,11 @@ int main(void)
 		else
 		{
 			runMode();
+
 			if(HAL_ADCEx_InjectedGetValue(&hadc1,ADC_INJECTED_RANK_1) > 3000){
 				forceStop();
 				printf("over current!!\n");
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
 				while(1);
 			}
 			HAL_Delay(1);
@@ -542,7 +498,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
