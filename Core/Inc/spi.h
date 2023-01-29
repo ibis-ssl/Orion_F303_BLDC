@@ -42,6 +42,7 @@ struct ma702_t{
   float output_radian;
   int enc_raw;
   int enc_elec;
+  int pre_raw;
 };
 
 /* USER CODE END Private defines */
@@ -53,10 +54,9 @@ void MX_SPI1_Init(void);
 void updateMA702_M0(void);
 void updateMA702_M1(void);
 
-float getRadianM702_M0(void);
-float getRadianM702_M1(void);
-int getRawM702_M0(void);
-int getRawM702_M1(void);
+float getRadianM702(int motor);
+int getRawM702(int motor);
+int getPreRawM702(int motor);
 
 /* USER CODE END Prototypes */
 

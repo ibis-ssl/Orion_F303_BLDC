@@ -333,7 +333,7 @@ inline float fast_sin(float rad)
   return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)];
 }
 
-inline void setOutputRadianTIM1(float out_rad, float output_voltage, float battery_voltage)
+inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage)
 {
   int voltage_propotional_cnt;
   const int pwm_cnt_centor = 700;
@@ -353,7 +353,8 @@ inline void setOutputRadianTIM1(float out_rad, float output_voltage, float batte
   htim1.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
 
-inline void setOutputRadianTIM8(float out_rad, float output_voltage, float battery_voltage){
+inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage)
+{
   int voltage_propotional_cnt;
   const int pwm_cnt_centor = 700;
   if (output_voltage < 0)

@@ -22,7 +22,7 @@
 
 /* USER CODE BEGIN 0 */
 
-struct ma702_t ma702_0, ma702_1;
+struct ma702_t ma702[1];
 /* USER CODE END 0 */
 
 SPI_HandleTypeDef hspi1;
@@ -121,15 +121,17 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
 inline void updateMA702_M0(void){
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-  ma702_0.enc_raw = hspi1.Instance->DR;
+  ma702[1].pre_raw = ma702[1].enc_raw;
+
+  ma702[1].enc_raw = hspi1.Instance->DR;
   hspi1.Instance->DR = 0;
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
   {
   }
-  ma702_0.enc_raw = hspi1.Instance->DR & 0xFFFC;
+  ma702[1].enc_raw = hspi1.Instance->DR & 0xFFFC;
 
-  ma702_0.enc_elec = 5461 - (ma702_0.enc_raw % 5461);
-  ma702_0.output_radian = (float)ma702_0.enc_elec / 5461 * 2 * M_PI;
+  ma702[1].enc_elec = 5461 - (ma702[1].enc_raw % 5461);
+  ma702[1].output_radian = (float)ma702[1].enc_elec / 5461 * 2 * M_PI;
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 }
@@ -139,30 +141,31 @@ inline void updateMA702_M1(void)
 {
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
-  ma702_1.enc_raw = hspi1.Instance->DR;
+  ma702[0].pre_raw = ma702[0].enc_raw;
+
+  ma702[0].enc_raw = hspi1.Instance->DR;
   hspi1.Instance->DR = 0;
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
   {
   }
-  ma702_1.enc_raw = hspi1.Instance->DR & 0xFFFC;
+  ma702[0].enc_raw = hspi1.Instance->DR & 0xFFFC;
 
-  ma702_1.enc_elec = 5461 - (ma702_1.enc_raw % 5461);
-  ma702_1.output_radian = (float)ma702_1.enc_elec / 5461 * 2 * M_PI;
+  ma702[0].enc_elec = 5461 - (ma702[0].enc_raw % 5461);
+  ma702[0].output_radian = (float)ma702[0].enc_elec / 5461 * 2 * M_PI;
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 }
 
-float getRadianM702_M0(void){
-	return ma702_0.output_radian;
-}
 
-float getRadianM702_M1(void){
-	return ma702_1.output_radian;
+float getRadianM702(int motor)
+{
+  return ma702[motor].output_radian;
 }
-int getRawM702_M0(void){
-	return ma702_0.enc_raw;
+int getRawM702(int motor)
+{
+  return ma702[motor].enc_raw;
 }
-int getRawM702_M1(void){
-	return ma702_1.enc_raw;
+int getPreRawM702(int motor){
+  return ma702[motor].enc_raw - ma702[motor].pre_raw;
 }
 /* USER CODE END 1 */
