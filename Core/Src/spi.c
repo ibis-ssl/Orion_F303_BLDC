@@ -22,7 +22,7 @@
 
 /* USER CODE BEGIN 0 */
 
-struct ma702_t ma702[1];
+struct ma702_t ma702[2];
 /* USER CODE END 0 */
 
 SPI_HandleTypeDef hspi1;
@@ -157,15 +157,15 @@ inline void updateMA702_M1(void)
 }
 
 
-float getRadianM702(int motor)
+inline float getElecRadianMA702(int motor)
 {
   return ma702[motor].output_radian;
 }
-int getRawM702(int motor)
+inline int getRawMA702(int motor)
 {
   return ma702[motor].enc_raw;
 }
-int getPreRawM702(int motor){
+inline int getPreRawMA702(int motor){
   return ma702[motor].enc_raw - ma702[motor].pre_raw;
 }
 /* USER CODE END 1 */

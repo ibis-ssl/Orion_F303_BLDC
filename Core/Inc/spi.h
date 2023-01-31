@@ -54,9 +54,9 @@ void MX_SPI1_Init(void);
 void updateMA702_M0(void);
 void updateMA702_M1(void);
 
-float getRadianM702(int motor);
-int getRawM702(int motor);
-int getPreRawM702(int motor);
+float getElecRadianMA702(int motor);
+int getRawMA702(int motor);
+int getPreRawMA702(int motor);
 
 /* USER CODE END Prototypes */
 
