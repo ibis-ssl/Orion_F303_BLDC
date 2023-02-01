@@ -105,15 +105,36 @@ float output_voltage = 0;
 
 bool calibration_mode = false;
 
-int adc_raw_cs_m0, adc_raw_cs_m1, adc_raw_batt_v, adc_raw_temp_m0, adc_raw_temp_m1;
-int pre_cs_m0;
+typedef struct
+{
+	int cs_m0;
+	int cs_m1;
+	int batt_v;
+	int temp_m0;
+	int temp_m1;
+}adc_raw_t;
+adc_raw_t adc_raw;
+
+inline float getBatteryVoltage(void){
+	return adc_raw.batt_v * 3.3 * 11 / 4096;
+}
+// 50V/V * 5m = 250mV/A
+inline float getCurrentM0(void)
+{
+	return (adc_raw.cs_m0-2048) * 3.3 / 4096 * 4;
+}
+inline float getCurrentM1(void)
+{
+	return (adc_raw.cs_m1-2048) * 3.3 / 4096 * 4;
+}
+
 
 inline void updateADC_M0(void)
 {
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	adc_raw_cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
-	adc_raw_temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
-	adc_raw_temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
+	adc_raw.cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+	adc_raw.temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
+	adc_raw.temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
 	HAL_ADCEx_InjectedStart(&hadc1);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
@@ -121,9 +142,8 @@ inline void updateADC_M0(void)
 inline void updateADC_M1(void)
 {
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	pre_cs_m0 = adc_raw_cs_m0;
-	adc_raw_batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
-	adc_raw_cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+	adc_raw.batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
+	adc_raw.cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
 	HAL_ADCEx_InjectedStart(&hadc2);
 	HAL_ADCEx_InjectedStart(&hadc3);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -135,8 +155,10 @@ typedef struct
 	float radian_ave;
 	int ave_cnt;
 	int pre_raw;
-	float result;
-	bool result_setted;
+	float result_cw;
+	int result_cw_cnt;
+	float result_ccw;
+	int result_ccw_cnt;
 } calib_point_t;
 
 float calib_rotation_speed = -0.005;
@@ -147,23 +169,28 @@ calib_point_t calib[2];
 // M1 3.2c
 
 // test board M0
-// 1.3 / 2.6
+// 1.3 / 2.6 -> ave 1.95 -> 4.3
 // -0.1 / 2.50  -> 60deg
+// + 2.6-2.7 = 4.3 - 1.7
+// 4.3
+// - 6.0-6.1 = 4.3 + 1.7
 void checkAngle(motor)
 {
 	calib[motor].radian_ave += getElecRadianMA702(motor);
 	calib[motor].ave_cnt++;
 	if (calib[motor].pre_raw > 63335 / 2 && getRawMA702(motor) < 63335 / 2 && calib_rotation_speed < 0)
 	{
-		calib[motor].result_setted = true;
-		calib[motor].result = calib[motor].radian_ave / calib[motor].ave_cnt;
+		// ccw
+		calib[motor].result_ccw_cnt++;
+		calib[motor].result_ccw = calib[motor].radian_ave / calib[motor].ave_cnt;
 		calib[motor].radian_ave = 0;
 		calib[motor].ave_cnt = 0;
 	}
 	if (calib[motor].pre_raw < 63335 / 2 && getRawMA702(motor) > 63335 / 2 && calib_rotation_speed > 0)
 	{
-		calib[motor].result_setted = true;
-		calib[motor].result = calib[motor].radian_ave / calib[motor].ave_cnt;
+		//cw
+		calib[motor].result_cw_cnt++;
+		calib[motor].result_cw = calib[motor].radian_ave / calib[motor].ave_cnt;
 		calib[motor].radian_ave = 0;
 		calib[motor].ave_cnt = 0;
 	}
@@ -187,7 +214,6 @@ inline void calibrationProcess(int motor)
 	}
 	if (motor)
 	{
-
 		updateADC_M0();
 
 		updateMA702_M0();
@@ -209,7 +235,6 @@ inline void motorProcess(int motor)
 
 	if (motor)
 	{
-
 		updateADC_M0();
 
 		updateMA702_M0();
@@ -219,7 +244,6 @@ inline void motorProcess(int motor)
 	}
 	else
 	{
-
 		updateADC_M1();
 
 		updateMA702_M1();
@@ -316,10 +340,10 @@ void runMode(void)
 		// output_voltage += 0.01;
 	}
 
-	if (output_voltage > 0)
+	if (output_voltage >= 0)
 	{
 		// 2.4
-		offset_radian = -2.4 + user_offet_radian;
+		offset_radian = -3.4 + user_offet_radian;
 	}
 	else
 	{
@@ -327,19 +351,54 @@ void runMode(void)
 	}
 
 	// ADC raw ALL
-	// printf("CS M0 %6d M1 %6d / BV %6d Temp %6d %6d ", adc_raw_cs_m0, adc_raw_cs_m1, adc_raw_batt_v, adc_raw_temp_m0, adc_raw_temp_m1);
 
-	printf("CS M0 %+6d M1 %+6d / BV %6.3f ", adc_raw_cs_m0 - 2048, adc_raw_cs_m1 - 2048, adc_raw_batt_v * 3.3 * 11 / 4096);
+	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
 	printf("M0raw %8d M1raw %8d offset %4.3f, voltage %+6.3f rx %6ld\n", getRawMA702(0), getRawMA702(1), offset_radian, output_voltage * 2.7, can_rx_cnt);
 }
 
-/* ?��??��?たい1ms cycleで回る */
-
+/* 1ms cycle by 1ms delay*/
 void calibrationMode(void)
 {
 	printf("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
-	printf("result M0 %6.4f M1 %6.4f", calib[0].result, calib[1].result);
-	printf("M0raw %8d M1raw %8d offset %4.3f\n", getRawMA702(0), getRawMA702(1), offset_radian);
+	printf("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
+	printf("M0raw %6d M1raw %6d offset %4.3f\n", getRawMA702(0), getRawMA702(1), offset_radian);
+
+	// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
+	if (calib[0].result_cw_cnt > 5 && calib_rotation_speed > 0)
+	{
+
+		calibration_mode = true;
+		user_offet_radian = 0;
+		offset_radian = 0;
+		output_voltage = 2.0;
+		calib_rotation_speed = -calib_rotation_speed;
+	}
+	if (calib[0].result_ccw_cnt > 5 && calib[0].result_cw_cnt > 5)
+	{
+		output_voltage = 0;
+		HAL_Delay(1); // write out uart buffer
+
+		user_offet_radian = (M_PI * 2) - ((calib[0].result_ccw + calib[0].result_cw) / 2);
+		printf("elec-centor radian : %6f\n",user_offet_radian);
+		HAL_Delay(1); // write out uart buffer
+
+		// IF output_voltage is +, added + M_PI,
+
+		user_offet_radian += 1.7;
+		if(user_offet_radian > M_PI * 2){
+			user_offet_radian -= M_PI * 2;
+		}
+		if (user_offet_radian < 0)
+		{
+			user_offet_radian += M_PI * 2;
+		}
+		printf("complete calibration!!\nccw %6f cw %6f result user offset %6.3f\n", calib[0].result_ccw ,calib[0].result_cw,user_offet_radian);
+
+		offset_radian = 0;
+		calibration_mode = false;
+
+		HAL_Delay(1000);
+	}
 }
 
 void forceStop(void)
@@ -562,10 +621,18 @@ int main(void)
 			runMode();
 		}
 
-		if (adc_raw_cs_m0 > 3000 /* || adc_raw_cs_m1 > 3000*/)
+		if (getCurrentM0() > 3.0 /* || getCurrentM1() > 3.0*/)
 		{
 			forceStop();
-			printf("over current!! : %d %d\n", adc_raw_cs_m0, adc_raw_cs_m1);
+			printf("over current!! : %d %d\n", adc_raw.cs_m0, adc_raw.cs_m1);
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
+			while (1)
+				;
+		}
+		if (getBatteryVoltage() < 20)
+		{
+			forceStop();
+			printf("under operation voltaie!! %6.3f", getBatteryVoltage());
 			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
 			while (1)
 				;
