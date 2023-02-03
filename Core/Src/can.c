@@ -150,4 +150,20 @@ void CAN_Filter_Init(uint16_t board_addr)
     Error_Handler();
   }
 }
+
+void trySendCanMsg(void)
+{
+  CAN_TxHeaderTypeDef can_header;
+  uint8_t can_data[8];
+  uint32_t can_mailbox;
+  can_header.StdId = 0x00;
+  can_header.RTR = CAN_RTR_DATA;
+  can_header.DLC = 8;
+  can_header.TransmitGlobalTime = DISABLE;
+  can_data[0] = 0;
+  can_data[1] = 0;
+  can_data[2] = 1;
+  can_data[3] = 1;
+  HAL_CAN_AddTxMessage(&hcan, &can_header, can_data, &can_mailbox);
+}
 /* USER CODE END 1 */

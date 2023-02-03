@@ -78,9 +78,7 @@ int _write(int file, char *ptr, int len)
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-CAN_TxHeaderTypeDef can_header;
-uint8_t can_data[8];
-uint32_t can_mailbox;
+
 
 /* USER CODE END PFP */
 
@@ -97,10 +95,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 // 0 ~ M_PI*2 * 4
 float manual_offset_radian = 0;
-uint16_t rad_mapped = 0, print_mapped = 0;
-int diff_cnt = 0, pre_enc_raw = 0;
 float output_voltage = 0;
-
 bool calibration_mode = false;
 
 
@@ -386,50 +381,7 @@ void calibrationMode(void)
 	}
 }
 
-void forceStop(void)
-{
-	HAL_TIM_Base_Stop_IT(&htim1);
-	HAL_TIM_Base_Stop_IT(&htim8);
 
-	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_3);
-
-	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_3);
-
-	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
-	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
-	HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_3);
-
-	HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_1);
-	HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
-	HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
-
-	htim8.Instance->CCR1 = 0;
-	htim8.Instance->CCR2 = 0;
-	htim8.Instance->CCR3 = 0;
-	htim1.Instance->CCR1 = 0;
-	htim1.Instance->CCR2 = 0;
-	htim1.Instance->CCR3 = 0;
-
-	__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
-	__HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
-}
-
-void trySendCanMsg(void)
-{
-	can_header.StdId = 0x00;
-	can_header.RTR = CAN_RTR_DATA;
-	can_header.DLC = 8;
-	can_header.TransmitGlobalTime = DISABLE;
-	can_data[0] = 0;
-	can_data[1] = 0;
-	can_data[2] = 1;
-	can_data[3] = 1;
-	HAL_CAN_AddTxMessage(&hcan, &can_header, can_data, &can_mailbox);
-}
 
 /* USER CODE END 0 */
 
@@ -483,7 +435,7 @@ int main(void)
 	printf("** Orion VV driver V1 start! **");
 	enc_offset[0].zero_calib = flash.calib[0];
 	enc_offset[1].zero_calib = flash.calib[1];
-	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.can_addr,flash.calib[0],flash.calib[1]);
+	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.can_id,flash.calib[0],flash.calib[1]);
 
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
@@ -518,7 +470,7 @@ int main(void)
 	// HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
-	CAN_Filter_Init(0);
+	CAN_Filter_Init(flash.can_id);
 
 	HAL_CAN_Start(&hcan);
 	printf("start main loop!\n");

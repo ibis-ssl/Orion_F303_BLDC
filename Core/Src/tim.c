@@ -372,4 +372,36 @@ inline void setOutputRadianM1(float out_rad, float output_voltage, float battery
   htim8.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
   htim8.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
+
+void forceStop(void)
+{
+  HAL_TIM_Base_Stop_IT(&htim1);
+  HAL_TIM_Base_Stop_IT(&htim8);
+
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_3);
+
+  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_3);
+
+  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_3);
+
+  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
+
+  htim8.Instance->CCR1 = 0;
+  htim8.Instance->CCR2 = 0;
+  htim8.Instance->CCR3 = 0;
+  htim1.Instance->CCR1 = 0;
+  htim1.Instance->CCR2 = 0;
+  htim1.Instance->CCR3 = 0;
+
+  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
+  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
+}
 /* USER CODE END 1 */

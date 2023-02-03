@@ -65,7 +65,7 @@ void MX_CAN_Init(void);
 
 void CAN_Filter_Init(uint16_t board_addr);
 void updateCANRXBuffer(void);
-
+void trySendCanMsg(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
