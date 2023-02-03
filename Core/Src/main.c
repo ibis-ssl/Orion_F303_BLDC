@@ -33,6 +33,7 @@
 #include <stdbool.h>
 #include "stm32f3xx_hal_spi.h"
 #include "stm32f3xx_hal_can.h"
+#include "stm32f3xx_hal_uart.h"
 #include <math.h>
 #include "flash.h"
 /* USER CODE END Includes */
@@ -47,12 +48,33 @@
 #define GETCHAR_PROTOTYPE int f getc(FILE *f)
 #endif
 */
+#define UART_TEMP_BUF_SIZE (200)
+char first_buf[UART_TEMP_BUF_SIZE];
+char temp_buf[UART_TEMP_BUF_SIZE];
+int re_queue_len = 0;
 int _write(int file, char *ptr, int len)
 {
-	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)ptr, len);
+	if (huart1.hdmatx->State == HAL_DMA_BURST_STATE_BUSY)
+	{
+		if (len >= UART_TEMP_BUF_SIZE)
+			len = UART_TEMP_BUF_SIZE;
+		memcpy(temp_buf, ptr, len);
+		re_queue_len = len;
+		return len;
+	}
+	memcpy(first_buf, ptr, len);
+	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len);
 	return len;
 }
 
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if (re_queue_len){
+		
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)temp_buf, re_queue_len);
+		re_queue_len = 0;
+	}
+}
 /*void __io_putchar(uint8_t ch)
 {
 	HAL_UART_Transmit(&huart1, &ch, 1, 1);
@@ -307,11 +329,13 @@ void runMode(void)
 	}
 
 	// ADC raw ALL
-
-	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+	int pre_send = HAL_UART_GetState(&huart1);
+	static int after_send;
+	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f uart %d %d", getCurrentM0(), getCurrentM1(), getBatteryVoltage(),pre_send,after_send);
 	printf("M0raw %8d M1raw %8d offset %4.3f, voltage %+6.3f rx %6ld\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, output_voltage * 2.7, can_rx_cnt);
-}
 
+	after_send = HAL_UART_GetState(&huart1);
+}
 
 /* 1ms cycle by 1ms delay*/
 void calibrationMode(void)
@@ -432,11 +456,13 @@ int main(void)
 	HAL_Delay(100);
 
 	loadFlashData();
-	printf("** Orion VV driver V1 start! **");
+	printf("** Orion VV driver V1 start! **\n");
 	enc_offset[0].zero_calib = flash.calib[0];
 	enc_offset[1].zero_calib = flash.calib[1];
 	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.can_id,flash.calib[0],flash.calib[1]);
 
+while(1)
+		;
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 
