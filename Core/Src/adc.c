@@ -21,7 +21,7 @@
 #include "adc.h"
 
 /* USER CODE BEGIN 0 */
-
+adc_raw_t adc_raw;
 /* USER CODE END 0 */
 
 ADC_HandleTypeDef hadc1;
@@ -434,4 +434,37 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
 
 /* USER CODE BEGIN 1 */
 
+inline float getBatteryVoltage(void)
+{
+  return adc_raw.batt_v * 3.3 * 11 / 4096;
+}
+// 50V/V * 5m = 250mV/A
+inline float getCurrentM0(void)
+{
+  return (adc_raw.cs_m0 - 2048) * 3.3 / 4096 * 4;
+}
+inline float getCurrentM1(void)
+{
+  return (adc_raw.cs_m1 - 2048) * 3.3 / 4096 * 4;
+}
+
+inline void updateADC_M0(void)
+{
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+  adc_raw.cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+  adc_raw.temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
+  adc_raw.temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
+  HAL_ADCEx_InjectedStart(&hadc1);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+}
+
+inline void updateADC_M1(void)
+{
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+  adc_raw.batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
+  adc_raw.cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+  HAL_ADCEx_InjectedStart(&hadc2);
+  HAL_ADCEx_InjectedStart(&hadc3);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+}
 /* USER CODE END 1 */

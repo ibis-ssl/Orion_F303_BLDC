@@ -41,9 +41,10 @@ extern SPI_HandleTypeDef hspi1;
 struct ma702_t{
   float output_radian;
   int enc_raw;
-  int enc_elec;
+  int enc_elec_raw;
   int pre_raw;
 };
+
 
 /* USER CODE END Private defines */
 
@@ -51,12 +52,11 @@ void MX_SPI1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
+extern struct ma702_t ma702[2];
+
 void updateMA702_M0(void);
 void updateMA702_M1(void);
 
-float getElecRadianMA702(int motor);
-int getRawMA702(int motor);
-int getPreRawMA702(int motor);
 
 /* USER CODE END Prototypes */
 

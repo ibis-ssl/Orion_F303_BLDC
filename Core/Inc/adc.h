@@ -40,6 +40,15 @@ extern ADC_HandleTypeDef hadc3;
 
 /* USER CODE BEGIN Private defines */
 
+typedef struct
+{
+  int cs_m0;
+  int cs_m1;
+  int batt_v;
+  int temp_m0;
+  int temp_m1;
+} adc_raw_t;
+extern adc_raw_t adc_raw;
 /* USER CODE END Private defines */
 
 void MX_ADC1_Init(void);
@@ -47,7 +56,11 @@ void MX_ADC2_Init(void);
 void MX_ADC3_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-
+float getBatteryVoltage(void);
+float getCurrentM0(void);
+float getCurrentM1(void);
+void updateADC_M0(void);
+void updateADC_M1(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

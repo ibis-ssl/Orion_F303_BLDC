@@ -34,7 +34,7 @@
 #include "stm32f3xx_hal_spi.h"
 #include "stm32f3xx_hal_can.h"
 #include <math.h>
-
+#include "flash.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -96,58 +96,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 // 0 ~ M_PI*2 * 4
-uint16_t enc_raw = 0, enc_elec = 0;
-float offset_radian = 0;
-float output_radian = 0;
+float manual_offset_radian = 0;
 uint16_t rad_mapped = 0, print_mapped = 0;
 int diff_cnt = 0, pre_enc_raw = 0;
 float output_voltage = 0;
 
 bool calibration_mode = false;
 
-typedef struct
-{
-	int cs_m0;
-	int cs_m1;
-	int batt_v;
-	int temp_m0;
-	int temp_m1;
-}adc_raw_t;
-adc_raw_t adc_raw;
 
-inline float getBatteryVoltage(void){
-	return adc_raw.batt_v * 3.3 * 11 / 4096;
-}
-// 50V/V * 5m = 250mV/A
-inline float getCurrentM0(void)
-{
-	return (adc_raw.cs_m0-2048) * 3.3 / 4096 * 4;
-}
-inline float getCurrentM1(void)
-{
-	return (adc_raw.cs_m1-2048) * 3.3 / 4096 * 4;
-}
-
-
-inline void updateADC_M0(void)
-{
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	adc_raw.cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
-	adc_raw.temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
-	adc_raw.temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
-	HAL_ADCEx_InjectedStart(&hadc1);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-}
-
-inline void updateADC_M1(void)
-{
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	adc_raw.batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
-	adc_raw.cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
-	HAL_ADCEx_InjectedStart(&hadc2);
-	HAL_ADCEx_InjectedStart(&hadc3);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-}
 
 typedef struct
 {
@@ -160,9 +116,14 @@ typedef struct
 	float result_ccw;
 	int result_ccw_cnt;
 } calib_point_t;
+typedef struct{
+	float final;
+	float zero_calib;
+}enc_offset_t;
 
 float calib_rotation_speed = -0.005;
 calib_point_t calib[2];
+enc_offset_t enc_offset[2];
 // board 1
 // M0 5.7505 M1 4.7589M
 // M0 4.7721 M1 3.7922
@@ -176,9 +137,9 @@ calib_point_t calib[2];
 // - 6.0-6.1 = 4.3 + 1.7
 void checkAngle(motor)
 {
-	calib[motor].radian_ave += getElecRadianMA702(motor);
+	calib[motor].radian_ave += ma702[motor].output_radian;
 	calib[motor].ave_cnt++;
-	if (calib[motor].pre_raw > 63335 / 2 && getRawMA702(motor) < 63335 / 2 && calib_rotation_speed < 0)
+	if (calib[motor].pre_raw > 63335 / 2 && ma702[motor].enc_raw < 63335 / 2 && calib_rotation_speed < 0)
 	{
 		// ccw
 		calib[motor].result_ccw_cnt++;
@@ -186,7 +147,7 @@ void checkAngle(motor)
 		calib[motor].radian_ave = 0;
 		calib[motor].ave_cnt = 0;
 	}
-	if (calib[motor].pre_raw < 63335 / 2 && getRawMA702(motor) > 63335 / 2 && calib_rotation_speed > 0)
+	if (calib[motor].pre_raw < 63335 / 2 && ma702[motor].enc_raw > 63335 / 2 && calib_rotation_speed > 0)
 	{
 		//cw
 		calib[motor].result_cw_cnt++;
@@ -194,22 +155,22 @@ void checkAngle(motor)
 		calib[motor].radian_ave = 0;
 		calib[motor].ave_cnt = 0;
 	}
-	calib[motor].pre_raw = getRawMA702(motor);
+	calib[motor].pre_raw = ma702[motor].enc_raw;
 }
 
 // 1k -> 20k
 inline void calibrationProcess(int motor)
 {
-	offset_radian -= calib_rotation_speed;
+	manual_offset_radian -= calib_rotation_speed;
 
-	if (offset_radian > M_PI * 2)
+	if (manual_offset_radian > M_PI * 2)
 	{
-		offset_radian -= M_PI * 2;
+		manual_offset_radian -= M_PI * 2;
 		checkAngle(motor);
 	}
-	if (offset_radian < 0)
+	if (manual_offset_radian < 0)
 	{
-		offset_radian += M_PI * 2;
+		manual_offset_radian += M_PI * 2;
 		checkAngle(motor);
 	}
 	if (motor)
@@ -218,7 +179,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M0();
 
-		setOutputRadianM0(offset_radian, output_voltage, 24);
+		setOutputRadianM0(manual_offset_radian, output_voltage, 24);
 	}
 	else
 	{
@@ -226,7 +187,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(offset_radian, output_voltage, 24);
+		setOutputRadianM1(manual_offset_radian, output_voltage, 24);
 	}
 }
 
@@ -240,7 +201,7 @@ inline void motorProcess(int motor)
 		updateMA702_M0();
 
 		// ->5us
-		setOutputRadianM0(getElecRadianMA702(0) + offset_radian, output_voltage, 24);
+		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, output_voltage, 24);
 	}
 	else
 	{
@@ -248,7 +209,7 @@ inline void motorProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(getElecRadianMA702(1) + offset_radian, output_voltage, 24);
+		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, output_voltage, 24);
 	}
 }
 
@@ -295,15 +256,13 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 }
 
 float motor_accel = 0;
-float user_offet_radian = 0;
 
 void runMode(void)
 {
 
-	// offset_radian += 0.01;
-	if (offset_radian > M_PI * 2)
+	if (manual_offset_radian > M_PI * 2)
 	{
-		offset_radian = 0;
+		manual_offset_radian = 0;
 	}
 	//- 0.5 max spd 0.75
 	//+ 3.45 max spd 3.25
@@ -324,11 +283,11 @@ void runMode(void)
 	}
 
 	output_voltage += motor_accel;
-	if (output_voltage > 20.0)
+	if (output_voltage > 10.0)
 	{
 		motor_accel = -0.5;
 	}
-	if (output_voltage < -20.0)
+	if (output_voltage < -10.0)
 	{
 		motor_accel = 0.5;
 	}
@@ -343,81 +302,85 @@ void runMode(void)
 	if (output_voltage >= 0)
 	{
 		// 2.4
-		offset_radian = -3.4 + user_offet_radian;
+		enc_offset[0].final = -3.4 + enc_offset[0].zero_calib + manual_offset_radian;
+		enc_offset[1].final = -3.4 + enc_offset[1].zero_calib + manual_offset_radian;
 	}
 	else
 	{
-		offset_radian = 0.0 + user_offet_radian;
+		enc_offset[0].final = enc_offset[0].zero_calib + manual_offset_radian;
+		enc_offset[1].final = enc_offset[1].zero_calib + manual_offset_radian;
 	}
 
 	// ADC raw ALL
 
 	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-	printf("M0raw %8d M1raw %8d offset %4.3f, voltage %+6.3f rx %6ld\n", getRawMA702(0), getRawMA702(1), offset_radian, output_voltage * 2.7, can_rx_cnt);
+	printf("M0raw %8d M1raw %8d offset %4.3f, voltage %+6.3f rx %6ld\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, output_voltage * 2.7, can_rx_cnt);
 }
 
-// 2K / page
-// 128Kbyte -> 64page
-// page : 0~
-void writeFlash(void){
-	FLASH_EraseInitTypeDef erase;
-	uint32_t page_error = 0;
-	erase.TypeErase = TYPEERASE_PAGES;
-	erase.PageAddress = 0x801F000;
-	erase.NbPages = 1;
-	HAL_FLASH_Unlock();
-	HAL_FLASHEx_Erase(&erase, &page_error);
-	HAL_FLASH_Lock();
-
-	HAL_FLASH_Unlock();
-	float raw = 10.0;
-	uint32_t flash_raw;
-	memcpy(&flash_raw,&raw,4);
-
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, 0x801F000, flash_raw);
-	HAL_FLASH_Lock();
-}
 
 /* 1ms cycle by 1ms delay*/
 void calibrationMode(void)
 {
 	printf("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
 	printf("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
-	printf("M0raw %6d M1raw %6d offset %4.3f\n", getRawMA702(0), getRawMA702(1), offset_radian);
+	printf("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
 
 	// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
-	if (calib[0].result_cw_cnt > 5 && calib_rotation_speed > 0)
+	if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
 	{
 
 		calibration_mode = true;
-		user_offet_radian = 0;
-		offset_radian = 0;
 		output_voltage = 2.0;
 		calib_rotation_speed = -calib_rotation_speed;
 	}
-	if (calib[0].result_ccw_cnt > 5 && calib[0].result_cw_cnt > 5)
+	if (calib[0].result_ccw_cnt > 5/* && calib[1].result_ccw_cnt > 5*/)
 	{
 		output_voltage = 0;
 		HAL_Delay(1); // write out uart buffer
 
-		user_offet_radian = (M_PI * 2) - ((calib[0].result_ccw + calib[0].result_cw) / 2);
-		printf("elec-centor radian : %6f\n",user_offet_radian);
+		float temp_offset[2] = {0, 0};
+
+		temp_offset[0] = (M_PI * 2) - ((calib[0].result_ccw + calib[0].result_cw) / 2);
+		temp_offset[1] = (M_PI * 2) - ((calib[1].result_ccw + calib[1].result_cw) / 2);
+		printf("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
 		HAL_Delay(1); // write out uart buffer
 
 		// IF output_voltage is +, added + M_PI,
 
-		user_offet_radian += 1.7;
-		if(user_offet_radian > M_PI * 2){
-			user_offet_radian -= M_PI * 2;
-		}
-		if (user_offet_radian < 0)
+		temp_offset[0] += 1.7;
+		if (temp_offset[0] > M_PI * 2)
 		{
-			user_offet_radian += M_PI * 2;
+			temp_offset[0] -= M_PI * 2;
 		}
-		printf("complete calibration!!\nccw %6f cw %6f result user offset %6.3f\n", calib[0].result_ccw ,calib[0].result_cw,user_offet_radian);
+		if (temp_offset[0] < 0)
+		{
+			temp_offset[0] += M_PI * 2;
+		}
+		temp_offset[1] += 1.7;
+		if (temp_offset[1] > M_PI * 2)
+		{
+			temp_offset[1] -= M_PI * 2;
+		}
+		if (temp_offset[1] < 0)
+		{
+			temp_offset[1] += M_PI * 2;
+		}
+		enc_offset[0].zero_calib = temp_offset[0];
+		enc_offset[1].zero_calib = temp_offset[1];
+		printf("complete calibration!!\nccw %6f cw %6f result user offset M0 %6.3f M1 %6.3f\n", calib[0].result_ccw, calib[0].result_cw, temp_offset[0], temp_offset[1]);
 
-		offset_radian = 0;
+		manual_offset_radian = 0;
 		calibration_mode = false;
+		output_voltage = 0;
+
+		calib[0].result_cw_cnt = 0;
+		calib[1].result_cw_cnt = 0;
+		calib[0].ave_cnt = 0;
+		calib[1].ave_cnt = 0;
+		calib[0].radian_ave = 0;
+		calib[1].radian_ave = 0;
+
+		writeCalibrationValue(enc_offset[0].zero_calib,enc_offset[1].zero_calib);
 
 		HAL_Delay(1000);
 	}
@@ -510,36 +473,17 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
 	initFirstSin();
-
-	// HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-	// HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_raw_array, 2);
+// LED
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
-	HAL_Delay(500);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);
+	HAL_Delay(100);
 
-	printf("Orion VV driver V1 start! ");
-
-	float flash_raw;
-	memcpy(&flash_raw, (uint32_t *)0x801F000,4);
-	printf(" flash = %f\n", flash_raw);
-	user_offet_radian = 1.0;
-	writeFlash();
-	while (1)
-		;
-
-	/*
-	  printf("complete convert\n");
-	  for(int i=0;i<1024;i++){
-		  float temp_rad = (float)i/256*M_PI*2;
-		  printf("rad %4.3f sin %4.3f fastsin %4.3f diff %6.5f\n",temp_rad,sin(temp_rad),fast_sin(temp_rad),sin(temp_rad)-fast_sin(temp_rad));
-		  HAL_Delay(1);
-	  }
-	  while(1);*/
-	enc_raw = hspi1.Instance->DR;
+	loadFlashData();
+	printf("** Orion VV driver V1 start! **");
+	enc_offset[0].zero_calib = flash.calib[0];
+	enc_offset[1].zero_calib = flash.calib[1];
+	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.can_addr,flash.calib[0],flash.calib[1]);
 
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
@@ -578,11 +522,15 @@ int main(void)
 
 	HAL_CAN_Start(&hcan);
 	printf("start main loop!\n");
-  /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-	// offset_radian = 1.8;
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);
+	/* USER CODE END 2 */
+
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
+	// manual_offset_radian = 1.8;
 	while (1)
 	{
     /* USER CODE END WHILE */
@@ -599,8 +547,7 @@ int main(void)
 				printf("calibration mode!\n");
 
 				calibration_mode = true;
-				user_offet_radian = 0;
-				offset_radian = 0;
+				manual_offset_radian = 0;
 				output_voltage = 2.0;
 				calib_rotation_speed = -calib_rotation_speed;
 				break;
@@ -608,15 +555,14 @@ int main(void)
 				printf("run mode!\n");
 
 				calibration_mode = false;
-				offset_radian = 0;
+				manual_offset_radian = 0;
 				output_voltage = 0;
-				user_offet_radian = 0;
 				break;
 			case 'q':
-				user_offet_radian += 0.05;
+				manual_offset_radian += 0.05;
 				break;
 			case 'a':
-				user_offet_radian -= 0.05;
+				manual_offset_radian -= 0.05;
 				break;
 			case 'w':
 				output_voltage += 0.5;

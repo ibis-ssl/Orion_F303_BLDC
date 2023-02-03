@@ -130,8 +130,8 @@ inline void updateMA702_M0(void){
   }
   ma702[1].enc_raw = hspi1.Instance->DR & 0xFFFC;
 
-  ma702[1].enc_elec = 5461 - (ma702[1].enc_raw % 5461);
-  ma702[1].output_radian = (float)ma702[1].enc_elec / 5461 * 2 * M_PI;
+  ma702[1].enc_elec_raw = 5461 - (ma702[1].enc_raw % 5461);
+  ma702[1].output_radian = (float)ma702[1].enc_elec_raw / 5461 * 2 * M_PI;
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 }
@@ -150,8 +150,8 @@ inline void updateMA702_M1(void)
   }
   ma702[0].enc_raw = hspi1.Instance->DR & 0xFFFC;
 
-  ma702[0].enc_elec = 5461 - (ma702[0].enc_raw % 5461);
-  ma702[0].output_radian = (float)ma702[0].enc_elec / 5461 * 2 * M_PI;
+  ma702[0].enc_elec_raw = 5461 - (ma702[0].enc_raw % 5461);
+  ma702[0].output_radian = (float)ma702[0].enc_elec_raw / 5461 * 2 * M_PI;
 
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 }
