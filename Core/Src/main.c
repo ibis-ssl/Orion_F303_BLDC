@@ -125,8 +125,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 float manual_offset_radian = 0;
 bool calibration_mode = false;
 
-
-
 typedef struct
 {
 	float pre_elec_radian;
@@ -283,10 +281,20 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		/* Reception Error */
 		Error_Handler();
 	}
-	can_rx_cnt++;
+	if (calibration_mode){
+		return;
+	}
+		can_rx_cnt++;
 	switch (can_rx_header.StdId)
 	{
 	case 0x100:
+		cmd[0].speed = can_rx_buf.speed;
+		cmd[0].out_v = can_rx_buf.speed / 20;
+		cmd[1].out_v = can_rx_buf.speed / 20;
+		cmd[0].timeout_cnt = 0;
+		cmd[1].timeout_cnt = 0;
+		break;
+	case 0x102:
 		cmd[0].speed = can_rx_buf.speed;
 		cmd[0].out_v = can_rx_buf.speed / 20;
 		cmd[1].out_v = can_rx_buf.speed / 20;
@@ -314,13 +322,11 @@ void runMode(void)
 
 	if (isPushedSW1())
 	{
-
 		cmd[0].out_v = 2.0;
 		cmd[1].out_v = 2.0;
 	}
 	if (isPushedSW2())
 	{
-
 		cmd[0].out_v = -2.0;
 		cmd[1].out_v = -2.0;
 	}
@@ -337,7 +343,8 @@ void runMode(void)
 	for (int i = 0; i < 2;i++){
 
 		cmd[i].timeout_cnt++;
-		if(cmd[i].timeout_cnt > 100){
+		if (cmd[i].timeout_cnt > 100 && calibration_mode == false)
+		{
 			cmd[i].out_v = 0;
 		}
 
@@ -353,15 +360,10 @@ void runMode(void)
 		}
 	}
 
-
-
 	// ADC raw ALL
-	int pre_send = HAL_UART_GetState(&huart1);
-	static int after_send;
-	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f uart %d %d", getCurrentM0(), getCurrentM1(), getBatteryVoltage(),pre_send,after_send);
+	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
 	printf("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 	can_rx_cnt = 0;
-	after_send = HAL_UART_GetState(&huart1);
 }
 
 /* 1ms cycle by 1ms delay*/
@@ -374,7 +376,6 @@ void calibrationMode(void)
 	// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
 	if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
 	{
-
 		calibration_mode = true;
 
 		cmd[0].out_v = 2.0;
@@ -394,7 +395,6 @@ void calibrationMode(void)
 		temp_offset[1] = (M_PI * 2) - ((calib[1].result_ccw + calib[1].result_cw) / 2);
 		printf("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
 		HAL_Delay(1); // write out uart buffer
-
 
 		temp_offset[0] += 1.7;
 		if (temp_offset[0] > M_PI * 2)
@@ -438,6 +438,17 @@ void calibrationMode(void)
 }
 
 
+void startCalibrationMode(void)
+{
+	printf("calibration mode!\n");
+
+	calibration_mode = true;
+	manual_offset_radian = 0;
+
+	cmd[0].out_v = 2.0;
+	cmd[1].out_v = 2.0;
+	calib_rotation_speed = -calib_rotation_speed;
+}
 
 /* USER CODE END 0 */
 
@@ -492,7 +503,29 @@ int main(void)
 	printf("** Orion VV driver V1 start! **\n");
 	enc_offset[0].zero_calib = flash.calib[0];
 	enc_offset[1].zero_calib = flash.calib[1];
-	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.can_id,flash.calib[0],flash.calib[1]);
+	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.board_id, flash.calib[0], flash.calib[1]);
+
+	if (isPushedSW1())
+	{
+		flash.board_id = 0;
+		writeCanBoardID(flash.board_id);
+		printf("sed board id %d\n", flash.board_id);
+		HAL_Delay(1000);
+	}
+	else if (isPushedSW2())
+	{
+		flash.board_id = 1;
+		writeCanBoardID(flash.board_id);
+		printf("sed board id %d\n", flash.board_id);
+		HAL_Delay(1000);
+	}
+	if (isPushedSW4())
+	{
+		startCalibrationMode();
+		printf("calibration mode!!\n");
+		while (isPushedSW4())
+			;
+	}
 
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
@@ -527,7 +560,7 @@ int main(void)
 	// HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
-	CAN_Filter_Init(flash.can_id);
+	CAN_Filter_Init(flash.board_id);
 
 	HAL_CAN_Start(&hcan);
 	printf("start main loop!\n");
@@ -539,7 +572,6 @@ int main(void)
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	// manual_offset_radian = 1.8;
 	while (1)
 	{
     /* USER CODE END WHILE */
@@ -553,14 +585,7 @@ int main(void)
 			switch (uart_rx_buf[0])
 			{
 			case 'c':
-				printf("calibration mode!\n");
-
-				calibration_mode = true;
-				manual_offset_radian = 0;
-
-				cmd[0].out_v = 2.0;
-				cmd[1].out_v = 2.0;
-				calib_rotation_speed = -calib_rotation_speed;
+				startCalibrationMode();
 				break;
 			case 'n':
 				printf("run mode!\n");

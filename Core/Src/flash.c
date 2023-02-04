@@ -10,7 +10,7 @@ flash_t flash;
 // 2K / page
 // 128Kbyte -> 64page
 // page : 0~
-static void writeFlash(uint32_t can_id, float calib_m0, float calib_m1)
+static void writeFlash(uint32_t board_id, float calib_m0, float calib_m1)
 {
     FLASH_EraseInitTypeDef erase;
     uint32_t page_error = 0;
@@ -23,7 +23,7 @@ static void writeFlash(uint32_t can_id, float calib_m0, float calib_m1)
 
     HAL_FLASH_Unlock();
     uint32_t flash_raw;
-    flash_raw = can_id;
+    flash_raw = board_id;
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_ADDR_CAN_ID, flash_raw);
     memcpy(&flash_raw, &calib_m0, 4);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_ADDR_CALIB_M0, flash_raw);
@@ -32,15 +32,15 @@ static void writeFlash(uint32_t can_id, float calib_m0, float calib_m1)
     HAL_FLASH_Lock();
 }
 
-void writeCanID(uint32_t id){
+void writeCanBoardID(uint32_t id){
     writeFlash(id, flash.calib[0], flash.calib[1]);
 }
 void writeCalibrationValue(float calib_m0, float calib_m1){
-    writeFlash(flash.can_id,calib_m0,calib_m1);
+    writeFlash(flash.board_id, calib_m0, calib_m1);
 }
 
 void loadFlashData(void){
-    memcpy(&flash.can_id, (uint32_t *)FLASH_ADDR_CAN_ID, 4);
+    memcpy(&flash.board_id, (uint32_t *)FLASH_ADDR_CAN_ID, 4);
     memcpy(&flash.calib[0], (uint32_t *)FLASH_ADDR_CALIB_M0, 4);
     memcpy(&flash.calib[1], (uint32_t *)FLASH_ADDR_CALIB_M1, 4);
 }
