@@ -22,7 +22,32 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN 0 */
+inline bool isPushedSW1(void)
+{
+  return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0);
+}
+inline bool isPushedSW2(void)
+{
+  return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1);
+}
+inline bool isPushedSW3(void)
+{
+  return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_2);
+}
+inline bool isPushedSW4(void)
+{
+  return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_3);
+}
 
+inline void setLedRed(bool on){
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, on);
+}
+inline void setLedBlue(bool on){
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, on);
+}
+inline void setLedGreen(bool on){
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, on);
+}
 /* USER CODE END 0 */
 
 /*----------------------------------------------------------------------------*/

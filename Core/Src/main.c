@@ -52,18 +52,24 @@
 char first_buf[UART_TEMP_BUF_SIZE];
 char temp_buf[UART_TEMP_BUF_SIZE];
 int re_queue_len = 0;
+bool enable_buffer_mode = false;
 int _write(int file, char *ptr, int len)
-{
-	if (huart1.hdmatx->State == HAL_DMA_BURST_STATE_BUSY)
-	{
-		if (len >= UART_TEMP_BUF_SIZE)
-			len = UART_TEMP_BUF_SIZE;
-		memcpy(temp_buf, ptr, len);
-		re_queue_len = len;
-		return len;
+{	if (enable_buffer_mode){
+		enable_buffer_mode = false;
+
+		if (huart1.hdmatx->State == HAL_DMA_BURST_STATE_BUSY)
+		{
+			if (len >= UART_TEMP_BUF_SIZE)
+				len = UART_TEMP_BUF_SIZE;
+			memcpy(temp_buf, ptr, len);
+			re_queue_len = len;
+			return len;
+		}
+		memcpy(first_buf, ptr, len);						 // 8ms
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len); // 2ms
+	}else{
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)ptr, len); // 2ms
 	}
-	memcpy(first_buf, ptr, len);
-	HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len);
 	return len;
 }
 
@@ -117,7 +123,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 // 0 ~ M_PI*2 * 4
 float manual_offset_radian = 0;
-float output_voltage = 0;
 bool calibration_mode = false;
 
 
@@ -138,7 +143,16 @@ typedef struct{
 	float zero_calib;
 }enc_offset_t;
 
+typedef struct
+{
+	float speed;
+	float limit;
+	float out_v;
+	int timeout_cnt;
+}motor_control_cmd_t;
+
 float calib_rotation_speed = -0.005;
+motor_control_cmd_t cmd[2];
 calib_point_t calib[2];
 enc_offset_t enc_offset[2];
 // board 1
@@ -196,7 +210,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M0();
 
-		setOutputRadianM0(manual_offset_radian, output_voltage, 24);
+		setOutputRadianM0(manual_offset_radian, cmd[0].out_v, 24);
 	}
 	else
 	{
@@ -204,7 +218,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(manual_offset_radian, output_voltage, 24);
+		setOutputRadianM1(manual_offset_radian, cmd[1].out_v, 24);
 	}
 }
 
@@ -218,7 +232,7 @@ inline void motorProcess(int motor)
 		updateMA702_M0();
 
 		// ->5us
-		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, output_voltage, 24);
+		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v, 24);
 	}
 	else
 	{
@@ -226,7 +240,7 @@ inline void motorProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, output_voltage, 24);
+		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v, 24);
 	}
 }
 
@@ -245,8 +259,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 
 	motor_select_toggle = !motor_select_toggle;
-
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
+	setLedBlue(false);
 	if (calibration_mode)
 	{
 		calibrationProcess(motor_select_toggle);
@@ -256,20 +269,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		motorProcess(motor_select_toggle);
 	}
 
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
+	setLedBlue(true);
 }
 
 uint32_t can_rx_cnt = 0;
+can_rx_buf_t can_rx_buf;
 uint8_t can_rx_data[8];
 CAN_RxHeaderTypeDef can_rx_header;
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_data) != HAL_OK)
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_buf.data) != HAL_OK)
 	{
 		/* Reception Error */
 		Error_Handler();
 	}
 	can_rx_cnt++;
+	switch (can_rx_header.StdId)
+	{
+	case 0x100:
+		cmd[0].speed = can_rx_buf.speed;
+		cmd[0].out_v = can_rx_buf.speed / 20;
+		cmd[1].out_v = can_rx_buf.speed / 20;
+		cmd[0].timeout_cnt = 0;
+		cmd[1].timeout_cnt = 0;
+		break;
+	case 0x300:
+		break;
+	default:
+		break;
+	}
 }
 
 float motor_accel = 0;
@@ -284,56 +312,55 @@ void runMode(void)
 	//- 0.5 max spd 0.75
 	//+ 3.45 max spd 3.25
 
-	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0) == 0)
+	if (isPushedSW1())
 	{
-		output_voltage = 2.0;
+
+		cmd[0].out_v = 2.0;
+		cmd[1].out_v = 2.0;
 	}
-	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1) == 0)
+	if (isPushedSW2())
 	{
-		output_voltage = -2.0;
+
+		cmd[0].out_v = -2.0;
+		cmd[1].out_v = -2.0;
 	}
 
-	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_2) == 0)
+	if (isPushedSW3())
 	{
 		motor_accel = 0;
-		output_voltage = 0;
+
+		cmd[0].out_v = 0;
+		cmd[1].out_v = 0;
 	}
 
-	output_voltage += motor_accel;
-	if (output_voltage > 10.0)
-	{
-		motor_accel = -0.5;
-	}
-	if (output_voltage < -10.0)
-	{
-		motor_accel = 0.5;
+
+	for (int i = 0; i < 2;i++){
+
+		cmd[i].timeout_cnt++;
+		if(cmd[i].timeout_cnt > 100){
+			cmd[i].out_v = 0;
+		}
+
+		// select Vq-offset angle
+		if (cmd[i].out_v >= 0)
+		{
+			// 2.4
+			enc_offset[i].final = -3.4 + enc_offset[i].zero_calib + manual_offset_radian;
+		}
+		else
+		{
+			enc_offset[i].final = enc_offset[i].zero_calib + manual_offset_radian;
+		}
 	}
 
-	if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_3) == 0)
-	{
-		motor_accel = 0.1;
-		printf("start auto speed!!\n");
-		// output_voltage += 0.01;
-	}
 
-	if (output_voltage >= 0)
-	{
-		// 2.4
-		enc_offset[0].final = -3.4 + enc_offset[0].zero_calib + manual_offset_radian;
-		enc_offset[1].final = -3.4 + enc_offset[1].zero_calib + manual_offset_radian;
-	}
-	else
-	{
-		enc_offset[0].final = enc_offset[0].zero_calib + manual_offset_radian;
-		enc_offset[1].final = enc_offset[1].zero_calib + manual_offset_radian;
-	}
 
 	// ADC raw ALL
 	int pre_send = HAL_UART_GetState(&huart1);
 	static int after_send;
 	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f uart %d %d", getCurrentM0(), getCurrentM1(), getBatteryVoltage(),pre_send,after_send);
-	printf("M0raw %8d M1raw %8d offset %4.3f, voltage %+6.3f rx %6ld\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, output_voltage * 2.7, can_rx_cnt);
-
+	printf("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+	can_rx_cnt = 0;
 	after_send = HAL_UART_GetState(&huart1);
 }
 
@@ -349,12 +376,16 @@ void calibrationMode(void)
 	{
 
 		calibration_mode = true;
-		output_voltage = 2.0;
+
+		cmd[0].out_v = 2.0;
+		cmd[1].out_v = 2.0;
 		calib_rotation_speed = -calib_rotation_speed;
 	}
 	if (calib[0].result_ccw_cnt > 5/* && calib[1].result_ccw_cnt > 5*/)
 	{
-		output_voltage = 0;
+
+		cmd[0].out_v = 0;
+		cmd[1].out_v = 0;
 		HAL_Delay(1); // write out uart buffer
 
 		float temp_offset[2] = {0, 0};
@@ -364,7 +395,6 @@ void calibrationMode(void)
 		printf("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
 		HAL_Delay(1); // write out uart buffer
 
-		// IF output_voltage is +, added + M_PI,
 
 		temp_offset[0] += 1.7;
 		if (temp_offset[0] > M_PI * 2)
@@ -390,7 +420,9 @@ void calibrationMode(void)
 
 		manual_offset_radian = 0;
 		calibration_mode = false;
-		output_voltage = 0;
+
+		cmd[0].out_v = 0;
+		cmd[1].out_v = 0;
 
 		calib[0].result_cw_cnt = 0;
 		calib[1].result_cw_cnt = 0;
@@ -450,19 +482,18 @@ int main(void)
 
 	initFirstSin();
 // LED
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
+	setLedRed(true);
+	setLedGreen(true);
+	setLedBlue(true);
 	HAL_Delay(100);
 
 	loadFlashData();
+	enable_buffer_mode = true;
 	printf("** Orion VV driver V1 start! **\n");
 	enc_offset[0].zero_calib = flash.calib[0];
 	enc_offset[1].zero_calib = flash.calib[1];
 	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.can_id,flash.calib[0],flash.calib[1]);
 
-while(1)
-		;
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 
@@ -501,9 +532,9 @@ while(1)
 	HAL_CAN_Start(&hcan);
 	printf("start main loop!\n");
 
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_RESET);
+	setLedRed(false);
+	setLedGreen(false);
+	setLedBlue(false);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -526,7 +557,9 @@ while(1)
 
 				calibration_mode = true;
 				manual_offset_radian = 0;
-				output_voltage = 2.0;
+
+				cmd[0].out_v = 2.0;
+				cmd[1].out_v = 2.0;
 				calib_rotation_speed = -calib_rotation_speed;
 				break;
 			case 'n':
@@ -534,7 +567,9 @@ while(1)
 
 				calibration_mode = false;
 				manual_offset_radian = 0;
-				output_voltage = 0;
+
+				cmd[0].out_v = 0;
+				cmd[1].out_v = 0;
 				break;
 			case 'q':
 				manual_offset_radian += 0.05;
@@ -543,10 +578,12 @@ while(1)
 				manual_offset_radian -= 0.05;
 				break;
 			case 'w':
-				output_voltage += 0.5;
+				cmd[0].out_v += 0.5;
+				cmd[1].out_v += 0.5;
 				break;
 			case 's':
-				output_voltage -= 0.5;
+				cmd[0].out_v -= 0.5;
+				cmd[1].out_v -= 0.5;
 				break;
 			case 'p':
 				motor_accel = 0.5;
@@ -554,7 +591,8 @@ while(1)
 				break;
 			case 'l':
 				motor_accel = 0;
-				output_voltage = 0;
+				cmd[0].out_v = 0;
+				cmd[1].out_v = 0;
 				printf("stop auto speed!!\n");
 				break;
 			case '0':
@@ -578,16 +616,22 @@ while(1)
 		if (getCurrentM0() > 3.0 /* || getCurrentM1() > 3.0*/)
 		{
 			forceStop();
+			enable_buffer_mode = true;
 			printf("over current!! : %d %d\n", adc_raw.cs_m0, adc_raw.cs_m1);
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
+			setLedBlue(false);
+			setLedGreen(true);
+			setLedRed(true);
 			while (1)
 				;
 		}
 		if (getBatteryVoltage() < 20)
 		{
 			forceStop();
+			enable_buffer_mode = true;
 			printf("under operation voltaie!! %6.3f", getBatteryVoltage());
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET);
+			setLedBlue(true);
+			setLedGreen(false);
+			setLedRed(true);
 			while (1)
 				;
 		}

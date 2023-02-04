@@ -39,23 +39,13 @@ extern CAN_HandleTypeDef hcan;
 
 /* USER CODE BEGIN Private defines */
 
-typedef struct can_rx_buf_t
+typedef union 
 {
-  union
-  {
-    uint8_t data[8];
-    float speed;
-    float power;
-  }motor_cmd;
-  union
-  {
-    uint8_t data[8];
-    uint8_t index;
-    float value;
-    uint8_t reserved[3];
-  }motor_param;
-};
+  uint8_t data[8];
 
+  float speed;
+  float power;
+} can_rx_buf_t;
 
 /* USER CODE END Private defines */
 
