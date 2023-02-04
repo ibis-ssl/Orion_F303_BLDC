@@ -29,10 +29,12 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include "stm32f3xx_hal_spi.h"
 #include "stm32f3xx_hal_can.h"
+#include "stm32f3xx_hal_tim.h"
 #include "stm32f3xx_hal_uart.h"
 #include <math.h>
 #include "flash.h"
@@ -153,18 +155,8 @@ float calib_rotation_speed = -0.005;
 motor_control_cmd_t cmd[2];
 calib_point_t calib[2];
 enc_offset_t enc_offset[2];
-// board 1
-// M0 5.7505 M1 4.7589M
-// M0 4.7721 M1 3.7922
-// M1 3.2c
 
-// test board M0
-// 1.3 / 2.6 -> ave 1.95 -> 4.3
-// -0.1 / 2.50  -> 60deg
-// + 2.6-2.7 = 4.3 - 1.7
-// 4.3
-// - 6.0-6.1 = 4.3 + 1.7
-void checkAngle(motor)
+void checkAngle(int motor)
 {
 	calib[motor].radian_ave += ma702[motor].output_radian;
 	calib[motor].ave_cnt++;
@@ -208,7 +200,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M0();
 
-		setOutputRadianM0(manual_offset_radian, cmd[0].out_v, 24);
+		setOutputRadianM0(manual_offset_radian, cmd[0].out_v, getBatteryVoltage());
 	}
 	else
 	{
@@ -216,7 +208,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(manual_offset_radian, cmd[1].out_v, 24);
+		setOutputRadianM1(manual_offset_radian, cmd[1].out_v, getBatteryVoltage());
 	}
 }
 
@@ -230,7 +222,7 @@ inline void motorProcess(int motor)
 		updateMA702_M0();
 
 		// ->5us
-		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v, 24);
+		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v, getBatteryVoltage());
 	}
 	else
 	{
@@ -238,7 +230,7 @@ inline void motorProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v, 24);
+		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v, getBatteryVoltage());
 	}
 }
 
@@ -309,6 +301,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 }
 
 float motor_accel = 0;
+#define ROTATION_OFFSET_RADIAN (2.0)
+// by manual tuning
 
 void runMode(void)
 {
@@ -343,7 +337,7 @@ void runMode(void)
 	for (int i = 0; i < 2;i++){
 
 		cmd[i].timeout_cnt++;
-		if (cmd[i].timeout_cnt > 100 && calibration_mode == false)
+		if (cmd[i].timeout_cnt > 100)
 		{
 			cmd[i].out_v = 0;
 		}
@@ -352,7 +346,7 @@ void runMode(void)
 		if (cmd[i].out_v >= 0)
 		{
 			// 2.4
-			enc_offset[i].final = -3.4 + enc_offset[i].zero_calib + manual_offset_radian;
+			enc_offset[i].final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset[i].zero_calib + manual_offset_radian;
 		}
 		else
 		{
@@ -377,7 +371,6 @@ void calibrationMode(void)
 	if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
 	{
 		calibration_mode = true;
-
 		cmd[0].out_v = 2.0;
 		cmd[1].out_v = 2.0;
 		calib_rotation_speed = -calib_rotation_speed;
@@ -396,7 +389,7 @@ void calibrationMode(void)
 		printf("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
 		HAL_Delay(1); // write out uart buffer
 
-		temp_offset[0] += 1.7;
+		temp_offset[0] += ROTATION_OFFSET_RADIAN;
 		if (temp_offset[0] > M_PI * 2)
 		{
 			temp_offset[0] -= M_PI * 2;
@@ -405,7 +398,7 @@ void calibrationMode(void)
 		{
 			temp_offset[0] += M_PI * 2;
 		}
-		temp_offset[1] += 1.7;
+		temp_offset[1] += ROTATION_OFFSET_RADIAN;
 		if (temp_offset[1] > M_PI * 2)
 		{
 			temp_offset[1] -= M_PI * 2;
@@ -448,6 +441,60 @@ void startCalibrationMode(void)
 	cmd[0].out_v = 2.0;
 	cmd[1].out_v = 2.0;
 	calib_rotation_speed = -calib_rotation_speed;
+}
+
+void receiveUserSerialCommand(void){
+
+	if (uart_rx_flag)
+	{
+		uart_rx_flag = false;
+		HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
+		switch (uart_rx_buf[0])
+		{
+		case 'c':
+			startCalibrationMode();
+			break;
+		case 'n':
+			printf("run mode!\n");
+
+			calibration_mode = false;
+			manual_offset_radian = 0;
+
+			cmd[0].out_v = 0;
+			cmd[1].out_v = 0;
+			break;
+		case 'q':
+			manual_offset_radian += 0.01;
+			break;
+		case 'a':
+			manual_offset_radian -= 0.01;
+			break;
+		case 'w':
+			cmd[0].out_v += 0.5;
+			cmd[1].out_v += 0.5;
+			break;
+		case 's':
+			cmd[0].out_v -= 0.5;
+			cmd[1].out_v -= 0.5;
+			break;
+		case 'p':
+			motor_accel = 0.5;
+			printf("start auto speed!!\n");
+			break;
+		case 'l':
+			motor_accel = 0;
+			cmd[0].out_v = 0;
+			cmd[1].out_v = 0;
+			printf("stop auto speed!!\n");
+			break;
+		case '0':
+			printf("enter sleep!\n");
+			forceStop();
+			while (1)
+				;
+			break;
+		}
+	}
 }
 
 /* USER CODE END 0 */
@@ -577,57 +624,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-		if (uart_rx_flag)
-		{
-			uart_rx_flag = false;
-			HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
-			switch (uart_rx_buf[0])
-			{
-			case 'c':
-				startCalibrationMode();
-				break;
-			case 'n':
-				printf("run mode!\n");
-
-				calibration_mode = false;
-				manual_offset_radian = 0;
-
-				cmd[0].out_v = 0;
-				cmd[1].out_v = 0;
-				break;
-			case 'q':
-				manual_offset_radian += 0.05;
-				break;
-			case 'a':
-				manual_offset_radian -= 0.05;
-				break;
-			case 'w':
-				cmd[0].out_v += 0.5;
-				cmd[1].out_v += 0.5;
-				break;
-			case 's':
-				cmd[0].out_v -= 0.5;
-				cmd[1].out_v -= 0.5;
-				break;
-			case 'p':
-				motor_accel = 0.5;
-				printf("start auto speed!!\n");
-				break;
-			case 'l':
-				motor_accel = 0;
-				cmd[0].out_v = 0;
-				cmd[1].out_v = 0;
-				printf("stop auto speed!!\n");
-				break;
-			case '0':
-				printf("enter sleep!\n");
-				forceStop();
-				while (1)
-					;
-				break;
-			}
-		}
+		receiveUserSerialCommand();
 
 		if (calibration_mode)
 		{

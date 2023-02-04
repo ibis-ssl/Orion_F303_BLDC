@@ -333,19 +333,28 @@ inline float fast_sin(float rad)
   return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)];
 }
 
+#define OUTPUT_VOLTAGE_LIMIT (24)
+#define BATTERY_VOLTAGE_BOTTOM (18)
+#define TIM_PWM_CENTOR (1200)
+
 inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage)
 {
   int voltage_propotional_cnt;
-  const int pwm_cnt_centor = 700;
+  const int pwm_cnt_centor = TIM_PWM_CENTOR;
+
+  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM)
+  {
+    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
+  }
   if (output_voltage < 0)
   {
     output_voltage = -output_voltage;
   }
-  if (output_voltage > 24)
+  if (output_voltage > OUTPUT_VOLTAGE_LIMIT)
   {
     output_voltage = 0;
   }
-  voltage_propotional_cnt = output_voltage / 24 * pwm_cnt_centor;
+  voltage_propotional_cnt = output_voltage / battery_voltage * pwm_cnt_centor;
 
   uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
   htim1.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
@@ -356,16 +365,20 @@ inline void setOutputRadianM0(float out_rad, float output_voltage, float battery
 inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage)
 {
   int voltage_propotional_cnt;
-  const int pwm_cnt_centor = 700;
+  const int pwm_cnt_centor = TIM_PWM_CENTOR;
+  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM)
+  {
+    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
+  }
   if (output_voltage < 0)
   {
     output_voltage = -output_voltage;
   }
-  if (output_voltage > 24)
+  if (output_voltage > OUTPUT_VOLTAGE_LIMIT)
   {
     output_voltage = 0;
   }
-  voltage_propotional_cnt = output_voltage / 24 * pwm_cnt_centor;
+  voltage_propotional_cnt = output_voltage / battery_voltage * pwm_cnt_centor;
 
   uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
   htim8.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
