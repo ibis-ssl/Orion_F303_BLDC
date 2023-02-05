@@ -42,7 +42,8 @@ struct ma702_t{
   float output_radian;
   int enc_raw;
   int enc_elec_raw;
-  int pre_raw;
+  int pre_enc_raw;
+  int diff_enc;
 };
 
 

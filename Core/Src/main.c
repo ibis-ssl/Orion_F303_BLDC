@@ -150,17 +150,40 @@ typedef struct
 	float out_v;
 	int timeout_cnt;
 }motor_control_cmd_t;
+typedef struct
+{
+	int pre_enc_cnt_raw;
+	float rps;
+}motor_real_t;
+
 
 float calib_rotation_speed = -0.005;
 motor_control_cmd_t cmd[2];
 calib_point_t calib[2];
 enc_offset_t enc_offset[2];
+motor_real_t motor_real[2];
+
+#define ENC_CNT_MAX (65536)
+#define HARF_OF_ENC_CNT_MAX (32768)
+
+void calcMotorSpeed(int motor){
+	int temp = motor_real[motor].pre_enc_cnt_raw - ma702[motor].enc_raw;
+	if (temp < -HARF_OF_ENC_CNT_MAX){
+		temp += ENC_CNT_MAX;
+	}
+	else if (temp > HARF_OF_ENC_CNT_MAX){
+		temp -= ENC_CNT_MAX;
+	}
+	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 1000;	//rps
+	motor_real[motor]
+		.pre_enc_cnt_raw = ma702[motor].enc_raw;
+}
 
 void checkAngle(int motor)
 {
 	calib[motor].radian_ave += ma702[motor].output_radian;
 	calib[motor].ave_cnt++;
-	if (calib[motor].pre_raw > 63335 / 2 && ma702[motor].enc_raw < 63335 / 2 && calib_rotation_speed < 0)
+	if (calib[motor].pre_raw > HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw < HARF_OF_ENC_CNT_MAX && calib_rotation_speed < 0)
 	{
 		// ccw
 		calib[motor].result_ccw_cnt++;
@@ -168,7 +191,7 @@ void checkAngle(int motor)
 		calib[motor].radian_ave = 0;
 		calib[motor].ave_cnt = 0;
 	}
-	if (calib[motor].pre_raw < 63335 / 2 && ma702[motor].enc_raw > 63335 / 2 && calib_rotation_speed > 0)
+	if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_rotation_speed > 0)
 	{
 		//cw
 		calib[motor].result_cw_cnt++;
@@ -222,7 +245,7 @@ inline void motorProcess(int motor)
 		updateMA702_M0();
 
 		// ->5us
-		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v, getBatteryVoltage());
+		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v, 24);
 	}
 	else
 	{
@@ -230,7 +253,7 @@ inline void motorProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v, getBatteryVoltage());
+		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v, 24);
 	}
 }
 
@@ -318,33 +341,8 @@ void runMode(void)
 	//- 0.5 max spd 0.75
 	//+ 3.45 max spd 3.25
 
-	if (isPushedSW1())
-	{
-		cmd[0].out_v = 2.0;
-		cmd[1].out_v = 2.0;
-	}
-	if (isPushedSW2())
-	{
-		cmd[0].out_v = -2.0;
-		cmd[1].out_v = -2.0;
-	}
-
-	if (isPushedSW3())
-	{
-		motor_accel = 0;
-
-		cmd[0].out_v = 0;
-		cmd[1].out_v = 0;
-	}
-
 
 	for (int i = 0; i < 2;i++){
-
-		cmd[i].timeout_cnt++;
-		if (cmd[i].timeout_cnt > 100)
-		{
-			cmd[i].out_v = 0;
-		}
 
 		// select Vq-offset angle
 		if (cmd[i].out_v >= 0)
@@ -356,11 +354,32 @@ void runMode(void)
 		{
 			enc_offset[i].final = enc_offset[i].zero_calib + manual_offset_radian;
 		}
+
+		cmd[i].timeout_cnt++;
+		if (cmd[i].timeout_cnt > 100)
+		{
+
+			if (isPushedSW1())
+			{
+				cmd[i].out_v = 2.0;
+			}
+			else if (isPushedSW2())
+			{
+				cmd[i].out_v = -2.0;
+			}
+			else
+			{
+				cmd[i].out_v = 0;
+			}
+		}
 	}
+
 
 	// ADC raw ALL
 	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-	printf("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+	printf("RPS M0 %+6.2f M1 %+6.2f M1offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", motor_real[0].rps,motor_real[1].rps,ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+
+	//	printf("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 	can_rx_cnt = 0;
 }
 
@@ -372,14 +391,14 @@ void calibrationMode(void)
 	printf("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
 
 	// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
-	if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
+	if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5 && calib_rotation_speed > 0)
 	{
 		calibration_mode = true;
 		cmd[0].out_v = 2.0;
 		cmd[1].out_v = 2.0;
 		calib_rotation_speed = -calib_rotation_speed;
 	}
-	if (calib[0].result_ccw_cnt > 5/* && calib[1].result_ccw_cnt > 5*/)
+	if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5)
 	{
 
 		cmd[0].out_v = 0;
@@ -629,6 +648,8 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 		receiveUserSerialCommand();
+		calcMotorSpeed(0);
+		calcMotorSpeed(1);
 
 		if (calibration_mode)
 		{
@@ -639,7 +660,7 @@ int main(void)
 			runMode();
 		}
 
-		if (getCurrentM0() > 3.0 /* || getCurrentM1() > 3.0*/)
+		if (getCurrentM0() > 3.0  || getCurrentM1() > 3.0)
 		{
 			forceStop();
 			enable_buffer_mode = true;

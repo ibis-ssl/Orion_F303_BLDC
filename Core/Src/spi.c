@@ -121,7 +121,7 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
 inline void updateMA702_M0(void){
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-  ma702[1].pre_raw = ma702[1].enc_raw;
+  ma702[1].pre_enc_raw = ma702[1].enc_raw;
 
   ma702[1].enc_raw = hspi1.Instance->DR;
   hspi1.Instance->DR = 0;
@@ -141,7 +141,7 @@ inline void updateMA702_M1(void)
 {
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
-  ma702[0].pre_raw = ma702[0].enc_raw;
+  ma702[0].pre_enc_raw = ma702[0].enc_raw;
 
   ma702[0].enc_raw = hspi1.Instance->DR;
   hspi1.Instance->DR = 0;
@@ -166,6 +166,6 @@ inline int getRawMA702(int motor)
   return ma702[motor].enc_raw;
 }
 inline int getPreRawMA702(int motor){
-  return ma702[motor].enc_raw - ma702[motor].pre_raw;
+  return ma702[motor].enc_raw - ma702[motor].pre_enc_raw;
 }
 /* USER CODE END 1 */
