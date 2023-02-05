@@ -280,17 +280,21 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	switch (can_rx_header.StdId)
 	{
 	case 0x100:
-		cmd[0].speed = can_rx_buf.speed;
 		cmd[0].out_v = can_rx_buf.speed / 20;
-		cmd[1].out_v = can_rx_buf.speed / 20;
 		cmd[0].timeout_cnt = 0;
+		break;
+
+	case 0x101:
+		cmd[1].out_v = can_rx_buf.speed / 20;
 		cmd[1].timeout_cnt = 0;
 		break;
+
 	case 0x102:
-		cmd[0].speed = can_rx_buf.speed;
 		cmd[0].out_v = can_rx_buf.speed / 20;
-		cmd[1].out_v = can_rx_buf.speed / 20;
 		cmd[0].timeout_cnt = 0;
+		break;
+	case 0x103:
+		cmd[1].out_v = can_rx_buf.speed / 20;
 		cmd[1].timeout_cnt = 0;
 		break;
 	case 0x300:
@@ -615,10 +619,10 @@ int main(void)
 	setLedRed(false);
 	setLedGreen(false);
 	setLedBlue(false);
-	/* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 	while (1)
 	{
     /* USER CODE END WHILE */
@@ -681,7 +685,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -693,7 +697,7 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
@@ -701,8 +705,9 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM8;
+                              |RCC_PERIPHCLK_TIM8|RCC_PERIPHCLK_ADC34;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
+  PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
