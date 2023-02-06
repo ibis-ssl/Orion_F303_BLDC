@@ -174,7 +174,7 @@ void calcMotorSpeed(int motor){
 	else if (temp > HARF_OF_ENC_CNT_MAX){
 		temp -= ENC_CNT_MAX;
 	}
-	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 1000;	//rps
+	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 500;	//rps
 	motor_real[motor]
 		.pre_enc_cnt_raw = ma702[motor].enc_raw;
 }
@@ -660,7 +660,7 @@ int main(void)
 			runMode();
 		}
 
-		if (getCurrentM0() > 3.0  || getCurrentM1() > 3.0)
+		if (getCurrentM0() > 3.0 /* || getCurrentM1() > 3.0*/)
 		{
 			forceStop();
 			enable_buffer_mode = true;
@@ -682,7 +682,9 @@ int main(void)
 			while (1)
 				;
 		}
+		setLedRed(true);
 		HAL_Delay(1);
+		setLedRed(false);
 	}
   /* USER CODE END 3 */
 }
@@ -706,7 +708,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -718,7 +720,7 @@ void SystemClock_Config(void)
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
@@ -726,9 +728,8 @@ void SystemClock_Config(void)
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM8|RCC_PERIPHCLK_ADC34;
+                              |RCC_PERIPHCLK_TIM8;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-  PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
