@@ -46,7 +46,7 @@ void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 2400;
+  htim1.Init.Period = 1800;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -119,7 +119,7 @@ void MX_TIM8_Init(void)
   htim8.Instance = TIM8;
   htim8.Init.Prescaler = 1;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = 2400;
+  htim8.Init.Period = 1800;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim8.Init.RepetitionCounter = 0;
   htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -335,12 +335,12 @@ inline float fast_sin(float rad)
 
 #define OUTPUT_VOLTAGE_LIMIT (24)
 #define BATTERY_VOLTAGE_BOTTOM (18)
-#define TIM_PWM_CENTOR (1200)
+#define TIM_PWM_CENTOR (900)
+#define X2_PER_R3 (1.154)
 
 inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage)
 {
   int voltage_propotional_cnt;
-  const int pwm_cnt_centor = TIM_PWM_CENTOR;
 
   if (battery_voltage < BATTERY_VOLTAGE_BOTTOM)
   {
@@ -354,18 +354,17 @@ inline void setOutputRadianM0(float out_rad, float output_voltage, float battery
   {
     output_voltage = 0;
   }
-  voltage_propotional_cnt = output_voltage / battery_voltage * pwm_cnt_centor;
+  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTOR * X2_PER_R3;
 
   uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-  htim1.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  htim1.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-  htim1.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
+  htim1.Instance->CCR1 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
+  htim1.Instance->CCR2 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
+  htim1.Instance->CCR3 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
 
 inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage)
 {
   int voltage_propotional_cnt;
-  const int pwm_cnt_centor = TIM_PWM_CENTOR;
   if (battery_voltage < BATTERY_VOLTAGE_BOTTOM)
   {
     battery_voltage = BATTERY_VOLTAGE_BOTTOM;
@@ -378,12 +377,12 @@ inline void setOutputRadianM1(float out_rad, float output_voltage, float battery
   {
     output_voltage = 0;
   }
-  voltage_propotional_cnt = output_voltage / battery_voltage * pwm_cnt_centor;
+  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTOR * X2_PER_R3;
 
   uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-  htim8.Instance->CCR1 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  htim8.Instance->CCR2 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-  htim8.Instance->CCR3 = pwm_cnt_centor + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
+  htim8.Instance->CCR1 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
+  htim8.Instance->CCR2 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
+  htim8.Instance->CCR3 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
 
 void forceStop(void)

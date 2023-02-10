@@ -56,7 +56,9 @@ char temp_buf[UART_TEMP_BUF_SIZE];
 int re_queue_len = 0;
 bool enable_buffer_mode = false;
 int _write(int file, char *ptr, int len)
-{	if (enable_buffer_mode){
+{
+	if (enable_buffer_mode)
+	{
 		enable_buffer_mode = false;
 
 		if (huart1.hdmatx->State == HAL_DMA_BURST_STATE_BUSY)
@@ -67,9 +69,11 @@ int _write(int file, char *ptr, int len)
 			re_queue_len = len;
 			return len;
 		}
-		memcpy(first_buf, ptr, len);						 // 8ms
+		memcpy(first_buf, ptr, len);							   // 8ms
 		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len); // 2ms
-	}else{
+	}
+	else
+	{
 		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)ptr, len); // 2ms
 	}
 	return len;
@@ -77,8 +81,9 @@ int _write(int file, char *ptr, int len)
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-	if (re_queue_len){
-		
+	if (re_queue_len)
+	{
+
 		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)temp_buf, re_queue_len);
 		re_queue_len = 0;
 	}
@@ -109,6 +114,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
+#define TEST_BOARD (true)
 
 /* USER CODE END PFP */
 
@@ -138,24 +144,25 @@ typedef struct
 	float result_ccw;
 	int result_ccw_cnt;
 } calib_point_t;
-typedef struct{
+typedef struct
+{
 	float final;
 	float zero_calib;
-}enc_offset_t;
+} enc_offset_t;
 
 typedef struct
 {
 	float speed;
 	float limit;
 	float out_v;
+	float out_v_final;
 	int timeout_cnt;
-}motor_control_cmd_t;
+} motor_control_cmd_t;
 typedef struct
 {
 	int pre_enc_cnt_raw;
 	float rps;
-}motor_real_t;
-
+} motor_real_t;
 
 float calib_rotation_speed = -0.005;
 motor_control_cmd_t cmd[2];
@@ -163,18 +170,24 @@ calib_point_t calib[2];
 enc_offset_t enc_offset[2];
 motor_real_t motor_real[2];
 
+// 200kV -> 3.33rps/V -> 0.3 V/rps
+#define RPS_TO_MOTOR_EFF_VOLTAGE (0.3)
+
 #define ENC_CNT_MAX (65536)
 #define HARF_OF_ENC_CNT_MAX (32768)
 
-void calcMotorSpeed(int motor){
+void calcMotorSpeed(int motor)
+{
 	int temp = motor_real[motor].pre_enc_cnt_raw - ma702[motor].enc_raw;
-	if (temp < -HARF_OF_ENC_CNT_MAX){
+	if (temp < -HARF_OF_ENC_CNT_MAX)
+	{
 		temp += ENC_CNT_MAX;
 	}
-	else if (temp > HARF_OF_ENC_CNT_MAX){
+	else if (temp > HARF_OF_ENC_CNT_MAX)
+	{
 		temp -= ENC_CNT_MAX;
 	}
-	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 500;	//rps
+	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 1000; // rps
 	motor_real[motor]
 		.pre_enc_cnt_raw = ma702[motor].enc_raw;
 }
@@ -193,7 +206,7 @@ void checkAngle(int motor)
 	}
 	if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_rotation_speed > 0)
 	{
-		//cw
+		// cw
 		calib[motor].result_cw_cnt++;
 		calib[motor].result_cw = calib[motor].radian_ave / calib[motor].ave_cnt;
 		calib[motor].radian_ave = 0;
@@ -202,10 +215,9 @@ void checkAngle(int motor)
 	calib[motor].pre_raw = ma702[motor].enc_raw;
 }
 
-// 1k -> 20k
 inline void calibrationProcess(int motor)
 {
-	manual_offset_radian -= calib_rotation_speed;
+	manual_offset_radian += calib_rotation_speed;
 
 	if (manual_offset_radian > M_PI * 2)
 	{
@@ -223,7 +235,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M0();
 
-		setOutputRadianM0(manual_offset_radian, cmd[0].out_v, getBatteryVoltage());
+		setOutputRadianM0(manual_offset_radian, cmd[0].out_v_final, getBatteryVoltage());
 	}
 	else
 	{
@@ -231,7 +243,7 @@ inline void calibrationProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(manual_offset_radian, cmd[1].out_v, getBatteryVoltage());
+		setOutputRadianM1(manual_offset_radian, cmd[1].out_v_final, getBatteryVoltage());
 	}
 }
 
@@ -245,7 +257,7 @@ inline void motorProcess(int motor)
 		updateMA702_M0();
 
 		// ->5us
-		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v, 24);
+		setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v_final, 24);
 	}
 	else
 	{
@@ -253,23 +265,19 @@ inline void motorProcess(int motor)
 
 		updateMA702_M1();
 
-		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v, 24);
+		setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v_final, 24);
 	}
 }
 
+// 7APB 36MHz / 1800 cnt -> 20kHz -> 2ms cycle
+#define INTERRUPT_KHZ_1MS (20)
+volatile uint32_t interrupt_timer_cnt = 0, main_loop_remain_counter = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	// TIM1 : M1
 	// TIM8 : M0
 	static bool motor_select_toggle = false;
-
-	if (htim == &htim1)
-	{
-	}
-	else if (htim == &htim8)
-	{
-		return;
-	}
+	interrupt_timer_cnt++;
 
 	motor_select_toggle = !motor_select_toggle;
 	setLedBlue(false);
@@ -296,28 +304,29 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		/* Reception Error */
 		Error_Handler();
 	}
-	if (calibration_mode){
+	if (calibration_mode)
+	{
 		return;
 	}
-		can_rx_cnt++;
+	can_rx_cnt++;
 	switch (can_rx_header.StdId)
 	{
 	case 0x100:
-		cmd[0].out_v = can_rx_buf.speed / 20;
+		cmd[0].speed = can_rx_buf.speed / 20;
 		cmd[0].timeout_cnt = 0;
 		break;
 
 	case 0x101:
-		cmd[1].out_v = can_rx_buf.speed / 20;
+		cmd[1].speed = can_rx_buf.speed / 20;
 		cmd[1].timeout_cnt = 0;
 		break;
 
 	case 0x102:
-		cmd[0].out_v = can_rx_buf.speed / 20;
+		cmd[0].speed = can_rx_buf.speed / 20;
 		cmd[0].timeout_cnt = 0;
 		break;
 	case 0x103:
-		cmd[1].out_v = can_rx_buf.speed / 20;
+		cmd[1].speed = can_rx_buf.speed / 20;
 		cmd[1].timeout_cnt = 0;
 		break;
 	case 0x300:
@@ -331,6 +340,34 @@ float motor_accel = 0;
 #define ROTATION_OFFSET_RADIAN (2.0)
 // by manual tuning
 
+typedef struct
+{
+	float eff_voltage;
+	float pid_kp, pid_kd, pid_ki;
+	float error, error_integral, error_diff;
+	float error_integral_limit;
+	float pre_real_rps;
+} motor_pid_control_t;
+motor_pid_control_t pid[2];
+// ki = -0.4ぐらいまで
+void controlMotorSpeed(int motor)
+{
+	pid[motor].eff_voltage = motor_real[motor].rps * RPS_TO_MOTOR_EFF_VOLTAGE;
+	pid[motor].error = motor_real[motor].rps - cmd[motor].speed;
+	pid[motor].error_integral += pid[motor].error;
+	if (pid[motor].error_integral > pid[motor].error_integral_limit)
+	{
+		pid[motor].error_integral = pid[motor].error_integral_limit;
+	}
+	else if (pid[motor].error_integral < -pid[motor].error_integral_limit)
+	{
+		pid[motor].error_integral = -pid[motor].error_integral_limit;
+	}
+	pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
+	pid[motor].pre_real_rps = motor_real[motor].rps;
+	cmd[motor].out_v = cmd[motor].speed * RPS_TO_MOTOR_EFF_VOLTAGE + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
+}
+
 void runMode(void)
 {
 
@@ -341,11 +378,12 @@ void runMode(void)
 	//- 0.5 max spd 0.75
 	//+ 3.45 max spd 3.25
 
+	for (int i = 0; i < 2; i++)
+	{
 
-	for (int i = 0; i < 2;i++){
-
+		controlMotorSpeed(i);
 		// select Vq-offset angle
-		if (cmd[i].out_v >= 0)
+		if (cmd[i].out_v < 0)
 		{
 			// 2.4
 			enc_offset[i].final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset[i].zero_calib + manual_offset_radian;
@@ -372,37 +410,72 @@ void runMode(void)
 				cmd[i].out_v = 0;
 			}
 		}
+		cmd[i].out_v_final = cmd[i].out_v;
+	}
+	static uint8_t print_cnt = 0;
+	print_cnt++;
+
+	switch (print_cnt)
+	{
+	case 1:
+		//printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+		printf("P %+3.1f I %+3.1f D %+3.1f ",pid[0].pid_kp,pid[0].pid_ki,pid[0].pid_kd);
+		break;
+	case 2:
+		printf("I %+4.1f RPS M0 %+6.2f M1 %+6.2f", pid[0].error_integral,motor_real[0].rps, motor_real[1].rps);
+		break;
+	case 3:
+		printf(", voltageM0 %+6.3f M1 %6.3f rx %6ld", cmd[0].out_v, cmd[1].out_v, can_rx_cnt);
+
+		break;
+	case 4:
+		printf("diff %+6.3f CPU %3d",pid[0].error_diff, main_loop_remain_counter);
+		break;
+	case 5:
+		printf("SPD M0 %+6.2f M1 %+6.2f", cmd[0].speed, cmd[1].speed);
+		break;
+	case 6:
+		printf("\n");
+		break;
+	default:
+		print_cnt = 0;
+		break;
 	}
 
-
 	// ADC raw ALL
-	printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-	printf("RPS M0 %+6.2f M1 %+6.2f M1offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", motor_real[0].rps,motor_real[1].rps,ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
-
 	//	printf("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 	can_rx_cnt = 0;
 }
 
-/* 1ms cycle by 1ms delay*/
+/* Can't running 1kHz */
 void calibrationMode(void)
 {
 	printf("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
 	printf("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
 	printf("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
 
-	// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
+// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
+#ifdef TEST_BOARD
+	if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
+#else
 	if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5 && calib_rotation_speed > 0)
+#endif
 	{
 		calibration_mode = true;
-		cmd[0].out_v = 2.0;
-		cmd[1].out_v = 2.0;
+		cmd[0].out_v_final = 2.0;
+		cmd[1].out_v_final = 2.0;
 		calib_rotation_speed = -calib_rotation_speed;
 	}
+#ifdef TEST_BOARD
+	if (calib[0].result_ccw_cnt > 5 /* && calib[1].result_ccw_cnt > 5*/)
+#else
 	if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5)
+#endif
+
 	{
 
-		cmd[0].out_v = 0;
-		cmd[1].out_v = 0;
+		cmd[0].out_v_final = 0;
+		cmd[1].out_v_final = 0;
 		HAL_Delay(1); // write out uart buffer
 
 		float temp_offset[2] = {0, 0};
@@ -437,8 +510,8 @@ void calibrationMode(void)
 		manual_offset_radian = 0;
 		calibration_mode = false;
 
-		cmd[0].out_v = 0;
-		cmd[1].out_v = 0;
+		cmd[0].out_v_final = 0;
+		cmd[1].out_v_final = 0;
 
 		calib[0].result_cw_cnt = 0;
 		calib[1].result_cw_cnt = 0;
@@ -447,12 +520,11 @@ void calibrationMode(void)
 		calib[0].radian_ave = 0;
 		calib[1].radian_ave = 0;
 
-		writeCalibrationValue(enc_offset[0].zero_calib,enc_offset[1].zero_calib);
+		writeCalibrationValue(enc_offset[0].zero_calib, enc_offset[1].zero_calib);
 
 		HAL_Delay(1000);
 	}
 }
-
 
 void startCalibrationMode(void)
 {
@@ -466,7 +538,8 @@ void startCalibrationMode(void)
 	calib_rotation_speed = -calib_rotation_speed;
 }
 
-void receiveUserSerialCommand(void){
+void receiveUserSerialCommand(void)
+{
 
 	if (uart_rx_flag)
 	{
@@ -510,6 +583,36 @@ void receiveUserSerialCommand(void){
 			cmd[1].out_v = 0;
 			printf("stop auto speed!!\n");
 			break;
+		case 'e':
+			pid[0].pid_kp += 0.1;
+			pid[1].pid_kp += 0.1;
+			printf("\nKP %+5.2f\n", pid[0].pid_kp);
+			break;
+		case 'd':
+			pid[0].pid_kp -= 0.1;
+			pid[1].pid_kp -= 0.1;
+			printf("\nKP %+5.2f\n", pid[0].pid_kp);
+			break;
+		case 'r':
+			pid[0].pid_ki += 0.1;
+			pid[1].pid_ki += 0.1;
+			printf("\nKI %+5.2f\n", pid[0].pid_ki);
+			break;
+		case 'f':
+			pid[0].pid_ki -= 0.1;
+			pid[1].pid_ki -= 0.1;
+			printf("\nKI %+5.2f\n", pid[0].pid_ki);
+			break;
+		case 't':
+			pid[0].pid_kd += 0.1;
+			pid[1].pid_kd += 0.1;
+			printf("\nKD %+5.2f\n", pid[0].pid_kd);
+			break;
+		case 'g':
+			pid[0].pid_kd -= 0.1;
+			pid[1].pid_kd -= 0.1;
+			printf("\nKD %+5.2f\n",pid[0].pid_kd);
+			break;
 		case '0':
 			printf("enter sleep!\n");
 			forceStop();
@@ -523,46 +626,46 @@ void receiveUserSerialCommand(void){
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
+	/* USER CODE BEGIN 1 */
 
-  /* USER CODE END 1 */
+	/* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+	/* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
 
-  /* USER CODE BEGIN Init */
+	/* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+	/* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
+	/* Configure the system clock */
+	SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
+	/* USER CODE BEGIN SysInit */
 
-  /* USER CODE END SysInit */
+	/* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_ADC1_Init();
-  MX_ADC2_Init();
-  MX_ADC3_Init();
-  MX_CAN_Init();
-  MX_SPI1_Init();
-  MX_TIM1_Init();
-  MX_TIM8_Init();
-  MX_USART1_UART_Init();
-  /* USER CODE BEGIN 2 */
+	/* Initialize all configured peripherals */
+	MX_GPIO_Init();
+	MX_DMA_Init();
+	MX_ADC1_Init();
+	MX_ADC2_Init();
+	MX_ADC3_Init();
+	MX_CAN_Init();
+	MX_SPI1_Init();
+	MX_TIM1_Init();
+	MX_TIM8_Init();
+	MX_USART1_UART_Init();
+	/* USER CODE BEGIN 2 */
 
 	initFirstSin();
-// LED
+	// LED
 	setLedRed(true);
 	setLedGreen(true);
 	setLedBlue(true);
@@ -627,7 +730,6 @@ int main(void)
 	htim8.Instance->CNT = 10;
 
 	HAL_TIM_Base_Start_IT(&htim1);
-	// HAL_TIM_Base_Start_IT(&htim8);
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
 	CAN_Filter_Init(flash.board_id);
@@ -638,15 +740,17 @@ int main(void)
 	setLedRed(false);
 	setLedGreen(false);
 	setLedBlue(false);
-  /* USER CODE END 2 */
+	pid[0].error_integral_limit = 2.0;
+	pid[1].error_integral_limit = 2.0;
+	/* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-    /* USER CODE END WHILE */
+		/* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+		/* USER CODE BEGIN 3 */
 		receiveUserSerialCommand();
 		calcMotorSpeed(0);
 		calcMotorSpeed(1);
@@ -659,8 +763,11 @@ int main(void)
 		{
 			runMode();
 		}
-
-		if (getCurrentM0() > 3.0 /* || getCurrentM1() > 3.0*/)
+#ifdef TEST_BOARD
+		if (getCurrentM0() > 5.0 /* || getCurrentM1() > 3.0*/)
+#else
+		if (getCurrentM0() > 3.0 || getCurrentM1() > 3.0)
+#endif
 		{
 			forceStop();
 			enable_buffer_mode = true;
@@ -682,60 +789,66 @@ int main(void)
 			while (1)
 				;
 		}
+
+		// wait for 2ms cycle
 		setLedRed(true);
-		HAL_Delay(1);
+
+		main_loop_remain_counter = INTERRUPT_KHZ_1MS - interrupt_timer_cnt;
+		while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS)
+			;
+		interrupt_timer_cnt = 0;
+
 		setLedRed(false);
 	}
-  /* USER CODE END 3 */
+	/* USER CODE END 3 */
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+	RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+	RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	/** Initializes the RCC Oscillators according to the specified parameters
+	 * in the RCC_OscInitTypeDef structure.
+	 */
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+	RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+	RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+	{
+		Error_Handler();
+	}
 
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+	/** Initializes the CPU, AHB and APB buses clocks
+	 */
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM8;
-  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-  PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
-  PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_TIM1 | RCC_PERIPHCLK_TIM8 | RCC_PERIPHCLK_ADC34;
+	PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
+	PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
+	PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
+	PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
+	if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+	{
+		Error_Handler();
+	}
 }
 
 /* USER CODE BEGIN 4 */
@@ -743,33 +856,33 @@ void SystemClock_Config(void)
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
+	/* USER CODE BEGIN Error_Handler_Debug */
 	/* User can add his own implementation to report the HAL error return state */
 	__disable_irq();
 	while (1)
 	{
 	}
-  /* USER CODE END Error_Handler_Debug */
+	/* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
+	/* USER CODE BEGIN 6 */
 	/* User can add his own implementation to report the file name and line number,
 	   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+	/* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
