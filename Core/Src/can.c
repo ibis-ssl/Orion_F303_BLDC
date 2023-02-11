@@ -1,21 +1,21 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    can.c
-  * @brief   This file provides code for the configuration
-  *          of the CAN instances.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2022 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
+ ******************************************************************************
+ * @file    can.c
+ * @brief   This file provides code for the configuration
+ *          of the CAN instances.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2022 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "can.h"
@@ -25,6 +25,7 @@
 /* USER CODE END 0 */
 
 CAN_HandleTypeDef hcan;
+uint32_t can_send_fail_cnt = 0;
 
 /* CAN init function */
 void MX_CAN_Init(void)
@@ -56,18 +57,17 @@ void MX_CAN_Init(void)
   /* USER CODE BEGIN CAN_Init 2 */
 
   /* USER CODE END CAN_Init 2 */
-
 }
 
-void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
+void HAL_CAN_MspInit(CAN_HandleTypeDef *canHandle)
 {
 
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(canHandle->Instance==CAN)
+  if (canHandle->Instance == CAN)
   {
-  /* USER CODE BEGIN CAN_MspInit 0 */
+    /* USER CODE BEGIN CAN_MspInit 0 */
 
-  /* USER CODE END CAN_MspInit 0 */
+    /* USER CODE END CAN_MspInit 0 */
     /* CAN clock enable */
     __HAL_RCC_CAN1_CLK_ENABLE();
 
@@ -76,7 +76,7 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     PA11     ------> CAN_RX
     PA12     ------> CAN_TX
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_11|GPIO_PIN_12;
+    GPIO_InitStruct.Pin = GPIO_PIN_11 | GPIO_PIN_12;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
@@ -92,20 +92,20 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     HAL_NVIC_EnableIRQ(CAN_RX1_IRQn);
     HAL_NVIC_SetPriority(CAN_SCE_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(CAN_SCE_IRQn);
-  /* USER CODE BEGIN CAN_MspInit 1 */
+    /* USER CODE BEGIN CAN_MspInit 1 */
 
-  /* USER CODE END CAN_MspInit 1 */
+    /* USER CODE END CAN_MspInit 1 */
   }
 }
 
-void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
+void HAL_CAN_MspDeInit(CAN_HandleTypeDef *canHandle)
 {
 
-  if(canHandle->Instance==CAN)
+  if (canHandle->Instance == CAN)
   {
-  /* USER CODE BEGIN CAN_MspDeInit 0 */
+    /* USER CODE BEGIN CAN_MspDeInit 0 */
 
-  /* USER CODE END CAN_MspDeInit 0 */
+    /* USER CODE END CAN_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_CAN1_CLK_DISABLE();
 
@@ -113,16 +113,16 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
     PA11     ------> CAN_RX
     PA12     ------> CAN_TX
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11|GPIO_PIN_12);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11 | GPIO_PIN_12);
 
     /* CAN interrupt Deinit */
     HAL_NVIC_DisableIRQ(USB_HP_CAN_TX_IRQn);
     HAL_NVIC_DisableIRQ(USB_LP_CAN_RX0_IRQn);
     HAL_NVIC_DisableIRQ(CAN_RX1_IRQn);
     HAL_NVIC_DisableIRQ(CAN_SCE_IRQn);
-  /* USER CODE BEGIN CAN_MspDeInit 1 */
+    /* USER CODE BEGIN CAN_MspDeInit 1 */
 
-  /* USER CODE END CAN_MspDeInit 1 */
+    /* USER CODE END CAN_MspDeInit 1 */
   }
 }
 
@@ -133,10 +133,10 @@ void CAN_Filter_Init(uint16_t board_addr)
   sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
   sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
   sFilterConfig.FilterBank = 0;
-  sFilterConfig.FilterIdHigh = (0x100 + board_addr*2) << 5;
-  sFilterConfig.FilterIdLow = (0x300 + board_addr*2) << 5;
-  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr*2) << 5;
-  sFilterConfig.FilterMaskIdLow = (0x301 + board_addr*2) << 5;
+  sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5;
+  sFilterConfig.FilterIdLow = (0x300 + board_addr * 2) << 5;
+  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;
+  sFilterConfig.FilterMaskIdLow = (0x301 + board_addr * 2) << 5;
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
   sFilterConfig.FilterActivation = ENABLE;
   sFilterConfig.SlaveStartFilterBank = 0;
@@ -164,5 +164,38 @@ void trySendCanMsg(void)
   can_data[2] = 1;
   can_data[3] = 1;
   HAL_CAN_AddTxMessage(&hcan, &can_header, can_data, &can_mailbox);
+}
+
+static void sendFloat(uint16_t can_id,float data){
+  can_msg_buf_t msg;
+  CAN_TxHeaderTypeDef can_header;
+  uint32_t can_mailbox;
+  can_header.StdId = can_id;
+  can_header.RTR = CAN_RTR_DATA;
+  can_header.DLC = 4;
+  can_header.TransmitGlobalTime = DISABLE;
+  msg.speed = data;
+  if(HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0){
+    can_send_fail_cnt++;
+  }
+}
+
+void sendSpeed(int board_id, int motor, float speed)
+{
+  sendFloat(0x200 + board_id * 2 + motor,speed);
+}
+
+void sendVoltage(int board_id, int motor, float voltage){
+  sendFloat(0x210 + board_id * 2 + motor, voltage);
+}
+
+void sendTemperature(int board_id, int motor, float temp)
+{
+  sendFloat(0x220 + board_id * 2 + motor, temp);
+}
+
+void sendCurrent(int board_id, int motor, float current)
+{
+  sendFloat(0x230 + board_id * 2 + motor, current);
 }
 /* USER CODE END 1 */

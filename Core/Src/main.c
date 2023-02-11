@@ -120,6 +120,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+extern uint32_t can_send_fail_cnt;
 
 uint8_t uart_rx_buf[10] = {0};
 bool uart_rx_flag = false;
@@ -294,8 +295,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 uint32_t can_rx_cnt = 0;
-can_rx_buf_t can_rx_buf;
-uint8_t can_rx_data[8];
+can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
@@ -418,24 +418,25 @@ void runMode(void)
 	switch (print_cnt)
 	{
 	case 1:
-		//printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-		printf("P %+3.1f I %+3.1f D %+3.1f ",pid[0].pid_kp,pid[0].pid_ki,pid[0].pid_kd);
+		// printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+		printf("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
 		break;
 	case 2:
-		printf("I %+4.1f RPS M0 %+6.2f M1 %+6.2f", pid[0].error_integral,motor_real[0].rps, motor_real[1].rps);
+		printf("I %+4.1f RPS M0 %+6.2f M1 %+6.2f", pid[0].error_integral, motor_real[0].rps, motor_real[1].rps);
 		break;
 	case 3:
 		printf(", voltageM0 %+6.3f M1 %6.3f rx %6ld", cmd[0].out_v, cmd[1].out_v, can_rx_cnt);
 
 		break;
 	case 4:
-		printf("diff %+6.3f CPU %3d",pid[0].error_diff, main_loop_remain_counter);
+		printf("diff %+6.3f CPU %3d", pid[0].error_diff, main_loop_remain_counter);
 		break;
 	case 5:
 		printf("SPD M0 %+6.2f M1 %+6.2f", cmd[0].speed, cmd[1].speed);
 		break;
 	case 6:
-		printf("\n");
+		printf("fail : %d\n", can_send_fail_cnt);
+		can_send_fail_cnt = 0;
 		break;
 	default:
 		print_cnt = 0;
@@ -611,7 +612,7 @@ void receiveUserSerialCommand(void)
 		case 'g':
 			pid[0].pid_kd -= 0.1;
 			pid[1].pid_kd -= 0.1;
-			printf("\nKD %+5.2f\n",pid[0].pid_kd);
+			printf("\nKD %+5.2f\n", pid[0].pid_kd);
 			break;
 		case '0':
 			printf("enter sleep!\n");
@@ -621,6 +622,40 @@ void receiveUserSerialCommand(void)
 			break;
 		}
 	}
+}
+
+void sendCanData(void)
+{
+	static int transfer_cnt;
+
+	sendSpeed(flash.board_id, 0, motor_real[0].rps);
+	sendSpeed(flash.board_id, 1, motor_real[1].rps);
+
+	switch (transfer_cnt)
+	{
+	case 0:
+		sendVoltage(flash.board_id, 0, getBatteryVoltage());
+		break;
+	case 1:
+		sendVoltage(flash.board_id, 1, getBatteryVoltage());
+		break;
+	case 2:
+		sendCurrent(flash.board_id, 0, getCurrentM0());
+		break;
+	case 3:
+		sendCurrent(flash.board_id, 1, getCurrentM1());
+		break;
+	case 4:
+		sendTemperature(flash.board_id, 0, 20);
+		break;
+	case 5:
+		sendTemperature(flash.board_id, 1, 20);
+		transfer_cnt = -1; // 次で++されるので-1にしておく
+		break;
+	default:
+		break;
+	}
+	transfer_cnt++;
 }
 
 /* USER CODE END 0 */
@@ -754,6 +789,7 @@ int main(void)
 		receiveUserSerialCommand();
 		calcMotorSpeed(0);
 		calcMotorSpeed(1);
+		sendCanData();
 
 		if (calibration_mode)
 		{
