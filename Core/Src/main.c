@@ -114,7 +114,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
-#define TEST_BOARD (true)
+#define IS_TEST_BOARD (true)
 
 /* USER CODE END PFP */
 
@@ -176,6 +176,11 @@ motor_real_t motor_real[2];
 
 #define ENC_CNT_MAX (65536)
 #define HARF_OF_ENC_CNT_MAX (32768)
+
+// by manual tuned
+#define ROTATION_OFFSET_RADIAN (2.0)
+
+#define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
 void calcMotorSpeed(int motor)
 {
@@ -297,8 +302,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
+#define SPEED_CMD_LIMIT_RPS (40)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
+	float tmp_speed = 0;
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_buf.data) != HAL_OK)
 	{
 		/* Reception Error */
@@ -309,24 +316,33 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		return;
 	}
 	can_rx_cnt++;
+	tmp_speed = can_rx_buf.speed;
+	if (tmp_speed > SPEED_CMD_LIMIT_RPS)
+	{
+		tmp_speed = SPEED_CMD_LIMIT_RPS;
+	}
+	else if (can_rx_buf.speed < -SPEED_CMD_LIMIT_RPS)
+	{
+		tmp_speed = -SPEED_CMD_LIMIT_RPS;
+	}
 	switch (can_rx_header.StdId)
 	{
 	case 0x100:
-		cmd[0].speed = can_rx_buf.speed / 20;
+		cmd[0].speed = tmp_speed;
 		cmd[0].timeout_cnt = 0;
 		break;
 
 	case 0x101:
-		cmd[1].speed = can_rx_buf.speed / 20;
+		cmd[1].speed = tmp_speed;
 		cmd[1].timeout_cnt = 0;
 		break;
 
 	case 0x102:
-		cmd[0].speed = can_rx_buf.speed / 20;
+		cmd[0].speed = tmp_speed;
 		cmd[0].timeout_cnt = 0;
 		break;
 	case 0x103:
-		cmd[1].speed = can_rx_buf.speed / 20;
+		cmd[1].speed = tmp_speed;
 		cmd[1].timeout_cnt = 0;
 		break;
 	case 0x300:
@@ -336,9 +352,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	}
 }
 
-float motor_accel = 0;
-#define ROTATION_OFFSET_RADIAN (2.0)
-// by manual tuning
 
 typedef struct
 {
@@ -347,13 +360,15 @@ typedef struct
 	float error, error_integral, error_diff;
 	float error_integral_limit;
 	float pre_real_rps;
+	float diff_voltage_limit;
+	int load_limit_cnt;
 } motor_pid_control_t;
 motor_pid_control_t pid[2];
 // ki = -0.4ぐらいまで
 void controlMotorSpeed(int motor)
 {
 	pid[motor].eff_voltage = motor_real[motor].rps * RPS_TO_MOTOR_EFF_VOLTAGE;
-	pid[motor].error = motor_real[motor].rps - cmd[motor].speed;
+	pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
 	pid[motor].error_integral += pid[motor].error;
 	if (pid[motor].error_integral > pid[motor].error_integral_limit)
 	{
@@ -365,7 +380,41 @@ void controlMotorSpeed(int motor)
 	}
 	pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
 	pid[motor].pre_real_rps = motor_real[motor].rps;
-	cmd[motor].out_v = cmd[motor].speed * RPS_TO_MOTOR_EFF_VOLTAGE + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
+	cmd[motor].out_v = cmd[motor].speed * (RPS_TO_MOTOR_EFF_VOLTAGE + pid[motor].pid_kp) + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
+	if (cmd[motor].out_v > pid[motor].eff_voltage + pid[motor].diff_voltage_limit)
+	{
+		if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed))
+		{
+			pid[motor].load_limit_cnt++;
+		}
+		cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
+	}
+	else if (cmd[motor].out_v < pid[motor].eff_voltage - pid[motor].diff_voltage_limit)
+	{
+		if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed))
+		{
+			pid[motor].load_limit_cnt++;
+		}
+		cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
+	}
+	else if (pid[motor].load_limit_cnt > 0)
+	{
+		pid[motor].load_limit_cnt--;
+	}
+}
+
+void setMotorSpeed(int motor){
+
+	cmd[motor].out_v_final = cmd[motor].out_v;
+	if (cmd[motor].out_v_final < 0)
+	{
+		// 2.4
+		enc_offset[motor].final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset[motor].zero_calib + manual_offset_radian;
+	}
+	else
+	{
+		enc_offset[motor].final = enc_offset[motor].zero_calib + manual_offset_radian;
+	}
 }
 
 void runMode(void)
@@ -383,34 +432,23 @@ void runMode(void)
 
 		controlMotorSpeed(i);
 		// select Vq-offset angle
-		if (cmd[i].out_v < 0)
-		{
-			// 2.4
-			enc_offset[i].final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset[i].zero_calib + manual_offset_radian;
-		}
-		else
-		{
-			enc_offset[i].final = enc_offset[i].zero_calib + manual_offset_radian;
-		}
+
 
 		cmd[i].timeout_cnt++;
 		if (cmd[i].timeout_cnt > 100)
 		{
-
-			if (isPushedSW1())
-			{
-				cmd[i].out_v = 2.0;
-			}
-			else if (isPushedSW2())
-			{
-				cmd[i].out_v = -2.0;
-			}
-			else
-			{
-				cmd[i].out_v = 0;
-			}
+			cmd[i].out_v = 0;
 		}
-		cmd[i].out_v_final = cmd[i].out_v;
+		if (isPushedSW1())
+		{
+			cmd[i].out_v = 2.0;
+		}
+		else if (isPushedSW2())
+		{
+			cmd[i].out_v = -2.0;
+		}
+
+		setMotorSpeed(i);
 	}
 	static uint8_t print_cnt = 0;
 	print_cnt++;
@@ -418,25 +456,29 @@ void runMode(void)
 	switch (print_cnt)
 	{
 	case 1:
-		// printf("CS M0 %+7.3f M1 %+7.3f / BV %6.3f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-		printf("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
+		printf("CS %+5.1f %+5.1f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+		// printf("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
 		break;
 	case 2:
-		printf("I %+4.1f RPS M0 %+6.2f M1 %+6.2f", pid[0].error_integral, motor_real[0].rps, motor_real[1].rps);
+		printf("RPS %+6.2f %+6.2f ", motor_real[0].rps, motor_real[1].rps);
 		break;
 	case 3:
-		printf(", voltageM0 %+6.3f M1 %6.3f rx %6ld", cmd[0].out_v, cmd[1].out_v, can_rx_cnt);
+		printf("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
 
 		break;
 	case 4:
-		printf("diff %+6.3f CPU %3d", pid[0].error_diff, main_loop_remain_counter);
+		printf("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
 		break;
 	case 5:
-		printf("SPD M0 %+6.2f M1 %+6.2f", cmd[0].speed, cmd[1].speed);
+		printf("SPD %+6.1f %+6.1f ", cmd[0].speed, cmd[1].speed);
 		break;
 	case 6:
-		printf("fail : %d\n", can_send_fail_cnt);
+		printf("load %+5.2f %+5.2f ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage);
 		can_send_fail_cnt = 0;
+		break;
+	case 7:
+		printf("load Cnt%% %3.2f %3.2f ", (float)pid[0].load_limit_cnt /  MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt /  MOTOR_OVER_LOAD_CNT_LIMIT);
+		printf("\n");
 		break;
 	default:
 		print_cnt = 0;
@@ -456,7 +498,7 @@ void calibrationMode(void)
 	printf("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
 
 // calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
-#ifdef TEST_BOARD
+#ifdef IS_TEST_BOARD
 	if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
 #else
 	if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5 && calib_rotation_speed > 0)
@@ -467,7 +509,7 @@ void calibrationMode(void)
 		cmd[1].out_v_final = 2.0;
 		calib_rotation_speed = -calib_rotation_speed;
 	}
-#ifdef TEST_BOARD
+#ifdef IS_TEST_BOARD
 	if (calib[0].result_ccw_cnt > 5 /* && calib[1].result_ccw_cnt > 5*/)
 #else
 	if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5)
@@ -534,8 +576,8 @@ void startCalibrationMode(void)
 	calibration_mode = true;
 	manual_offset_radian = 0;
 
-	cmd[0].out_v = 2.0;
-	cmd[1].out_v = 2.0;
+	cmd[0].out_v_final = 2.0;
+	cmd[1].out_v_final = 2.0;
 	calib_rotation_speed = -calib_rotation_speed;
 }
 
@@ -573,16 +615,6 @@ void receiveUserSerialCommand(void)
 		case 's':
 			cmd[0].out_v -= 0.5;
 			cmd[1].out_v -= 0.5;
-			break;
-		case 'p':
-			motor_accel = 0.5;
-			printf("start auto speed!!\n");
-			break;
-		case 'l':
-			motor_accel = 0;
-			cmd[0].out_v = 0;
-			cmd[1].out_v = 0;
-			printf("stop auto speed!!\n");
 			break;
 		case 'e':
 			pid[0].pid_kp += 0.1;
@@ -656,6 +688,51 @@ void sendCanData(void)
 		break;
 	}
 	transfer_cnt++;
+}
+
+void protect(void)
+{
+#ifdef IS_TEST_BOARD
+	if (getCurrentM0() > 5.0 /* || getCurrentM1() > 3.0*/)
+#else
+	if (getCurrentM0() > 3.0 || getCurrentM1() > 3.0)
+#endif
+	{
+		forceStop();
+		enable_buffer_mode = true;
+		printf("over current!! : %d %d\n", adc_raw.cs_m0, adc_raw.cs_m1);
+		setLedBlue(false);
+		setLedGreen(true);
+		setLedRed(true);
+		while (1)
+			;
+	}
+	if (getBatteryVoltage() < 20)
+	{
+		forceStop();
+		enable_buffer_mode = true;
+		printf("under operation voltaie!! %6.3f", getBatteryVoltage());
+		setLedBlue(true);
+		setLedGreen(false);
+		setLedRed(true);
+		while (1)
+			;
+	}
+#ifdef IS_TEST_BOARD
+	if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT /* || pid[1].load_limit_cnt > 3000*/)
+#else
+	if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT)
+#endif
+	{
+		forceStop();
+		enable_buffer_mode = true;
+		printf("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
+		setLedBlue(false);
+		setLedGreen(false);
+		setLedRed(true);
+		while (1)
+			;
+	}
 }
 
 /* USER CODE END 0 */
@@ -775,8 +852,12 @@ int main(void)
 	setLedRed(false);
 	setLedGreen(false);
 	setLedBlue(false);
+	pid[0].pid_ki = 0.3;
+	pid[1].pid_ki = 0.3;
 	pid[0].error_integral_limit = 2.0;
 	pid[1].error_integral_limit = 2.0;
+	pid[0].diff_voltage_limit = 2.0;
+	pid[1].diff_voltage_limit = 2.0;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -799,32 +880,7 @@ int main(void)
 		{
 			runMode();
 		}
-#ifdef TEST_BOARD
-		if (getCurrentM0() > 5.0 /* || getCurrentM1() > 3.0*/)
-#else
-		if (getCurrentM0() > 3.0 || getCurrentM1() > 3.0)
-#endif
-		{
-			forceStop();
-			enable_buffer_mode = true;
-			printf("over current!! : %d %d\n", adc_raw.cs_m0, adc_raw.cs_m1);
-			setLedBlue(false);
-			setLedGreen(true);
-			setLedRed(true);
-			while (1)
-				;
-		}
-		if (getBatteryVoltage() < 20)
-		{
-			forceStop();
-			enable_buffer_mode = true;
-			printf("under operation voltaie!! %6.3f", getBatteryVoltage());
-			setLedBlue(true);
-			setLedGreen(false);
-			setLedRed(true);
-			while (1)
-				;
-		}
+		protect();
 
 		// wait for 2ms cycle
 		setLedRed(true);

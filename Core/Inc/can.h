@@ -58,7 +58,7 @@ extern "C"
 
   void CAN_Filter_Init(uint16_t board_addr);
   void updateCANRXBuffer(void);
-  void trySendCanMsg(void);
+  void sendFloat(uint16_t can_id, float data);
   void sendSpeed(int board_id, int motor, float speed);
   void sendVoltage(int board_id, int motor, float voltage);
   void sendTemperature(int board_id, int motor, float temp);
