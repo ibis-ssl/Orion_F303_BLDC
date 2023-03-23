@@ -43,7 +43,7 @@ struct ma702_t{
   int enc_raw;
   int enc_elec_raw;
   int pre_enc_raw;
-  int diff_enc;
+  int diff_enc,diff_min,diff_max,diff_max_cnt,diff_min_cnt;
 };
 
 

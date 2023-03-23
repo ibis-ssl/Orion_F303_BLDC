@@ -29,6 +29,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -42,56 +44,6 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-/*#ifdef __GNUC__
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-#define GETCHAR_PROTOTYPE int __io_getchar(void)
-#else
-#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
-#define GETCHAR_PROTOTYPE int f getc(FILE *f)
-#endif
-*/
-#define UART_TEMP_BUF_SIZE (200)
-char first_buf[UART_TEMP_BUF_SIZE];
-char temp_buf[UART_TEMP_BUF_SIZE];
-int re_queue_len = 0;
-bool enable_buffer_mode = false;
-int _write(int file, char *ptr, int len)
-{
-	if (enable_buffer_mode)
-	{
-		enable_buffer_mode = false;
-
-		if (huart1.hdmatx->State == HAL_DMA_BURST_STATE_BUSY)
-		{
-			if (len >= UART_TEMP_BUF_SIZE)
-				len = UART_TEMP_BUF_SIZE;
-			memcpy(temp_buf, ptr, len);
-			re_queue_len = len;
-			return len;
-		}
-		memcpy(first_buf, ptr, len);							   // 8ms
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len); // 2ms
-	}
-	else
-	{
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)ptr, len); // 2ms
-	}
-	return len;
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if (re_queue_len)
-	{
-
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t *)temp_buf, re_queue_len);
-		re_queue_len = 0;
-	}
-}
-/*void __io_putchar(uint8_t ch)
-{
-	HAL_UART_Transmit(&huart1, &ch, 1, 1);
-}*/
 
 /* USER CODE END PTD */
 
@@ -162,7 +114,11 @@ typedef struct
 typedef struct
 {
 	int pre_enc_cnt_raw;
+	int diff_cnt_max, diff_cnt_min;
+
 	float rps;
+	float pre_rps;
+	float k;
 } motor_real_t;
 
 float calib_rotation_speed = -0.005;
@@ -193,9 +149,19 @@ void calcMotorSpeed(int motor)
 	{
 		temp -= ENC_CNT_MAX;
 	}
-	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 1000; // rps
-	motor_real[motor]
-		.pre_enc_cnt_raw = ma702[motor].enc_raw;
+
+	if (abs(motor_real[motor].diff_cnt_max) < abs(temp))
+	{
+		motor_real[motor].diff_cnt_max = temp;
+	}
+	if (abs(motor_real[motor].diff_cnt_min) > abs(temp))
+	{
+		motor_real[motor].diff_cnt_min = temp;
+	}
+	// motor_real[motor].rps = ((float)temp / ENC_CNT_MAX * 1000) * motor_real[motor].k + (1-motor_real[motor].k) * motor_real[motor].pre_rps; // rps
+	motor_real[motor].rps = (float)temp / ENC_CNT_MAX * 1000;
+	motor_real[motor].pre_rps = motor_real[motor].rps;
+	motor_real[motor].pre_enc_cnt_raw = ma702[motor].enc_raw;
 }
 
 void checkAngle(int motor)
@@ -240,7 +206,6 @@ inline void calibrationProcess(int motor)
 		updateADC_M0();
 
 		updateMA702_M0();
-
 		setOutputRadianM0(manual_offset_radian, cmd[0].out_v_final, getBatteryVoltage());
 	}
 	else
@@ -302,7 +267,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
-#define SPEED_CMD_LIMIT_RPS (40)
+#define SPEED_CMD_LIMIT_RPS (100)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	float tmp_speed = 0;
@@ -321,7 +286,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	{
 		tmp_speed = SPEED_CMD_LIMIT_RPS;
 	}
-	else if (can_rx_buf.speed < -SPEED_CMD_LIMIT_RPS)
+	else if (tmp_speed < -SPEED_CMD_LIMIT_RPS)
 	{
 		tmp_speed = -SPEED_CMD_LIMIT_RPS;
 	}
@@ -352,7 +317,6 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	}
 }
 
-
 typedef struct
 {
 	float eff_voltage;
@@ -364,7 +328,6 @@ typedef struct
 	int load_limit_cnt;
 } motor_pid_control_t;
 motor_pid_control_t pid[2];
-// ki = -0.4ぐらいまで
 void controlMotorSpeed(int motor)
 {
 	pid[motor].eff_voltage = motor_real[motor].rps * RPS_TO_MOTOR_EFF_VOLTAGE;
@@ -380,7 +343,7 @@ void controlMotorSpeed(int motor)
 	}
 	pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
 	pid[motor].pre_real_rps = motor_real[motor].rps;
-	cmd[motor].out_v = cmd[motor].speed * (RPS_TO_MOTOR_EFF_VOLTAGE + pid[motor].pid_kp) + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
+	cmd[motor].out_v = cmd[motor].speed * (RPS_TO_MOTOR_EFF_VOLTAGE) + pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
 	if (cmd[motor].out_v > pid[motor].eff_voltage + pid[motor].diff_voltage_limit)
 	{
 		if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed))
@@ -403,7 +366,8 @@ void controlMotorSpeed(int motor)
 	}
 }
 
-void setMotorSpeed(int motor){
+void setMotorSpeed(int motor)
+{
 
 	cmd[motor].out_v_final = cmd[motor].out_v;
 	if (cmd[motor].out_v_final < 0)
@@ -433,7 +397,6 @@ void runMode(void)
 		controlMotorSpeed(i);
 		// select Vq-offset angle
 
-
 		cmd[i].timeout_cnt++;
 		if (cmd[i].timeout_cnt > 100)
 		{
@@ -456,46 +419,57 @@ void runMode(void)
 	switch (print_cnt)
 	{
 	case 1:
-		printf("CS %+5.1f %+5.1f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-		// printf("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
+		// p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
+		 p("CS %+5.1f %+5.1f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+		// p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
 		break;
 	case 2:
-		printf("RPS %+6.2f %+6.2f ", motor_real[0].rps, motor_real[1].rps);
+		 p("RPS %+7.3f %+7.3f ", motor_real[0].rps, motor_real[1].rps);
 		break;
 	case 3:
-		printf("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
-
+		 p("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
 		break;
 	case 4:
-		printf("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
+		 p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
+		  p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
 		break;
 	case 5:
-		printf("SPD %+6.1f %+6.1f ", cmd[0].speed, cmd[1].speed);
+		 p("SPD %+6.1f %+6.1f ", cmd[0].speed, cmd[1].speed);
 		break;
 	case 6:
-		printf("load %+5.2f %+5.2f ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage);
+		 p("loadV %+5.2f %+5.2f ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage);
 		can_send_fail_cnt = 0;
 		break;
 	case 7:
-		printf("load Cnt%% %3.2f %3.2f ", (float)pid[0].load_limit_cnt /  MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt /  MOTOR_OVER_LOAD_CNT_LIMIT);
-		printf("\n");
+		 p("loadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
+		break;
+	case 8:
+		// p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
+		p("min %+6d, max %+6d ", motor_real[0].diff_cnt_min, motor_real[0].diff_cnt_max);
+		motor_real[0].diff_cnt_max = 0;
+		motor_real[1].diff_cnt_max = 0;
+		motor_real[0].diff_cnt_min = 65535;
+		motor_real[1].diff_cnt_min = 65535;
+		ma702[0].diff_max = 0;
+		ma702[0].diff_min = 65535;
 		break;
 	default:
+		p("\n");
 		print_cnt = 0;
 		break;
 	}
 
 	// ADC raw ALL
-	//	printf("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+	//	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 	can_rx_cnt = 0;
 }
 
 /* Can't running 1kHz */
 void calibrationMode(void)
 {
-	printf("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
-	printf("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
-	printf("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
+	p("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
+	p("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
+	p("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
 
 // calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
 #ifdef IS_TEST_BOARD
@@ -525,7 +499,7 @@ void calibrationMode(void)
 
 		temp_offset[0] = (M_PI * 2) - ((calib[0].result_ccw + calib[0].result_cw) / 2);
 		temp_offset[1] = (M_PI * 2) - ((calib[1].result_ccw + calib[1].result_cw) / 2);
-		printf("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
+		p("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
 		HAL_Delay(1); // write out uart buffer
 
 		temp_offset[0] += ROTATION_OFFSET_RADIAN;
@@ -548,7 +522,7 @@ void calibrationMode(void)
 		}
 		enc_offset[0].zero_calib = temp_offset[0];
 		enc_offset[1].zero_calib = temp_offset[1];
-		printf("complete calibration!!\nccw %6f cw %6f result user offset M0 %6.3f M1 %6.3f\n", calib[0].result_ccw, calib[0].result_cw, temp_offset[0], temp_offset[1]);
+		p("complete calibration!!\nccw %6f cw %6f result user offset M0 %6.3f M1 %6.3f\n", calib[0].result_ccw, calib[0].result_cw, temp_offset[0], temp_offset[1]);
 
 		manual_offset_radian = 0;
 		calibration_mode = false;
@@ -571,7 +545,7 @@ void calibrationMode(void)
 
 void startCalibrationMode(void)
 {
-	printf("calibration mode!\n");
+	p("calibration mode!\n");
 
 	calibration_mode = true;
 	manual_offset_radian = 0;
@@ -594,7 +568,7 @@ void receiveUserSerialCommand(void)
 			startCalibrationMode();
 			break;
 		case 'n':
-			printf("run mode!\n");
+			p("run mode!\n");
 
 			calibration_mode = false;
 			manual_offset_radian = 0;
@@ -619,35 +593,43 @@ void receiveUserSerialCommand(void)
 		case 'e':
 			pid[0].pid_kp += 0.1;
 			pid[1].pid_kp += 0.1;
-			printf("\nKP %+5.2f\n", pid[0].pid_kp);
+			p("\nKP %+5.2f\n", pid[0].pid_kp);
 			break;
 		case 'd':
 			pid[0].pid_kp -= 0.1;
 			pid[1].pid_kp -= 0.1;
-			printf("\nKP %+5.2f\n", pid[0].pid_kp);
+			p("\nKP %+5.2f\n", pid[0].pid_kp);
 			break;
 		case 'r':
 			pid[0].pid_ki += 0.1;
 			pid[1].pid_ki += 0.1;
-			printf("\nKI %+5.2f\n", pid[0].pid_ki);
+			p("\nKI %+5.2f\n", pid[0].pid_ki);
 			break;
 		case 'f':
 			pid[0].pid_ki -= 0.1;
 			pid[1].pid_ki -= 0.1;
-			printf("\nKI %+5.2f\n", pid[0].pid_ki);
+			p("\nKI %+5.2f\n", pid[0].pid_ki);
 			break;
 		case 't':
 			pid[0].pid_kd += 0.1;
 			pid[1].pid_kd += 0.1;
-			printf("\nKD %+5.2f\n", pid[0].pid_kd);
+			p("\nKD %+5.2f\n", pid[0].pid_kd);
 			break;
 		case 'g':
 			pid[0].pid_kd -= 0.1;
 			pid[1].pid_kd -= 0.1;
-			printf("\nKD %+5.2f\n", pid[0].pid_kd);
+			p("\nKD %+5.2f\n", pid[0].pid_kd);
+			break;
+		case 'y':
+			motor_real[0].k += 0.1;
+			motor_real[1].k += 0.1;
+			break;
+		case 'h':
+			motor_real[0].k -= 0.1;
+			motor_real[1].k -= 0.1;
 			break;
 		case '0':
-			printf("enter sleep!\n");
+			p("enter sleep!\n");
 			forceStop();
 			while (1)
 				;
@@ -682,7 +664,7 @@ void sendCanData(void)
 		break;
 	case 5:
 		sendTemperature(flash.board_id, 1, 20);
-		transfer_cnt = -1; // 次で++されるので-1にしておく
+		transfer_cnt = -1;
 		break;
 	default:
 		break;
@@ -695,12 +677,11 @@ void protect(void)
 #ifdef IS_TEST_BOARD
 	if (getCurrentM0() > 5.0 /* || getCurrentM1() > 3.0*/)
 #else
-	if (getCurrentM0() > 3.0 || getCurrentM1() > 3.0)
+	if (getCurrentM0() > 5.0 || getCurrentM1() > 5.0)
 #endif
 	{
 		forceStop();
-		enable_buffer_mode = true;
-		printf("over current!! : %d %d\n", adc_raw.cs_m0, adc_raw.cs_m1);
+		p("over current!! : %+6.2f %+6.2f\n", getCurrentM0(), getCurrentM1());
 		setLedBlue(false);
 		setLedGreen(true);
 		setLedRed(true);
@@ -710,8 +691,7 @@ void protect(void)
 	if (getBatteryVoltage() < 20)
 	{
 		forceStop();
-		enable_buffer_mode = true;
-		printf("under operation voltaie!! %6.3f", getBatteryVoltage());
+		p("under operation voltaie!! %6.3f", getBatteryVoltage());
 		setLedBlue(true);
 		setLedGreen(false);
 		setLedRed(true);
@@ -725,8 +705,7 @@ void protect(void)
 #endif
 	{
 		forceStop();
-		enable_buffer_mode = true;
-		printf("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
+		p("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
 		setLedBlue(false);
 		setLedGreen(false);
 		setLedRed(true);
@@ -776,6 +755,24 @@ int main(void)
 	MX_USART1_UART_Init();
 	/* USER CODE BEGIN 2 */
 
+	pid[0].pid_kp = 0.0;
+	pid[1].pid_kp = 0.0;
+	pid[0].pid_ki = 0.2;
+	pid[1].pid_ki = 0.2;
+	pid[0].pid_kd = 0.0;
+	pid[1].pid_kd = 0.0;
+	pid[0].error_integral_limit = 2.0;
+	pid[1].error_integral_limit = 2.0;
+	pid[0].diff_voltage_limit = 2.0;
+	pid[1].diff_voltage_limit = 2.0;
+
+	cmd[0].speed = 0;
+	cmd[1].speed = 0;
+
+	cmd[0].out_v = 0;
+	cmd[1].out_v = 0;
+	cmd[0].out_v_final = 0;
+	cmd[1].out_v_final = 0;
 	initFirstSin();
 	// LED
 	setLedRed(true);
@@ -784,36 +781,38 @@ int main(void)
 	HAL_Delay(100);
 
 	loadFlashData();
-	enable_buffer_mode = true;
-	printf("** Orion VV driver V1 start! **\n");
+	p("** Orion VV driver V1 (2) start! **\n");
 	enc_offset[0].zero_calib = flash.calib[0];
 	enc_offset[1].zero_calib = flash.calib[1];
-	printf("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.board_id, flash.calib[0], flash.calib[1]);
+	p("CAN ADDR 0x%03x, enc offset M0 %6.3f M1 %6.3f\n", flash.board_id, flash.calib[0], flash.calib[1]);
 
 	if (isPushedSW1())
 	{
 		flash.board_id = 0;
 		writeCanBoardID(flash.board_id);
-		printf("sed board id %d\n", flash.board_id);
+		p("sed board id %d\n", flash.board_id);
 		HAL_Delay(1000);
 	}
 	else if (isPushedSW2())
 	{
 		flash.board_id = 1;
 		writeCanBoardID(flash.board_id);
-		printf("sed board id %d\n", flash.board_id);
+		p("sed board id %d\n", flash.board_id);
 		HAL_Delay(1000);
 	}
 	if (isPushedSW4())
 	{
 		startCalibrationMode();
-		printf("calibration mode!!\n");
+		p("calibration mode!!\n");
 		while (isPushedSW4())
 			;
 	}
 
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+
+	// id = 0xE, filter window
+	// default : 119, f-cut = 370Hz
 
 	HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 	HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
@@ -847,17 +846,11 @@ int main(void)
 	CAN_Filter_Init(flash.board_id);
 
 	HAL_CAN_Start(&hcan);
-	printf("start main loop!\n");
+	p("start main loop!\n");
 
 	setLedRed(false);
 	setLedGreen(false);
 	setLedBlue(false);
-	pid[0].pid_ki = 0.3;
-	pid[1].pid_ki = 0.3;
-	pid[0].error_integral_limit = 2.0;
-	pid[1].error_integral_limit = 2.0;
-	pid[0].diff_voltage_limit = 2.0;
-	pid[1].diff_voltage_limit = 2.0;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
