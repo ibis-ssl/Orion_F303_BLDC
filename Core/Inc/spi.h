@@ -55,6 +55,9 @@ void MX_SPI1_Init(void);
 
 extern struct ma702_t ma702[2];
 
+uint8_t readRegisterMA702(uint8_t enc, uint8_t address);
+uint8_t writeRegisterMA702(uint8_t enc, uint8_t address,uint8_t value);
+
 void updateMA702_M0(void);
 void updateMA702_M1(void);
 

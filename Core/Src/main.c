@@ -332,6 +332,7 @@ void controlMotorSpeed(int motor)
 {
 	pid[motor].eff_voltage = motor_real[motor].rps * RPS_TO_MOTOR_EFF_VOLTAGE;
 	pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
+
 	pid[motor].error_integral += pid[motor].error;
 	if (pid[motor].error_integral > pid[motor].error_integral_limit)
 	{
@@ -341,6 +342,7 @@ void controlMotorSpeed(int motor)
 	{
 		pid[motor].error_integral = -pid[motor].error_integral_limit;
 	}
+
 	pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
 	pid[motor].pre_real_rps = motor_real[motor].rps;
 	cmd[motor].out_v = cmd[motor].speed * (RPS_TO_MOTOR_EFF_VOLTAGE) + pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
@@ -420,32 +422,32 @@ void runMode(void)
 	{
 	case 1:
 		// p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
-		 p("CS %+5.1f %+5.1f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+		p("CS %+5.1f %+5.1f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
 		// p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
 		break;
 	case 2:
-		 p("RPS %+7.3f %+7.3f ", motor_real[0].rps, motor_real[1].rps);
+		p("RPS %+7.3f %+7.3f ", motor_real[0].rps, motor_real[1].rps);
 		break;
 	case 3:
-		 p("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
+		p("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
 		break;
 	case 4:
-		 p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
-		  p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
+		p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
+		p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
 		break;
 	case 5:
-		 p("SPD %+6.1f %+6.1f ", cmd[0].speed, cmd[1].speed);
+		p("SPD %+6.1f %+6.1f ", cmd[0].speed, cmd[1].speed);
 		break;
 	case 6:
-		 p("loadV %+5.2f %+5.2f ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage);
+		p("loadV %+5.2f %+5.2f ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage);
 		can_send_fail_cnt = 0;
 		break;
 	case 7:
-		 p("loadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
+		p("loadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
 		break;
 	case 8:
 		// p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
-		p("min %+6d, max %+6d ", motor_real[0].diff_cnt_min, motor_real[0].diff_cnt_max);
+		// p("min %+6d, max %+6d ", motor_real[0].diff_cnt_min, motor_real[0].diff_cnt_max);
 		motor_real[0].diff_cnt_max = 0;
 		motor_real[1].diff_cnt_max = 0;
 		motor_real[0].diff_cnt_min = 65535;
@@ -768,6 +770,8 @@ int main(void)
 
 	cmd[0].speed = 0;
 	cmd[1].speed = 0;
+	cmd[0].timeout_cnt = 1000;
+	cmd[1].timeout_cnt = 1000;
 
 	cmd[0].out_v = 0;
 	cmd[1].out_v = 0;
@@ -810,6 +814,49 @@ int main(void)
 
 	__HAL_SPI_ENABLE(&hspi1);
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+
+	/*
+	HAL_Delay(10);
+	writeRegisterMA702(1, 5, 0xFF);
+	HAL_Delay(10);
+	writeRegisterMA702(1, 6, 0x1C);
+	HAL_Delay(10);
+	writeRegisterMA702(1, 0x10, 0x9C);
+	HAL_Delay(10);
+	writeRegisterMA702(1, 0x1B, 0x43);
+	HAL_Delay(10);*/
+
+	// 187(0xBB) = 23Hz (MA730,NG)
+	// 119(0x77) = 370Hz (default)
+	// 390Hz = MA702
+	// 136(0x88) = 185Hz
+
+	/*writeRegisterMA702(1, 0x0E, 0x77);
+	HAL_Delay(10);*/
+
+	p("id = 0x00,reg = 0x%02x\n", readRegisterMA702(1, 0));	// Z offset-L
+	HAL_Delay(1);
+	p("id = 0x01,reg = 0x%02x\n", readRegisterMA702(1, 1)); // Z offset-H
+	HAL_Delay(1);
+	p("id = 0x02,reg = 0x%02x\n", readRegisterMA702(1, 2)); // BCT (off-axis param)
+	HAL_Delay(1);
+	p("id = 0x03,reg = 0x%02x\n", readRegisterMA702(1, 3)); // ETY,ETX
+	HAL_Delay(1);
+	p("id = 0x04,reg = 0x%02x\n", readRegisterMA702(1, 4)); //PPT-L/ILIP
+	HAL_Delay(1);
+	p("id = 0x05,reg = 0x%02x\n", readRegisterMA702(1, 5)); // PPT-H
+	HAL_Delay(1);
+	p("id = 0x06,reg = 0x%02x\n", readRegisterMA702(1, 6)); // MGLT/MGHT
+	HAL_Delay(1);
+	p("id = 0x09,reg = 0x%02x\n", readRegisterMA702(1, 9)); // RD
+	HAL_Delay(1);
+	p("id = 0x0E,reg = 0x%02x\n", readRegisterMA702(1, 0xE)); // FW
+	HAL_Delay(1);
+	p("id = 0x10,reg = 0x%02x\n", readRegisterMA702(1, 0x10)); // HYS
+	HAL_Delay(1);
+	p("id = 0x1B,reg = 0x%02x\n", readRegisterMA702(1, 0x1B)); // MGH&L
+	HAL_Delay(1);
 
 	// id = 0xE, filter window
 	// default : 119, f-cut = 370Hz

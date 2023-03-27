@@ -80,9 +80,16 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef *spiHandle)
     PB4     ------> SPI1_MISO
     PB5     ------> SPI1_MOSI
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5;
+    GPIO_InitStruct.Pin = GPIO_PIN_3 | GPIO_PIN_5;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_4;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLDOWN;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -147,6 +154,107 @@ inline void updateDiff(int8_t enc)
     ma702[enc].diff_min = temp;
     ma702[enc].diff_min_cnt = ma702[enc].enc_raw;
   }
+}
+
+volatile static uint32_t delay_cnt = 0;
+
+uint8_t readRegisterMA702(uint8_t enc, uint8_t address)
+{
+  if (enc == 0)
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+  }
+
+  hspi1.Instance->DR = 0x4000 | ((address & 0x1F) << 8);
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
+  {
+  }
+  if (enc == 0)
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+
+    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++)
+    {
+    }
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+
+    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++)
+    {
+    }
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+  }
+  uint16_t temp = hspi1.Instance->DR;
+
+  hspi1.Instance->DR = 0;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
+  {
+  }
+
+  if (enc == 0)
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+  }
+
+  return hspi1.Instance->DR >> 8;
+}
+
+uint8_t writeRegisterMA702(uint8_t enc, uint8_t address, uint8_t value)
+{
+
+  if (enc == 0)
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+  }
+
+  hspi1.Instance->DR = 0x8000 | ((address & 0x1F) << 8) | value;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
+  {
+  }
+  if (enc == 0)
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+    HAL_Delay(20);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_Delay(20);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+  }
+  uint16_t temp = hspi1.Instance->DR;
+
+  hspi1.Instance->DR = 0;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
+  {
+  }
+
+  if (enc == 0)
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+  }
+
+  return hspi1.Instance->DR >> 8;
 }
 
 inline void updateMA702_M0(void)
