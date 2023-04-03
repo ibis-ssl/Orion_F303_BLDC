@@ -53,6 +53,7 @@ float fast_sin(float rad);
 void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage);
 void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage);
 void forceStop(void);
+void setPwm0(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

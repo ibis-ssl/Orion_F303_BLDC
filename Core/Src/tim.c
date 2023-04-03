@@ -406,14 +406,23 @@ void forceStop(void)
   HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
   HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
 
+  htim8.Instance->CCR1 = TIM_PWM_CENTOR;
+  htim8.Instance->CCR2 = TIM_PWM_CENTOR;
+  htim8.Instance->CCR3 = TIM_PWM_CENTOR;
+  htim1.Instance->CCR1 = TIM_PWM_CENTOR;
+  htim1.Instance->CCR2 = TIM_PWM_CENTOR;
+  htim1.Instance->CCR3 = TIM_PWM_CENTOR;
+
+  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
+  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
+}
+
+void setPwm0(void){
   htim8.Instance->CCR1 = 0;
   htim8.Instance->CCR2 = 0;
   htim8.Instance->CCR3 = 0;
   htim1.Instance->CCR1 = 0;
   htim1.Instance->CCR2 = 0;
   htim1.Instance->CCR3 = 0;
-
-  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
-  __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
 }
 /* USER CODE END 1 */

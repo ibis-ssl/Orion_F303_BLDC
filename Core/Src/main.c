@@ -66,7 +66,7 @@
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
-#define IS_TEST_BOARD (true)
+#define IS_TEST_BOARD (false)
 
 /* USER CODE END PFP */
 
@@ -137,6 +137,8 @@ motor_real_t motor_real[2];
 #define ROTATION_OFFSET_RADIAN (2.0)
 
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
+
+#define BATTERY_UNVER_VOLTAGE (20.0)
 
 void calcMotorSpeed(int motor)
 {
@@ -690,7 +692,7 @@ void protect(void)
 		while (1)
 			;
 	}
-	if (getBatteryVoltage() < 20)
+	if (getBatteryVoltage() < BATTERY_UNVER_VOLTAGE)
 	{
 		forceStop();
 		p("under operation voltaie!! %6.3f", getBatteryVoltage());
@@ -835,7 +837,7 @@ int main(void)
 	/*writeRegisterMA702(1, 0x0E, 0x77);
 	HAL_Delay(10);*/
 
-	p("id = 0x00,reg = 0x%02x\n", readRegisterMA702(1, 0));	// Z offset-L
+	p("id = 0x00,reg = 0x%02x\n", readRegisterMA702(1, 0)); // Z offset-L
 	HAL_Delay(1);
 	p("id = 0x01,reg = 0x%02x\n", readRegisterMA702(1, 1)); // Z offset-H
 	HAL_Delay(1);
@@ -843,7 +845,7 @@ int main(void)
 	HAL_Delay(1);
 	p("id = 0x03,reg = 0x%02x\n", readRegisterMA702(1, 3)); // ETY,ETX
 	HAL_Delay(1);
-	p("id = 0x04,reg = 0x%02x\n", readRegisterMA702(1, 4)); //PPT-L/ILIP
+	p("id = 0x04,reg = 0x%02x\n", readRegisterMA702(1, 4)); // PPT-L/ILIP
 	HAL_Delay(1);
 	p("id = 0x05,reg = 0x%02x\n", readRegisterMA702(1, 5)); // PPT-H
 	HAL_Delay(1);
@@ -868,6 +870,25 @@ int main(void)
 	HAL_ADC_Start(&hadc2);
 	HAL_ADC_Start(&hadc3);
 
+	htim1.Instance->CNT = 0;
+	htim8.Instance->CNT = 10;
+
+	HAL_TIM_Base_Start_IT(&htim1);
+	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
+
+	uint32_t over_startup_voltage = 0;
+	p("waiting startup voltage.... : %3.1fV\n",BATTERY_UNVER_VOLTAGE + 2);
+	while (over_startup_voltage < 100)
+	{
+		HAL_Delay(1);
+		if (getBatteryVoltage() > BATTERY_UNVER_VOLTAGE + 2.0)
+		{
+			over_startup_voltage++;
+		}else{
+			over_startup_voltage = 0;
+		}
+	}
+
 	HAL_TIM_PWM_Init(&htim8);
 	HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
 	HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
@@ -883,12 +904,6 @@ int main(void)
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 	HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
-
-	htim1.Instance->CNT = 0;
-	htim8.Instance->CNT = 10;
-
-	HAL_TIM_Base_Start_IT(&htim1);
-	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
 	CAN_Filter_Init(flash.board_id);
 
