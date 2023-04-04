@@ -57,12 +57,13 @@ void MX_CAN_Init(void);
 
   void CAN_Filter_Init(uint16_t board_addr);
   void updateCANRXBuffer(void);
-  void sendFloat(uint16_t can_id, float data);
+  void sendFloat(uint32_t can_id, float data);
   void sendSpeed(int board_id, int motor, float speed);
   void sendVoltage(int board_id, int motor, float voltage);
   void sendTemperature(int board_id, int motor, float temp);
   void sendCurrent(int board_id, int motor, float current);
-/* USER CODE END Prototypes */
+  uint32_t getCanError(void);
+  /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }

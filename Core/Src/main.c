@@ -66,7 +66,7 @@
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 
-#define IS_TEST_BOARD (false)
+// #define IS_TEST_BOARD
 
 /* USER CODE END PFP */
 
@@ -85,6 +85,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 // 0 ~ M_PI*2 * 4
 float manual_offset_radian = 0;
 bool calibration_mode = false;
+uint32_t free_wheel_cnt = 0;
 
 typedef struct
 {
@@ -270,14 +271,8 @@ uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
 #define SPEED_CMD_LIMIT_RPS (100)
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
+void can_rx_callback(void){
 	float tmp_speed = 0;
-	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_buf.data) != HAL_OK)
-	{
-		/* Reception Error */
-		Error_Handler();
-	}
 	if (calibration_mode)
 	{
 		return;
@@ -314,12 +309,37 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		break;
 	case 0x300:
 		break;
+	case 0x110:
+		if (can_rx_buf.data[0] == 3)
+		{
+			free_wheel_cnt = 500;
+		}
+		break;
 	default:
 		break;
 	}
 }
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_buf.data) != HAL_OK)
+	{
+		Error_Handler();
+		return;
+	}
+	can_rx_callback();
+}
 
-typedef struct
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &can_rx_header, can_rx_buf.data) != HAL_OK)
+	{
+		Error_Handler();
+		return;
+	}
+	can_rx_callback();
+}
+
+	typedef struct
 {
 	float eff_voltage;
 	float pid_kp, pid_kd, pid_ki;
@@ -387,6 +407,9 @@ void setMotorSpeed(int motor)
 
 void runMode(void)
 {
+	if(free_wheel_cnt > 0){
+		free_wheel_cnt--;
+	}
 
 	if (manual_offset_radian > M_PI * 2)
 	{
@@ -415,6 +438,10 @@ void runMode(void)
 			cmd[i].out_v = -2.0;
 		}
 
+		if(free_wheel_cnt > 0){
+			cmd[i].out_v = 0;
+		}
+
 		setMotorSpeed(i);
 	}
 	static uint8_t print_cnt = 0;
@@ -428,20 +455,20 @@ void runMode(void)
 		// p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
 		break;
 	case 2:
-		p("RPS %+7.3f %+7.3f ", motor_real[0].rps, motor_real[1].rps);
+		p("RPS %+7.3f %+7.3f free %3d", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
 		break;
 	case 3:
 		p("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
 		break;
 	case 4:
 		p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
-		p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
+		// p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
 		break;
 	case 5:
-		p("SPD %+6.1f %+6.1f ", cmd[0].speed, cmd[1].speed);
+		p("SPD %+6.1f %+6.1f canErr0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
 		break;
 	case 6:
-		p("loadV %+5.2f %+5.2f ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage);
+		p("loadV %+5.2f %+5.2f canFail %4d", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
 		can_send_fail_cnt = 0;
 		break;
 	case 7:
@@ -877,14 +904,16 @@ int main(void)
 	HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
 	uint32_t over_startup_voltage = 0;
-	p("waiting startup voltage.... : %3.1fV\n",BATTERY_UNVER_VOLTAGE + 2);
+	p("waiting startup voltage.... : %3.1fV\n", BATTERY_UNVER_VOLTAGE + 2);
 	while (over_startup_voltage < 100)
 	{
 		HAL_Delay(1);
 		if (getBatteryVoltage() > BATTERY_UNVER_VOLTAGE + 2.0)
 		{
 			over_startup_voltage++;
-		}else{
+		}
+		else
+		{
 			over_startup_voltage = 0;
 		}
 	}

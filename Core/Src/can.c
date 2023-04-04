@@ -56,18 +56,17 @@ void MX_CAN_Init(void)
   /* USER CODE BEGIN CAN_Init 2 */
 
   /* USER CODE END CAN_Init 2 */
-
 }
 
-void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
+void HAL_CAN_MspInit(CAN_HandleTypeDef *canHandle)
 {
 
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(canHandle->Instance==CAN)
+  if (canHandle->Instance == CAN)
   {
-  /* USER CODE BEGIN CAN_MspInit 0 */
+    /* USER CODE BEGIN CAN_MspInit 0 */
 
-  /* USER CODE END CAN_MspInit 0 */
+    /* USER CODE END CAN_MspInit 0 */
     /* CAN clock enable */
     __HAL_RCC_CAN1_CLK_ENABLE();
 
@@ -76,7 +75,7 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     PA11     ------> CAN_RX
     PA12     ------> CAN_TX
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_11|GPIO_PIN_12;
+    GPIO_InitStruct.Pin = GPIO_PIN_11 | GPIO_PIN_12;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
@@ -92,20 +91,20 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     HAL_NVIC_EnableIRQ(CAN_RX1_IRQn);
     HAL_NVIC_SetPriority(CAN_SCE_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(CAN_SCE_IRQn);
-  /* USER CODE BEGIN CAN_MspInit 1 */
+    /* USER CODE BEGIN CAN_MspInit 1 */
 
-  /* USER CODE END CAN_MspInit 1 */
+    /* USER CODE END CAN_MspInit 1 */
   }
 }
 
-void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
+void HAL_CAN_MspDeInit(CAN_HandleTypeDef *canHandle)
 {
 
-  if(canHandle->Instance==CAN)
+  if (canHandle->Instance == CAN)
   {
-  /* USER CODE BEGIN CAN_MspDeInit 0 */
+    /* USER CODE BEGIN CAN_MspDeInit 0 */
 
-  /* USER CODE END CAN_MspDeInit 0 */
+    /* USER CODE END CAN_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_CAN1_CLK_DISABLE();
 
@@ -113,16 +112,16 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef* canHandle)
     PA11     ------> CAN_RX
     PA12     ------> CAN_TX
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11|GPIO_PIN_12);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11 | GPIO_PIN_12);
 
     /* CAN interrupt Deinit */
     HAL_NVIC_DisableIRQ(USB_HP_CAN_TX_IRQn);
     HAL_NVIC_DisableIRQ(USB_LP_CAN_RX0_IRQn);
     HAL_NVIC_DisableIRQ(CAN_RX1_IRQn);
     HAL_NVIC_DisableIRQ(CAN_SCE_IRQn);
-  /* USER CODE BEGIN CAN_MspDeInit 1 */
+    /* USER CODE BEGIN CAN_MspDeInit 1 */
 
-  /* USER CODE END CAN_MspDeInit 1 */
+    /* USER CODE END CAN_MspDeInit 1 */
   }
 }
 
@@ -139,7 +138,18 @@ void CAN_Filter_Init(uint16_t board_addr)
   sFilterConfig.FilterMaskIdLow = (0x301 + board_addr * 2) << 5;
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
   sFilterConfig.FilterActivation = ENABLE;
-  sFilterConfig.SlaveStartFilterBank = 0;
+  //sFilterConfig.SlaveStartFilterBank = 0; dont supported F3xx
+  if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  sFilterConfig.FilterIdHigh = (0x110) << 5;  // kick
+  sFilterConfig.FilterIdLow = (0x010) << 5; // power enable
+  sFilterConfig.FilterMaskIdHigh = (0x000) << 5; // emg stop
+  sFilterConfig.FilterMaskIdLow = (0x001) << 5; // error report
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
+  sFilterConfig.FilterBank = 1;
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK)
   {
     Error_Handler();
@@ -148,28 +158,37 @@ void CAN_Filter_Init(uint16_t board_addr)
   {
     Error_Handler();
   }
+  if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO1_MSG_PENDING) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
-void sendFloat(uint16_t can_id,float data){
+void sendFloat(uint32_t can_id, float data)
+{
   can_msg_buf_t msg;
   CAN_TxHeaderTypeDef can_header;
   uint32_t can_mailbox;
   can_header.StdId = can_id;
+  can_header.ExtId = 0;
   can_header.RTR = CAN_RTR_DATA;
   can_header.DLC = 4;
+  can_header.IDE = CAN_ID_STD;
   can_header.TransmitGlobalTime = DISABLE;
   msg.speed = data;
-  if(HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0){
+  if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0)
+  {
     can_send_fail_cnt++;
   }
 }
 
 void sendSpeed(int board_id, int motor, float speed)
 {
-  sendFloat(0x200 + board_id * 2 + motor,speed);
+  sendFloat(0x200 + board_id * 2 + motor, speed);
 }
 
-void sendVoltage(int board_id, int motor, float voltage){
+void sendVoltage(int board_id, int motor, float voltage)
+{
   sendFloat(0x210 + board_id * 2 + motor, voltage);
 }
 
@@ -181,5 +200,11 @@ void sendTemperature(int board_id, int motor, float temp)
 void sendCurrent(int board_id, int motor, float current)
 {
   sendFloat(0x230 + board_id * 2 + motor, current);
+}
+
+uint32_t getCanError(void){
+  uint32_t err = HAL_CAN_GetError(&hcan);
+  HAL_CAN_ResetError(&hcan);
+  return err;
 }
 /* USER CODE END 1 */
