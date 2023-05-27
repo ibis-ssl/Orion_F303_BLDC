@@ -2561,7 +2561,7 @@ Disassembly of section .text:
  8001d3a:	bf00      	nop
  8001d3c:	f3af 8000 	nop.w
  8001d40:	33333333 	.word	0x33333333
- 8001d44:	3fd33333 	.word	0x3fd33333
+ 8001d44:	3fc33333 	.word	0x3fc33333
  8001d48:	200003fc 	.word	0x200003fc
  8001d4c:	200003b4 	.word	0x200003b4
  8001d50:	20000430 	.word	0x20000430

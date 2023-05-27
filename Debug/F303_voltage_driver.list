@@ -3604,7 +3604,7 @@ void Error_Handler(void)
  8001cca:	bf00      	nop
  8001ccc:	f3af 8000 	nop.w
  8001cd0:	33333333 	.word	0x33333333
- 8001cd4:	3fd33333 	.word	0x3fd33333
+ 8001cd4:	3fc33333 	.word	0x3fc33333
  8001cd8:	200003f4 	.word	0x200003f4
  8001cdc:	200003ac 	.word	0x200003ac
  8001ce0:	20000428 	.word	0x20000428

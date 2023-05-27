@@ -129,7 +129,8 @@ enc_offset_t enc_offset[2];
 motor_real_t motor_real[2];
 
 // 200kV -> 3.33rps/V -> 0.3 V/rps
-#define RPS_TO_MOTOR_EFF_VOLTAGE (0.3)
+#define RPS_TO_MOTOR_EFF_VOLTAGE (0.15)
+// 13rps : 2.4V
 
 #define ENC_CNT_MAX (65536)
 #define HARF_OF_ENC_CNT_MAX (32768)
