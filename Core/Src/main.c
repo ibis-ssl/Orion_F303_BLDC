@@ -127,6 +127,7 @@ motor_control_cmd_t cmd[2];
 calib_point_t calib[2];
 enc_offset_t enc_offset[2];
 motor_real_t motor_real[2];
+volatile uint32_t power_enable_cnt = 0;
 
 // 200kV -> 3.33rps/V -> 0.3 V/rps
 #define RPS_TO_MOTOR_EFF_VOLTAGE (0.15)
@@ -268,6 +269,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	setLedBlue(true);
 }
 
+void wait_power_on_timeout(){
+	while(power_enable_cnt > 0){
+		power_enable_cnt--;
+		HAL_Delay(10);
+	}
+	HAL_NVIC_SystemReset();
+}
+
 uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
@@ -290,6 +299,11 @@ void can_rx_callback(void){
 	}
 	switch (can_rx_header.StdId)
 	{
+	case 0x010:
+		if(can_rx_buf.data[0] == 0 && can_rx_buf.data[1] == 1){
+			power_enable_cnt = 100;
+		}
+		break;
 	case 0x100:
 		cmd[0].speed = tmp_speed;
 		cmd[0].timeout_cnt = 0;
@@ -717,8 +731,7 @@ void protect(void)
 		setLedBlue(false);
 		setLedGreen(true);
 		setLedRed(true);
-		while (1)
-			;
+		wait_power_on_timeout();
 	}
 	if (getBatteryVoltage() < BATTERY_UNVER_VOLTAGE)
 	{
@@ -727,8 +740,7 @@ void protect(void)
 		setLedBlue(true);
 		setLedGreen(false);
 		setLedRed(true);
-		while (1)
-			;
+		wait_power_on_timeout();
 	}
 #ifdef IS_TEST_BOARD
 	if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT /* || pid[1].load_limit_cnt > 3000*/)
@@ -741,8 +753,7 @@ void protect(void)
 		setLedBlue(false);
 		setLedGreen(false);
 		setLedRed(true);
-		while (1)
-			;
+		wait_power_on_timeout();
 	}
 }
 
