@@ -63,7 +63,7 @@ void MX_CAN_Init(void);
   void sendTemperature(int board_id, int motor, float temp);
   void sendCurrent(int board_id, int motor, float current);
   uint32_t getCanError(void);
-  /* USER CODE END Prototypes */
+/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }
