@@ -1,7 +1,0 @@
-spi.c:32:6:MX_SPI1_Init	2
-spi.c:66:6:HAL_SPI_MspInit	2
-spi.c:104:6:HAL_SPI_MspDeInit	2
-spi.c:162:9:readRegisterMA702	10
-spi.c:214:9:writeRegisterMA702	6
-spi.c:261:13:updateMA702_M0	6
-spi.c:280:13:updateMA702_M1	6

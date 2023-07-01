@@ -176,16 +176,34 @@ void sendFloat(uint32_t can_id, float data)
   can_header.DLC = 4;
   can_header.IDE = CAN_ID_STD;
   can_header.TransmitGlobalTime = DISABLE;
-  msg.speed = data;
+  msg.value = data;
   if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0)
   {
     can_send_fail_cnt++;
   }
 }
 
-void sendSpeed(int board_id, int motor, float speed)
+void sendSpeedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
 {
-  sendFloat(0x200 + board_id * 2 + motor, speed);
+  can_msg_buf_t msg;
+  CAN_TxHeaderTypeDef can_header;
+  uint32_t can_mailbox;
+  can_header.StdId = can_id;
+  can_header.ExtId = 0;
+  can_header.RTR = CAN_RTR_DATA;
+  can_header.DLC = 8;
+  can_header.IDE = CAN_ID_STD;
+  can_header.TransmitGlobalTime = DISABLE;
+  msg.speed.rev_p_sec = rev_per_sec_;
+  msg.speed.omni_angle = omni_angle_;
+  if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
+    can_send_fail_cnt++;
+  }
+}
+
+void sendSpeed(int board_id, int motor, float speed, float angle)
+{
+  sendSpeedInfo(0x200 + board_id * 2 + motor, speed, angle);
 }
 
 void sendVoltage(int board_id, int motor, float voltage)

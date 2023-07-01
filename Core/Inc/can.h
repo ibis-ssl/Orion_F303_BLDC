@@ -41,12 +41,14 @@ extern CAN_HandleTypeDef hcan;
   typedef union
   {
     uint8_t data[8];
+    
+    struct
+    {
+      float rev_p_sec;
+      float omni_angle;
+    }speed;
 
-    float speed;
-    float power;
-    float voltage;
-    float current;
-    float temperature;
+    float value;
   } can_msg_buf_t;
 
 /* USER CODE END Private defines */
@@ -58,7 +60,7 @@ void MX_CAN_Init(void);
   void CAN_Filter_Init(uint16_t board_addr);
   void updateCANRXBuffer(void);
   void sendFloat(uint32_t can_id, float data);
-  void sendSpeed(int board_id, int motor, float speed);
+  void sendSpeed(int board_id, int motor, float speed,float angle);
   void sendVoltage(int board_id, int motor, float voltage);
   void sendTemperature(int board_id, int motor, float temp);
   void sendCurrent(int board_id, int motor, float current);

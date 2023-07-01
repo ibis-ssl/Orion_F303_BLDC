@@ -34,12 +34,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include "stm32f3xx_hal_spi.h"
-#include "stm32f3xx_hal_can.h"
-#include "stm32f3xx_hal_tim.h"
-#include "stm32f3xx_hal_uart.h"
 #include <math.h>
 #include "flash.h"
+#include "stm32f3xx_hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -288,7 +285,7 @@ void can_rx_callback(void){
 		return;
 	}
 	can_rx_cnt++;
-	tmp_speed = can_rx_buf.speed;
+	tmp_speed = can_rx_buf.value;
 	if (tmp_speed > SPEED_CMD_LIMIT_RPS)
 	{
 		tmp_speed = SPEED_CMD_LIMIT_RPS;
@@ -365,44 +362,36 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	int load_limit_cnt;
 } motor_pid_control_t;
 motor_pid_control_t pid[2];
+
 void controlMotorSpeed(int motor)
 {
-	pid[motor].eff_voltage = motor_real[motor].rps * RPS_TO_MOTOR_EFF_VOLTAGE;
-	pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
+        pid[motor].eff_voltage = motor_real[motor].rps * RPS_TO_MOTOR_EFF_VOLTAGE;
+        pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
 
-	pid[motor].error_integral += pid[motor].error;
-	if (pid[motor].error_integral > pid[motor].error_integral_limit)
-	{
-		pid[motor].error_integral = pid[motor].error_integral_limit;
-	}
-	else if (pid[motor].error_integral < -pid[motor].error_integral_limit)
-	{
-		pid[motor].error_integral = -pid[motor].error_integral_limit;
-	}
+        pid[motor].error_integral += pid[motor].error;
+        if (pid[motor].error_integral > pid[motor].error_integral_limit) {
+                pid[motor].error_integral = pid[motor].error_integral_limit;
+        } else if (pid[motor].error_integral < -pid[motor].error_integral_limit) {
+                pid[motor].error_integral = -pid[motor].error_integral_limit;
+        }
 
-	pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
-	pid[motor].pre_real_rps = motor_real[motor].rps;
-	cmd[motor].out_v = cmd[motor].speed * (RPS_TO_MOTOR_EFF_VOLTAGE) + pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
-	if (cmd[motor].out_v > pid[motor].eff_voltage + pid[motor].diff_voltage_limit)
-	{
-		if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed))
-		{
-			pid[motor].load_limit_cnt++;
-		}
-		cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
-	}
-	else if (cmd[motor].out_v < pid[motor].eff_voltage - pid[motor].diff_voltage_limit)
-	{
-		if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed))
-		{
-			pid[motor].load_limit_cnt++;
-		}
-		cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
-	}
-	else if (pid[motor].load_limit_cnt > 0)
-	{
-		pid[motor].load_limit_cnt--;
-	}
+        pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
+        pid[motor].pre_real_rps = motor_real[motor].rps;
+        cmd[motor].out_v = cmd[motor].speed * (RPS_TO_MOTOR_EFF_VOLTAGE);
+        //        +pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd;
+        if (cmd[motor].out_v > pid[motor].eff_voltage + pid[motor].diff_voltage_limit) {
+                if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
+                pid[motor].load_limit_cnt++;
+                }
+                cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
+        } else if (cmd[motor].out_v < pid[motor].eff_voltage - pid[motor].diff_voltage_limit) {
+                if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
+                pid[motor].load_limit_cnt++;
+                }
+                cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
+        } else if (pid[motor].load_limit_cnt > 0) {
+                pid[motor].load_limit_cnt--;
+        }
 }
 
 void setMotorSpeed(int motor)
@@ -684,38 +673,40 @@ void receiveUserSerialCommand(void)
 	}
 }
 
+// 2ms cycle
 void sendCanData(void)
 {
-	static int transfer_cnt;
+        static int transfer_cnt;
 
-	sendSpeed(flash.board_id, 0, motor_real[0].rps);
-	sendSpeed(flash.board_id, 1, motor_real[1].rps);
+        sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)ma702[0].enc_raw * 2 * M_PI / 65535);
+        sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)ma702[1].enc_raw * 2 * M_PI / 65535);
 
-	switch (transfer_cnt)
-	{
-	case 0:
-		sendVoltage(flash.board_id, 0, getBatteryVoltage());
-		break;
-	case 1:
-		sendVoltage(flash.board_id, 1, getBatteryVoltage());
-		break;
-	case 2:
-		sendCurrent(flash.board_id, 0, getCurrentM0());
-		break;
-	case 3:
-		sendCurrent(flash.board_id, 1, getCurrentM1());
-		break;
-	case 4:
-		sendTemperature(flash.board_id, 0, 20);
-		break;
-	case 5:
-		sendTemperature(flash.board_id, 1, 20);
-		transfer_cnt = -1;
-		break;
-	default:
-		break;
-	}
-	transfer_cnt++;
+        switch (transfer_cnt) {
+                case 0:
+                sendVoltage(flash.board_id, 0, getBatteryVoltage());
+                break;
+                case 2:
+                sendVoltage(flash.board_id, 1, getBatteryVoltage());
+                break;
+                case 4:
+                sendCurrent(flash.board_id, 0, getCurrentM0());
+                break;
+                case 6:
+                sendCurrent(flash.board_id, 1, getCurrentM1());
+                break;
+                case 8:
+                sendTemperature(flash.board_id, 0, 20);
+                break;
+                case 10:
+                sendTemperature(flash.board_id, 1, 20);
+                break;
+                case 50:
+                transfer_cnt = -1;
+			    break;
+                default:
+                break;
+        }
+        transfer_cnt++;
 }
 
 void protect(void)

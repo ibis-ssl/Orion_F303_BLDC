@@ -1,8 +1,0 @@
-gpio.c:25:13:isPushedSW1	1
-gpio.c:29:13:isPushedSW2	1
-gpio.c:33:13:isPushedSW3	1
-gpio.c:37:13:isPushedSW4	1
-gpio.c:42:13:setLedRed	1
-gpio.c:45:13:setLedBlue	1
-gpio.c:48:13:setLedGreen	1
-gpio.c:67:6:MX_GPIO_Init	1
