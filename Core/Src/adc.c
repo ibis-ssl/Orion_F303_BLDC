@@ -448,6 +448,8 @@ inline float getCurrentM1(void)
   return (adc_raw.cs_m1 - 2048) * 3.3 / 4096 * 4;
 }
 
+inline float getTempM0(void) { return (-((float)adc_raw.temp_m0 * 3.3 / 4096) + 1.5) * 70 + 25; }
+inline float getTempM1(void) { return (-((float)adc_raw.temp_m1 * 3.3 / 4096) + 1.5) * 70 + 25; }
 inline void updateADC_M0(void)
 {
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);

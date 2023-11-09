@@ -59,6 +59,8 @@ void MX_ADC3_Init(void);
 float getBatteryVoltage(void);
 float getCurrentM0(void);
 float getCurrentM1(void);
+float getTempM0(void);
+float getTempM1(void);
 void updateADC_M0(void);
 void updateADC_M1(void);
 /* USER CODE END Prototypes */

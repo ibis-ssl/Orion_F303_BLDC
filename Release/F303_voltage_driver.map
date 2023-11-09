@@ -1882,9 +1882,9 @@ LOAD c:/st/stm32cubeide_1.10.1/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
  .text.writeCanBoardID
                 0x0000000008001558       0x78 ./Core/Src/flash.o
                 0x0000000008001558                writeCanBoardID
- .text.writeCalibrationValue
+ .text.writeEncCalibrationValue
                 0x00000000080015d0       0x80 ./Core/Src/flash.o
-                0x00000000080015d0                writeCalibrationValue
+                0x00000000080015d0                writeEncCalibrationValue
  .text.loadFlashData
                 0x0000000008001650       0x1c ./Core/Src/flash.o
                 0x0000000008001650                loadFlashData

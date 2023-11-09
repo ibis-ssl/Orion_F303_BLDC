@@ -1890,10 +1890,10 @@ Disassembly of section .text:
  80015c8:	0801f004 	.word	0x0801f004
  80015cc:	0801f008 	.word	0x0801f008
 
-080015d0 <writeCalibrationValue>:
+080015d0 <writeEncCalibrationValue>:
  80015d0:	b530      	push	{r4, r5, lr}
- 80015d2:	ed9f 7b19 	vldr	d7, [pc, #100]	; 8001638 <writeCalibrationValue+0x68>
- 80015d6:	4a1a      	ldr	r2, [pc, #104]	; (8001640 <writeCalibrationValue+0x70>)
+ 80015d2:	ed9f 7b19 	vldr	d7, [pc, #100]	; 8001638 <writeEncCalibrationValue+0x68>
+ 80015d6:	4a1a      	ldr	r2, [pc, #104]	; (8001640 <writeEncCalibrationValue+0x70>)
  80015d8:	b089      	sub	sp, #36	; 0x24
  80015da:	6892      	ldr	r2, [r2, #8]
  80015dc:	9201      	str	r2, [sp, #4]
@@ -1911,16 +1911,16 @@ Disassembly of section .text:
  80015fe:	f004 fa9b 	bl	8005b38 <HAL_FLASH_Lock>
  8001602:	f004 fa85 	bl	8005b10 <HAL_FLASH_Unlock>
  8001606:	9a01      	ldr	r2, [sp, #4]
- 8001608:	490e      	ldr	r1, [pc, #56]	; (8001644 <writeCalibrationValue+0x74>)
+ 8001608:	490e      	ldr	r1, [pc, #56]	; (8001644 <writeEncCalibrationValue+0x74>)
  800160a:	2300      	movs	r3, #0
  800160c:	2002      	movs	r0, #2
  800160e:	f004 f9b5 	bl	800597c <HAL_FLASH_Program>
  8001612:	462a      	mov	r2, r5
- 8001614:	490c      	ldr	r1, [pc, #48]	; (8001648 <writeCalibrationValue+0x78>)
+ 8001614:	490c      	ldr	r1, [pc, #48]	; (8001648 <writeEncCalibrationValue+0x78>)
  8001616:	2300      	movs	r3, #0
  8001618:	2002      	movs	r0, #2
  800161a:	f004 f9af 	bl	800597c <HAL_FLASH_Program>
- 800161e:	490b      	ldr	r1, [pc, #44]	; (800164c <writeCalibrationValue+0x7c>)
+ 800161e:	490b      	ldr	r1, [pc, #44]	; (800164c <writeEncCalibrationValue+0x7c>)
  8001620:	4622      	mov	r2, r4
  8001622:	2300      	movs	r3, #0
  8001624:	2002      	movs	r0, #2
@@ -3056,7 +3056,7 @@ Disassembly of section .text:
  8002306:	62a2      	str	r2, [r4, #40]	; 0x28
  8002308:	6063      	str	r3, [r4, #4]
  800230a:	6263      	str	r3, [r4, #36]	; 0x24
- 800230c:	f7ff f960 	bl	80015d0 <writeCalibrationValue>
+ 800230c:	f7ff f960 	bl	80015d0 <writeEncCalibrationValue>
  8002310:	f44f 707a 	mov.w	r0, #1000	; 0x3e8
  8002314:	b009      	add	sp, #36	; 0x24
  8002316:	ecbd 8b02 	vpop	{d8}
