@@ -275,7 +275,7 @@ CAN_RxHeaderTypeDef can_rx_header;
 void can_rx_callback(void)
 {
   float tmp_speed = 0;
-  if (enc_calibration_mode) {
+  if (enc_calibration_mode || motor_calibration_cnt != 0) {
     return;
   }
   can_rx_cnt++;
