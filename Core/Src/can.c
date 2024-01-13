@@ -221,6 +221,25 @@ void sendCurrent(int board_id, int motor, float current)
   sendFloat(0x230 + board_id * 2 + motor, current);
 }
 
+void sendError(uint32_t can_id, int16_t error_id, int16_t error_info, float error_value)
+{
+  can_msg_buf_t msg;
+  CAN_TxHeaderTypeDef can_header;
+  uint32_t can_mailbox;
+  can_header.StdId = can_id;
+  can_header.ExtId = 0;
+  can_header.RTR = CAN_RTR_DATA;
+  can_header.DLC = 8;
+  can_header.IDE = CAN_ID_STD;
+  can_header.TransmitGlobalTime = DISABLE;
+  msg.error.id = error_id;
+  msg.error.info = error_info;
+  msg.error.value = error_value;
+  if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
+    can_send_fail_cnt++;
+  }
+}
+
 uint32_t getCanError(void){
   uint32_t err = HAL_CAN_GetError(&hcan);
   HAL_CAN_ResetError(&hcan);

@@ -18,13 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
 #include "adc.h"
 #include "can.h"
 #include "dma.h"
+#include "gpio.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
-#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -81,7 +82,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) { uart_rx_flag = true; 
 float manual_offset_radian = 0;
 bool enc_calibration_mode = false;
 uint32_t free_wheel_cnt = 500;
-uint32_t motor_calibration_cnt = 0; // disable : 0, init : 5000, start : 3500~ , end : 1
+uint32_t motor_calibration_cnt = 0;  // disable : 0, init : 5000, start : 3500~ , end : 1
 
 typedef struct
 {
@@ -119,7 +120,8 @@ typedef struct
   float k;
 } motor_real_t;
 
-typedef struct{
+typedef struct
+{
   float voltage_per_rps;
 } motor_param_t;
 
@@ -130,6 +132,9 @@ enc_offset_t enc_offset[2];
 motor_real_t motor_real[2];
 motor_param_t motor_param[2];
 volatile uint32_t power_enable_cnt = 0;
+
+uint16_t error_id, error_info;
+float error_value;
 
 // 200kV -> 3.33rps/V -> 0.3 V/rps
 //#define RPS_TO_MOTOR_EFF_VOLTAGE (0.15)
@@ -259,10 +264,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   setLedBlue(true);
 }
 
-void wait_power_on_timeout()
+void waitPowerOnTimeout()
 {
+  p("reset!!!");
   while (power_enable_cnt > 0) {
     power_enable_cnt--;
+    sendCanData();
     HAL_Delay(10);
   }
   HAL_NVIC_SystemReset();
@@ -385,7 +392,6 @@ void speedToOutputVoltage(int motor)
     cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
 
   } else if (pid[motor].load_limit_cnt > 0) {
-
     pid[motor].load_limit_cnt--;
   }
 }
@@ -423,7 +429,7 @@ void runMode(void)
       cmd[i].speed = 5.0;
     } else if (isPushedSW2()) {
       cmd[i].speed = -5.0;
-    }else if(isPushedSW3()){
+    } else if (isPushedSW3()) {
       cmd[i].speed = 0;
     }
 
@@ -433,7 +439,7 @@ void runMode(void)
     if (cmd[i].timeout_cnt > 0) {
       cmd[i].timeout_cnt--;
     }
-    
+
     if (cmd[i].timeout_cnt == 0) {
       cmd[i].out_v = 0;
     }
@@ -443,11 +449,11 @@ void runMode(void)
     }
 
     if (motor_calibration_cnt > 1) {
-      if(motor_calibration_cnt < MOTOR_CALIB_START_CNT){
+      if (motor_calibration_cnt < MOTOR_CALIB_START_CNT) {
         calib[i].rps_integral += motor_real[i].rps;
       }
       cmd[i].out_v = MOTOR_CALIB_VOLTAGE;
-    }else if(motor_calibration_cnt == 1){
+    } else if (motor_calibration_cnt == 1) {
       cmd[i].out_v = 0;
     }
 
@@ -458,11 +464,11 @@ void runMode(void)
   static uint8_t print_cnt = 0;
   print_cnt++;
 
-  if(motor_calibration_cnt == 1){
+  if (motor_calibration_cnt == 1) {
     float rps_per_v[2];
     rps_per_v[0] = calib[0].rps_integral / MOTOR_CALIB_VOLTAGE / MOTOR_CALIB_START_CNT;
     rps_per_v[1] = calib[1].rps_integral / MOTOR_CALIB_VOLTAGE / MOTOR_CALIB_START_CNT;
-    p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v[0],rps_per_v[1]);
+    p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v[0], rps_per_v[1]);
 
     writeMotorCalibrationValue(rps_per_v[0], rps_per_v[1]);
 
@@ -498,6 +504,7 @@ void runMode(void)
       p("loadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
+      p("to %4d %4d", cmd[0].timeout_cnt, cmd[1].timeout_cnt);
       // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
       // p("min %+6d, max %+6d ", motor_real[0].diff_cnt_min, motor_real[0].diff_cnt_max);
       motor_real[0].diff_cnt_max = 0;
@@ -733,7 +740,7 @@ void protect(void)
 #ifdef IS_TEST_BOARD
   if (getCurrentM0() > 5.0 /* || getCurrentM1() > 3.0*/)
 #else
-  if (getCurrentM0() > 5.0 || getCurrentM1() > 5.0)
+  if (getCurrentM0() > 8.0 || getCurrentM1() > 8.0)
 #endif
   {
     forceStop();
@@ -741,7 +748,15 @@ void protect(void)
     setLedBlue(false);
     setLedGreen(true);
     setLedRed(true);
-    wait_power_on_timeout();
+    error_id = OVER_CURRENT;
+    if (getCurrentM0() > getCurrentM1()) {
+      error_info = 0;
+      error_value = getCurrentM0();
+    } else {
+      error_info = 1;
+      error_value = getCurrentM1();
+    }
+    waitPowerOnTimeout();
   }
   if (getBatteryVoltage() < BATTERY_UNVER_VOLTAGE) {
     forceStop();
@@ -749,7 +764,10 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    wait_power_on_timeout();
+    error_id = UNDER_VOLTAGE;
+    error_info = 0;
+    error_value = getBatteryVoltage();
+    waitPowerOnTimeout();
   }
   if (getTempM0() > MOTOR_OVER_TEMPERATURE || getTempM1() > MOTOR_OVER_TEMPERATURE) {
     forceStop();
@@ -757,7 +775,16 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(true);
     setLedRed(true);
-    wait_power_on_timeout();
+
+    error_id = MOTOR_OVER_HEAT;
+    if (getTempM0() > getTempM0()) {
+      error_info = 0;
+      error_value = getTempM0();
+    } else {
+      error_info = 1;
+      error_value = getTempM1();
+    }
+    waitPowerOnTimeout();
   }
 #ifdef IS_TEST_BOARD
   if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT /* || pid[1].load_limit_cnt > 3000*/)
@@ -770,7 +797,17 @@ void protect(void)
     setLedBlue(false);
     setLedGreen(false);
     setLedRed(true);
-    wait_power_on_timeout();
+
+    error_id = OVER_LOAD;
+    if (pid[0].load_limit_cnt > pid[1].load_limit_cnt) {
+      error_info = 0;
+      error_value = pid[0].load_limit_cnt;
+    } else {
+      error_info = 1;
+      error_value = pid[1].load_limit_cnt;
+    }
+
+    waitPowerOnTimeout();
   }
 }
 
@@ -852,7 +889,7 @@ int main(void)
 
     if (flash.rps_per_v[i] > 1 || flash.rps_per_v[i] < 10) {
       motor_param[i].voltage_per_rps = 1 / flash.rps_per_v[i];
-    }else{
+    } else {
       motor_param[i].voltage_per_rps = V_PER_RPS_DEFAULT;
     }
   }
@@ -874,10 +911,10 @@ int main(void)
     p("enc calibration mode!!\n");
     while (isPushedSW4())
       ;
-  }else if(isPushedSW3()){
+  } else if (isPushedSW3()) {
     p("motor calibration mode!!\n");
     motor_calibration_cnt = MOTOR_CALIB_INIT_CNT;
-    while(isPushedSW3())
+    while (isPushedSW3())
       ;
   }
 
@@ -1031,32 +1068,27 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM8|RCC_PERIPHCLK_ADC34;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_TIM1 | RCC_PERIPHCLK_TIM8 | RCC_PERIPHCLK_ADC34;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
     Error_Handler();
   }
 }
@@ -1079,7 +1111,7 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -1087,7 +1119,7 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
+void assert_failed(uint8_t * file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,

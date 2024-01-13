@@ -46,7 +46,13 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-
+enum {
+  NONE = 0,
+  UNDER_VOLTAGE = 0x0001,
+  OVER_CURRENT = 0x0002,
+  MOTOR_OVER_HEAT = 0x0004,
+  OVER_LOAD = 0x0008,
+};
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
