@@ -472,6 +472,10 @@ void runMode(void)
 
     writeMotorCalibrationValue(rps_per_v[0], rps_per_v[1]);
 
+    HAL_Delay(10);
+    p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
+    p("motor data : %4.1f %4.1f\n", flash.rps_per_v[0], flash.rps_per_v[1]);
+
     HAL_Delay(1000);
     NVIC_SystemReset();
     // complete motor rps calib
@@ -599,7 +603,11 @@ void calibrationMode(void)
 
     motor_calibration_cnt = MOTOR_CALIB_INIT_CNT;
 
-    HAL_Delay(1000);
+    HAL_Delay(100);
+    p("flash data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
+    flash.calib[0] = enc_offset[0].zero_calib;
+    flash.calib[1] = enc_offset[1].zero_calib;
+    HAL_Delay(900);
   }
 }
 
