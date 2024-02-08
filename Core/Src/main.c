@@ -270,7 +270,8 @@ void waitPowerOnTimeout()
   while (power_enable_cnt > 0) {
     power_enable_cnt--;
     sendCanData();
-    HAL_Delay(10);
+    sendError(0, error_id, error_info, error_value);
+    HAL_Delay(2);
   }
   HAL_NVIC_SystemReset();
 }
