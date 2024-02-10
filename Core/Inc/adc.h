@@ -45,6 +45,8 @@ typedef struct
   int cs_m0;
   int cs_m1;
   int batt_v;
+  int temp_fet0;
+  int temp_fet1;
   int temp_m0;
   int temp_m1;
 } adc_raw_t;
@@ -59,8 +61,10 @@ void MX_ADC3_Init(void);
 float getBatteryVoltage(void);
 float getCurrentM0(void);
 float getCurrentM1(void);
-float getTempM0(void);
+float getTempFET0(void);
 float getTempM1(void);
+float getTempM0(void);
+float getTempFET1(void);
 void updateADC_M0(void);
 void updateADC_M1(void);
 /* USER CODE END Prototypes */
@@ -70,4 +74,3 @@ void updateADC_M1(void);
 #endif
 
 #endif /* __ADC_H__ */
-

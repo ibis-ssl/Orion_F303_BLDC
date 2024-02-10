@@ -73,7 +73,7 @@ void MX_CAN_Init(void);
   void sendCurrent(int board_id, int motor, float current);
   void sendError(uint32_t can_id, int16_t error_id, int16_t error_info, float error_value);
   uint32_t getCanError(void);
-  /* USER CODE END Prototypes */
+/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }

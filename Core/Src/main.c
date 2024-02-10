@@ -63,6 +63,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void sendCanData();
 /* USER CODE BEGIN PFP */
 
 // #define IS_TEST_BOARD
@@ -499,6 +500,7 @@ void runMode(void)
       // p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
       break;
     case 5:
+      //p("T %3.0f %3.0f %3.0f %3.0f ", getTempFET0(), getTempFET1(), getTempM0(), getTempM1());
       p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
       break;
     case 6:
@@ -730,10 +732,10 @@ void sendCanData(void)
       sendCurrent(flash.board_id, 1, getCurrentM1());
       break;
     case 8:
-      sendTemperature(flash.board_id, 0, getTempM0());
+      sendTemperature(flash.board_id, 0, getTempFET0());
       break;
     case 10:
-      sendTemperature(flash.board_id, 1, getTempM1());
+      sendTemperature(flash.board_id, 1, getTempFET1());
       break;
     case 50:
       transfer_cnt = -1;
@@ -780,18 +782,35 @@ void protect(void)
   }
   if (getTempM0() > MOTOR_OVER_TEMPERATURE || getTempM1() > MOTOR_OVER_TEMPERATURE) {
     forceStop();
-    p("motor temperature!! M0 : %4.1f M1 : %4.1f", getTempM0(), getTempM1());
+    p("OVER Motor temperature!! M0 : %4.1f M1 : %4.1f", getTempM0(), getTempM1());
     setLedBlue(true);
     setLedGreen(true);
     setLedRed(true);
 
     error_id = MOTOR_OVER_HEAT;
-    if (getTempM0() > getTempM0()) {
+    if (getTempM0() > getTempM1()) {
       error_info = 0;
       error_value = getTempM0();
     } else {
       error_info = 1;
       error_value = getTempM1();
+    }
+    waitPowerOnTimeout();
+  }
+  if (getTempFET0() > MOTOR_OVER_TEMPERATURE || getTempFET1() > MOTOR_OVER_TEMPERATURE) {
+    forceStop();
+    p("OVER FET temperature!! M0 : %4.1f M1 : %4.1f", getTempFET0(), getTempFET1());
+    setLedBlue(true);
+    setLedGreen(true);
+    setLedRed(true);
+
+    error_id = MOTOR_OVER_HEAT;
+    if (getTempFET0() > getTempFET1()) {
+      error_info = 0;
+      error_value = getTempFET0();
+    } else {
+      error_info = 1;
+      error_value = getTempFET1();
     }
     waitPowerOnTimeout();
   }
@@ -875,7 +894,7 @@ int main(void)
     pid[i].pid_ki = 0.3;
     pid[i].pid_kd = 0.0;
     pid[i].error_integral_limit = 2.0;
-    pid[i].diff_voltage_limit = 2.0;
+    pid[i].diff_voltage_limit = 4.0;  // 2.0 -> 4.0
 
     cmd[i].speed = 0;
     cmd[i].timeout_cnt = -1;
