@@ -66,8 +66,6 @@ void SystemClock_Config(void);
 void sendCanData();
 /* USER CODE BEGIN PFP */
 
-// #define IS_TEST_BOARD
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -539,26 +537,14 @@ void calibrationMode(void)
   p("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
   p("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);
 
-// calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
-#ifdef IS_TEST_BOARD
-  if (calib[0].result_cw_cnt > 5 /*&& calib[1].result_cw_cnt > 5*/ && calib_rotation_speed > 0)
-#else
-  if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5 && calib_rotation_speed > 0)
-#endif
-  {
+  // calib_rotation_speed is minus and CW rotation at 1st-calibration cycle
+  if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5 && calib_rotation_speed > 0) {
     enc_calibration_mode = true;
     cmd[0].out_v_final = 2.0;
     cmd[1].out_v_final = 2.0;
     calib_rotation_speed = -calib_rotation_speed;
   }
-#ifdef IS_TEST_BOARD
-  if (calib[0].result_ccw_cnt > 5 /* && calib[1].result_ccw_cnt > 5*/)
-#else
-  if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5)
-#endif
-
-  {
-
+  if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5) {
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
     HAL_Delay(1);  // write out uart buffer
@@ -748,12 +734,7 @@ void sendCanData(void)
 
 void protect(void)
 {
-#ifdef IS_TEST_BOARD
-  if (getCurrentM0() > 5.0 /* || getCurrentM1() > 3.0*/)
-#else
-  if (getCurrentM0() > 8.0 || getCurrentM1() > 8.0)
-#endif
-  {
+  if (getCurrentM0() > 8.0 || getCurrentM1() > 8.0) {
     forceStop();
     p("over current!! : %+6.2f %+6.2f\n", getCurrentM0(), getCurrentM1());
     setLedBlue(false);
@@ -814,12 +795,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-#ifdef IS_TEST_BOARD
-  if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT /* || pid[1].load_limit_cnt > 3000*/)
-#else
-  if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT)
-#endif
-  {
+  if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT) {
     forceStop();
     p("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
     setLedBlue(false);
