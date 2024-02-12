@@ -6,7 +6,8 @@ typedef struct
 {
     float calib[2];
     uint32_t board_id;
-    float rps_per_v[2];
+    float rps_per_v_cw[2];
+    float rps_per_v_ccw[2];
 }flash_t;
 
 extern flash_t flash;
