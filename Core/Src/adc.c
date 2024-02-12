@@ -428,10 +428,10 @@ inline float getBatteryVoltage(void) { return adc_raw.batt_v * 3.3 * 11 / 4096; 
 inline float getCurrentM0(void) { return (adc_raw.cs_m0 - 2048) * 3.3 / 4096 * 4; }
 inline float getCurrentM1(void) { return (adc_raw.cs_m1 - 2048) * 3.3 / 4096 * 4; }
 
-inline float getTempFET0(void) { return (-((float)adc_raw.temp_fet0 * 3.3 / 4096) + 1.5) * 70 + 25; }
-inline float getTempFET1(void) { return (-((float)adc_raw.temp_fet1 * 3.3 / 4096) + 1.5) * 70 + 25; }
-float getTempM1(void) { return (-((float)adc_raw.temp_m0 * 3.3 / 4096) + 1.5) * 70 + 25; }
-float getTempM0(void) { return (-((float)adc_raw.temp_m1 * 3.3 / 4096) + 1.5) * 70 + 25; }
+inline int getTempFET0(void) { return (-((float)adc_raw.temp_fet0 * 3.3 / 4096) + 1.5) * 70 + 25; }
+inline int getTempFET1(void) { return (-((float)adc_raw.temp_fet1 * 3.3 / 4096) + 1.5) * 70 + 25; }
+int getTempM1(void) { return (-((float)adc_raw.temp_m0 * 3.3 / 4096) + 1.5) * 70 + 25; }
+int getTempM0(void) { return (-((float)adc_raw.temp_m1 * 3.3 / 4096) + 1.5) * 70 + 25; }
 
 inline void updateADC_M0(void)
 {

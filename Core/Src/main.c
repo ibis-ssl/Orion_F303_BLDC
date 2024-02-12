@@ -64,6 +64,8 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void sendCanData();
+void startCalibrationMode(void);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -156,7 +158,7 @@ float error_value;
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
 #define BATTERY_UNVER_VOLTAGE (20.0)
-#define MOTOR_OVER_TEMPERATURE (70.0)  // 80 -> 70 deg (実機テストによる)
+#define MOTOR_OVER_TEMPERATURE (70)  // 80 -> 70 deg (実機テストによる)
 
 #define MOTOR_CALIB_INIT_CNT (2500)
 #define MOTOR_CALIB_READY_CNT (2000)
@@ -253,7 +255,7 @@ inline void motorProcess(int motor)
   }
 }
 
-// 7APB 36MHz / 1800 cnt -> 20kHz -> 2ms cycle
+// 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
 #define INTERRUPT_KHZ_1MS (20)
 volatile uint32_t interrupt_timer_cnt = 0, main_loop_remain_counter = 0;
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
@@ -289,7 +291,9 @@ void waitPowerOnTimeout()
 uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
-#define SPEED_CMD_LIMIT_RPS (100)
+#define SPEED_CMD_LIMIT_RPS (50)
+// 50rps x 3.14 x 55mm = 8.635 m/s
+
 void can_rx_callback(void)
 {
   float tmp_speed = 0;
@@ -619,6 +623,7 @@ void runMode(void)
   static uint8_t print_cnt = 0;
 
   if (calib_process.motor_calib_cnt == 0) {
+    // 1サイクルごとの負荷を減らすために分割して送信
     print_cnt++;
     switch (print_cnt) {
       case 1:
@@ -633,11 +638,12 @@ void runMode(void)
         p("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
         break;
       case 4:
-        p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
-        // p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
+        //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
+        p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
+        can_rx_cnt = 0;
         break;
       case 5:
-        p("T %3.0f %3.0f %3.0f %3.0f ", getTempFET0(), getTempFET1(), getTempM0(), getTempM1());
+        p("T %3d %3d %3d %3d ", getTempFET0(), getTempFET1(), getTempM0(), getTempM1());
         //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
         break;
       case 6:
@@ -665,7 +671,6 @@ void runMode(void)
     }
     // ADC raw ALL
     //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
-    can_rx_cnt = 0;
   }
 }
 
@@ -869,10 +874,19 @@ void sendCanData(void)
       sendCurrent(flash.board_id, 1, getCurrentM1());
       break;
     case 8:
-      sendTemperature(flash.board_id, 0, getTempFET0());
+      // 本当はFETとモーター温度をまとめてint x4で送ったほうがいいかもしれないが、実用上のメリットが少ないので後回し
+      sendTemperature(flash.board_id, 0, getTempM0());
       break;
     case 10:
-      sendTemperature(flash.board_id, 1, getTempFET1());
+      sendTemperature(flash.board_id, 1, getTempM1());
+      break;
+    case 12:
+      // 拡張
+      sendFloat(0x300 + flash.board_id * 2, flash.rps_per_v_cw[0]);
+      break;
+    case 14:
+      // 拡張
+      sendFloat(0x301 + flash.board_id * 2, flash.rps_per_v_cw[1]);
       break;
     case 50:
       transfer_cnt = -1;
@@ -914,7 +928,7 @@ void protect(void)
   }
   if (getTempM0() > MOTOR_OVER_TEMPERATURE || getTempM1() > MOTOR_OVER_TEMPERATURE) {
     forceStop();
-    p("OVER Motor temperature!! M0 : %4.1f M1 : %4.1f", getTempM0(), getTempM1());
+    p("OVER Motor temperature!! M0 : %3d M1 : %3d", getTempM0(), getTempM1());
     setLedBlue(true);
     setLedGreen(true);
     setLedRed(true);
@@ -922,16 +936,16 @@ void protect(void)
     error_id = MOTOR_OVER_HEAT;
     if (getTempM0() > getTempM1()) {
       error_info = 0;
-      error_value = getTempM0();
+      error_value = (float)getTempM0();
     } else {
       error_info = 1;
-      error_value = getTempM1();
+      error_value = (float)getTempM1();
     }
     waitPowerOnTimeout();
   }
   if (getTempFET0() > MOTOR_OVER_TEMPERATURE || getTempFET1() > MOTOR_OVER_TEMPERATURE) {
     forceStop();
-    p("OVER FET temperature!! M0 : %4.1f M1 : %4.1f", getTempFET0(), getTempFET1());
+    p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET0(), getTempFET1());
     setLedBlue(true);
     setLedGreen(true);
     setLedRed(true);
@@ -939,10 +953,10 @@ void protect(void)
     error_id = MOTOR_OVER_HEAT;
     if (getTempFET0() > getTempFET1()) {
       error_info = 0;
-      error_value = getTempFET0();
+      error_value = (float)getTempFET0();
     } else {
       error_info = 1;
-      error_value = getTempFET1();
+      error_value = (float)getTempFET1();
     }
     waitPowerOnTimeout();
   }
@@ -1190,9 +1204,9 @@ int main(void)
     }
     protect();
 
-    // wait for 2ms cycle
     setLedRed(true);
 
+    // 周期固定するために待つ
     main_loop_remain_counter = INTERRUPT_KHZ_1MS - interrupt_timer_cnt;
     while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS)
       ;
