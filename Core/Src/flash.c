@@ -50,6 +50,8 @@ void loadFlashData(void){
     memcpy(&flash.calib[1], (uint32_t *)FLASH_ADDR_ENC_CALIB_M1, 4);
     memcpy(&flash.rps_per_v_cw[0], (uint32_t *)FLASH_ADDR_MOTOR_CALIB_CW_M0, 4);
     memcpy(&flash.rps_per_v_cw[1], (uint32_t *)FLASH_ADDR_MOTOR_CALIB_CW_M1, 4);
-    memcpy(&flash.rps_per_v_ccw[0], (uint32_t *)FLASH_ADDR_MOTOR_CALIB_CCW_M0, 4);
-    memcpy(&flash.rps_per_v_ccw[1], (uint32_t *)FLASH_ADDR_MOTOR_CALIB_CCW_M1, 4);
+
+    // unused
+    //memcpy(&flash.rps_per_v_ccw[0], (uint32_t *)FLASH_ADDR_MOTOR_CALIB_CCW_M0, 4);
+    //memcpy(&flash.rps_per_v_ccw[1], (uint32_t *)FLASH_ADDR_MOTOR_CALIB_CCW_M1, 4);
 }

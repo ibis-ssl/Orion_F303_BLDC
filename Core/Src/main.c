@@ -156,13 +156,16 @@ float error_value;
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
 #define BATTERY_UNVER_VOLTAGE (20.0)
-#define MOTOR_OVER_TEMPERATURE (80.0)
+#define MOTOR_OVER_TEMPERATURE (70.0)  // 80 -> 70 deg (実機テストによる)
 
 #define MOTOR_CALIB_INIT_CNT (2500)
 #define MOTOR_CALIB_READY_CNT (2000)
 #define MOTOR_CALIB_START_CNT (1500)
 #define MOTOR_CALIB_VOLTAGE_LOW (3.0)
 #define MOTOR_CALIB_VOLTAGE_HIGH (10.0)
+
+#define MOTOR_CALIB_M0_M1_ERROR_TRERANCE (0.4)
+#define MOTOR_CALIB_CW_CCW_ERROR_TRERANCE (0.4)
 
 void calcMotorSpeed(int motor)
 {
@@ -328,7 +331,11 @@ void can_rx_callback(void)
       cmd[1].speed = tmp_speed;
       cmd[1].timeout_cnt = 100;
       break;
-    case 0x300:
+    case 0x310:
+      startCalibrationMode();
+      break;
+    case 0x320:
+      // not used
       break;
     case 0x110:
       if (can_rx_buf.data[0] == 3) {
@@ -373,7 +380,7 @@ motor_pid_control_t pid[2];
 void speedToOutputVoltage(int motor)
 {
   pid[motor].eff_voltage = motor_real[motor].rps * motor_param[motor].voltage_per_rps;
-  pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
+  /*pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
 
   pid[motor].error_integral += pid[motor].error;
   if (pid[motor].error_integral > pid[motor].error_integral_limit) {
@@ -383,17 +390,21 @@ void speedToOutputVoltage(int motor)
   }
 
   pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
-  pid[motor].pre_real_rps = motor_real[motor].rps;
+  pid[motor].pre_real_rps = motor_real[motor].rps;*/
+
   cmd[motor].out_v = cmd[motor].speed * motor_param[motor].voltage_per_rps;
+
+  // ローカルでの速度制御はしない(上位からトルクで制御したいため)
   //        +pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd; // PID
 
-  if (cmd[motor].out_v > pid[motor].eff_voltage + pid[motor].diff_voltage_limit) {
+  // 出力電圧リミット
+  if (cmd[motor].out_v - pid[motor].eff_voltage > +pid[motor].diff_voltage_limit) {
     if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
       pid[motor].load_limit_cnt++;
     }
     cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
 
-  } else if (cmd[motor].out_v < pid[motor].eff_voltage - pid[motor].diff_voltage_limit) {
+  } else if (cmd[motor].out_v - pid[motor].eff_voltage < -pid[motor].diff_voltage_limit) {
     if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
       pid[motor].load_limit_cnt++;
     }
@@ -434,13 +445,14 @@ void runMode(void)
 
   for (int i = 0; i < 2; i++) {
     if (isPushedSW1()) {
-      cmd[i].speed = 5.0;
-    } else if (isPushedSW2()) {
-      cmd[i].speed = -5.0;
-    } else if (isPushedSW3()) {
       cmd[i].speed = 10.0;
-    } else if (isPushedSW4()) {
+    } else if (isPushedSW2()) {
       cmd[i].speed = -10.0;
+    } else if (isPushedSW3()) {
+      //
+      cmd[i].speed = -20.0;
+    } else if (isPushedSW4()) {
+      cmd[i].speed = -40.0;
     }
 
     speedToOutputVoltage(i);
@@ -479,7 +491,7 @@ void runMode(void)
   }
 
   if (calib_process.motor_calib_cnt == 1) {
-    static float rps_per_v_cw[2], rps_per_v_ccw[2];
+    static float rps_per_v_cw_l[2], rps_per_v_ccw_l[2], rps_per_v_cw_h[2], rps_per_v_ccw_h[2];
 
     switch (calib_process.motor_calib_mode) {
       case 0:
@@ -493,11 +505,17 @@ void runMode(void)
         break;
 
       case 1:
-        rps_per_v_cw[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_cw[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_cw_l[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_cw_l[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw[0], rps_per_v_cw[1]);
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+
+        if (fabs(rps_per_v_cw_l[0] - rps_per_v_cw_l[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!!\n\n");
+          calib_process.motor_calib_cnt = 0;
+          return;
+        }
 
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
@@ -505,11 +523,23 @@ void runMode(void)
         break;
 
       case 2:
-        rps_per_v_ccw[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_ccw[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_ccw_l[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_ccw_l[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw[0], rps_per_v_ccw[1]);
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_l[0], rps_per_v_ccw_l[1]);
+
+        if (fabs(rps_per_v_ccw_l[0] - rps_per_v_ccw_l[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH\n\n");
+          calib_process.motor_calib_cnt = 0;
+          return;
+        }
+
+        if (fabs(rps_per_v_cw_l[0] - rps_per_v_ccw_l[0]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(rps_per_v_cw_l[1] - rps_per_v_ccw_l[1]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
+          calib_process.motor_calib_cnt = 0;
+          return;
+        }
 
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
@@ -517,11 +547,17 @@ void runMode(void)
         break;
 
       case 3:
-        rps_per_v_cw[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_cw[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_cw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_cw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw[0], rps_per_v_cw[1]);
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+
+        if (fabs(rps_per_v_cw_h[0] - rps_per_v_cw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!!\n\n");
+          calib_process.motor_calib_cnt = 0;
+          return;
+        }
 
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
@@ -530,12 +566,30 @@ void runMode(void)
 
       default:
 
-        rps_per_v_ccw[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_ccw[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_ccw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_ccw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw[0], rps_per_v_ccw[1]);
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_h[0], rps_per_v_ccw_h[1]);
         p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
+
+        if (fabs(rps_per_v_ccw_h[0] - rps_per_v_ccw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH\n\n");
+          calib_process.motor_calib_cnt = 0;
+          return;
+        }
+
+        if (fabs(rps_per_v_cw_h[0] - rps_per_v_ccw_h[0]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(rps_per_v_cw_h[1] - rps_per_v_ccw_h[1]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
+          calib_process.motor_calib_cnt = 0;
+          return;
+        }
+
+        writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+
+        HAL_Delay(10);
+        p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
+        p("motor data : %4.1f %4.1f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
 
         HAL_Delay(1000);
 
@@ -546,12 +600,12 @@ void runMode(void)
   }
 
   /*if (calib_process.motor_calib_cnt == 1) {
-    float rps_per_v_cw[2];
-    rps_per_v_cw[0] = calib[0].rps_integral / MOTOR_CALIB_VOLTAGE_LOW / MOTOR_CALIB_START_CNT;
-    rps_per_v_cw[1] = calib[1].rps_integral / MOTOR_CALIB_VOLTAGE_LOW / MOTOR_CALIB_START_CNT;
-    p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw[0], rps_per_v_cw[1]);
+    float rps_per_v_cw_l[2];
+    rps_per_v_cw_l[0] = calib[0].rps_integral / MOTOR_CALIB_VOLTAGE_LOW / MOTOR_CALIB_START_CNT;
+    rps_per_v_cw_l[1] = calib[1].rps_integral / MOTOR_CALIB_VOLTAGE_LOW / MOTOR_CALIB_START_CNT;
+    p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
 
-    writeMotorCalibrationValue(rps_per_v_cw[0], rps_per_v_cw[1]);
+    writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
 
     HAL_Delay(10);
     p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
@@ -699,6 +753,9 @@ void startCalibrationMode(void)
 
   calib_process.enc_calib_cnt = MOTOR_CALIB_INIT_CNT;
   manual_offset_radian = 0;
+
+  cmd[0].speed = 0;
+  cmd[1].speed = 0;
 
   cmd[0].out_v_final = 2.0;
   cmd[1].out_v_final = 2.0;

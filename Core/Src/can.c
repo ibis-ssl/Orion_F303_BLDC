@@ -133,10 +133,10 @@ void CAN_Filter_Init(uint16_t board_addr)
   sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
   sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
   sFilterConfig.FilterBank = 0;
-  sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5;
-  sFilterConfig.FilterIdLow = (0x300 + board_addr * 2) << 5;
-  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;
-  sFilterConfig.FilterMaskIdLow = (0x301 + board_addr * 2) << 5;
+  sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5; //speed
+  sFilterConfig.FilterIdLow = (0x310) << 5; //motor calib
+  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5; //speed
+  sFilterConfig.FilterMaskIdLow = (0x320) << 5; // notused
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
   sFilterConfig.FilterActivation = ENABLE;
   //sFilterConfig.SlaveStartFilterBank = 0; dont supported F3xx
