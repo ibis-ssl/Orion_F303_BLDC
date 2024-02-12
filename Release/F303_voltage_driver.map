@@ -1912,9 +1912,9 @@ LOAD c:/st/stm32cubeide_1.10.1/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
  .text.HAL_UART_RxCpltCallback
                 0x00000000080017b4        0xc ./Core/Src/main.o
                 0x00000000080017b4                HAL_UART_RxCpltCallback
- .text.checkAngle
+ .text.checkAngleCalibMode
                 0x00000000080017c0       0xd4 ./Core/Src/main.o
-                0x00000000080017c0                checkAngle
+                0x00000000080017c0                checkAngleCalibMode
  *fill*         0x0000000008001894        0x4 
  .text.HAL_TIM_PeriodElapsedCallback
                 0x0000000008001898      0x198 ./Core/Src/main.o
@@ -2924,9 +2924,9 @@ LOAD c:/st/stm32cubeide_1.10.1/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
                 0x0000000020000000                _sdata = .
  *(.data)
  *(.data*)
- .data.calib_rotation_speed
+ .data.calib_force_rotation_speed
                 0x0000000020000000        0x4 ./Core/Src/main.o
-                0x0000000020000000                calib_rotation_speed
+                0x0000000020000000                calib_force_rotation_speed
  .data.SystemCoreClock
                 0x0000000020000004        0x4 ./Core/Src/system_stm32f3xx.o
                 0x0000000020000004                SystemCoreClock

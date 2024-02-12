@@ -53,6 +53,49 @@ enum {
   MOTOR_OVER_HEAT = 0x0004,
   OVER_LOAD = 0x0008,
 };
+
+
+
+typedef struct
+{
+  float pre_elec_radian;
+  float radian_ave;
+  int ave_cnt;
+  int pre_raw;
+  float result_cw;
+  int result_cw_cnt;
+  float result_ccw;
+  int result_ccw_cnt;
+  float rps_integral;
+} calib_point_t;
+typedef struct
+{
+  float final;
+  float zero_calib;
+} enc_offset_t;
+
+typedef struct
+{
+  float speed;
+  float limit;
+  float out_v;
+  float out_v_final;
+  int timeout_cnt;
+} motor_control_cmd_t;
+typedef struct
+{
+  int pre_enc_cnt_raw;
+  int diff_cnt_max, diff_cnt_min;
+
+  float rps;
+  float pre_rps;
+  float k;
+} motor_real_t;
+
+typedef struct
+{
+  float voltage_per_rps;
+} motor_param_t;
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/

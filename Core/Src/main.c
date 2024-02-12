@@ -91,47 +91,6 @@ struct
   float motor_calib_voltage;
 } calib_process;
 
-typedef struct
-{
-  float pre_elec_radian;
-  float radian_ave;
-  int ave_cnt;
-  int pre_raw;
-  float result_cw;
-  int result_cw_cnt;
-  float result_ccw;
-  int result_ccw_cnt;
-  float rps_integral;
-} calib_point_t;
-typedef struct
-{
-  float final;
-  float zero_calib;
-} enc_offset_t;
-
-typedef struct
-{
-  float speed;
-  float limit;
-  float out_v;
-  float out_v_final;
-  int timeout_cnt;
-} motor_control_cmd_t;
-typedef struct
-{
-  int pre_enc_cnt_raw;
-  int diff_cnt_max, diff_cnt_min;
-
-  float rps;
-  float pre_rps;
-  float k;
-} motor_real_t;
-
-typedef struct
-{
-  float voltage_per_rps;
-} motor_param_t;
-
 float calib_force_rotation_speed = 0.005;
 motor_control_cmd_t cmd[2];
 calib_point_t calib[2];
@@ -632,14 +591,14 @@ void runMode(void)
         // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
         break;
       case 2:
-        p("RPS %+6.1f %+6.1f free %3d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
+        p("RPS %+6.1f %+6.1f Free %3d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
         break;
       case 3:
-        p("out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
+        p("Out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
         break;
       case 4:
         //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
-        p("rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
+        p("Rx %4ld CPU %3d ", can_rx_cnt, main_loop_remain_counter);
         can_rx_cnt = 0;
         break;
       case 5:
@@ -647,14 +606,14 @@ void runMode(void)
         //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
         break;
       case 6:
-        p("loadV %+5.2f %+5.2f canFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
+        p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
         can_send_fail_cnt = 0;
         break;
       case 7:
-        p("loadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
+        p("LoadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
         break;
       case 8:
-        p("to %4d %4d", cmd[0].timeout_cnt, cmd[1].timeout_cnt);
+        p("TO %4d %4d", cmd[0].timeout_cnt, cmd[1].timeout_cnt);
         // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
         // p("min %+6d, max %+6d ", motor_real[0].diff_cnt_min, motor_real[0].diff_cnt_max);
         motor_real[0].diff_cnt_max = 0;
