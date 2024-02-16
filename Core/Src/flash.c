@@ -38,6 +38,8 @@ static void writeFlash(uint32_t board_id, float calib_m0, float calib_m1,float m
     memcpy(&flash_raw, &motor_calib_m1, 4);
     HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, FLASH_ADDR_MOTOR_CALIB_CW_M1, flash_raw);
     HAL_FLASH_Lock();
+
+    loadFlashData();
 }
 
 void writeCanBoardID(uint32_t id) { writeFlash(id, flash.calib[0], flash.calib[1], flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]); }

@@ -361,18 +361,22 @@ void speedToOutputVoltage(int motor)
   //        +pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd; // PID
 
   // 出力電圧リミット
-  if (cmd[motor].out_v - pid[motor].eff_voltage > +pid[motor].diff_voltage_limit) {
-    if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
-      pid[motor].load_limit_cnt++;
-    }
+
+  float output_voltage_diff = cmd[motor].out_v - pid[motor].eff_voltage;
+  if (output_voltage_diff > +pid[motor].diff_voltage_limit) {
     cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
+  } else if (output_voltage_diff < -pid[motor].diff_voltage_limit) {
+    cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
+  }
 
-  } else if (cmd[motor].out_v - pid[motor].eff_voltage < -pid[motor].diff_voltage_limit) {
+  if (output_voltage_diff > +pid[motor].error_integral_limit) {
     if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
       pid[motor].load_limit_cnt++;
     }
-    cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
-
+  } else if (output_voltage_diff < -pid[motor].error_integral_limit) {
+    if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
+      pid[motor].load_limit_cnt++;
+    }
   } else if (pid[motor].load_limit_cnt > 0) {
     pid[motor].load_limit_cnt--;
   }
@@ -465,6 +469,7 @@ void runMode(void)
         calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_LOW;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
       case 1:
@@ -483,6 +488,7 @@ void runMode(void)
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
         calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_LOW;
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
       case 2:
@@ -507,6 +513,7 @@ void runMode(void)
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
         calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
       case 3:
@@ -525,6 +532,7 @@ void runMode(void)
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
         calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
       default:
@@ -548,6 +556,7 @@ void runMode(void)
           return;
         }
 
+        p("save calib result...\n");
         writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
 
         HAL_Delay(10);
@@ -841,11 +850,11 @@ void sendCanData(void)
       break;
     case 12:
       // 拡張
-      sendFloat(0x300 + flash.board_id * 2, flash.rps_per_v_cw[0]);
+      sendFloat(0x500 + flash.board_id * 2, flash.rps_per_v_cw[0]);
       break;
     case 14:
       // 拡張
-      sendFloat(0x301 + flash.board_id * 2, flash.rps_per_v_cw[1]);
+      sendFloat(0x501 + flash.board_id * 2, flash.rps_per_v_cw[1]);
       break;
     case 50:
       transfer_cnt = -1;
@@ -993,8 +1002,8 @@ int main(void)
     pid[i].pid_kp = 0.2;
     pid[i].pid_ki = 0.3;
     pid[i].pid_kd = 0.0;
-    pid[i].error_integral_limit = 2.0;
-    pid[i].diff_voltage_limit = 4.0;  // 2.0 -> 4.0
+    pid[i].error_integral_limit = 4.0;
+    pid[i].diff_voltage_limit = 6.0;  // 2.0 -> 4.0 -> 6.0
 
     cmd[i].speed = 0;
     cmd[i].timeout_cnt = -1;
