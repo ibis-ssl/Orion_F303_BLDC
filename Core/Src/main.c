@@ -657,19 +657,33 @@ void calibrationMode(void)
   // END of 1st-calibration cycle (CCW)
   if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5 && calib_force_rotation_speed > 0) {
     calib_force_rotation_speed = -calib_force_rotation_speed;  //CCW方向終わったので、回転方向反転
+    p("zelo-point in CCW(1st-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_ccw, calib[1].result_ccw);
   }
 
   // END of 2nd-calibration cycle (CW)
   if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5) {
+    p("zelo-point in CW(2st-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_cw, calib[1].result_cw);
+
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
     HAL_Delay(1);  // write out uart buffer
 
     float temp_offset[2] = {0, 0};
 
-    temp_offset[0] = (M_PI * 2) - ((calib[0].result_ccw + calib[0].result_cw) / 2);
-    temp_offset[1] = (M_PI * 2) - ((calib[1].result_ccw + calib[1].result_cw) / 2);
-    p("elec-centor radian : M0 %6f M1 %6f\n", temp_offset[0], temp_offset[1]);
+    p("CW + CCW M0 %+6.4f / M1 %+6.4f\n", calib[0].result_ccw + calib[0].result_cw, calib[1].result_ccw + calib[1].result_cw);
+
+    for (int i = 0; i < 2; i++) {
+      if (calib[i].result_cw < M_PI && calib[i].result_ccw > M_PI) {
+        calib[i].result_cw += M_PI * 2;
+      }
+      if (calib[i].result_cw > M_PI && calib[i].result_ccw < M_PI) {
+        calib[i].result_ccw += M_PI * 2;
+      }
+
+      temp_offset[i] = (M_PI * 2) - ((calib[i].result_ccw + calib[i].result_cw) / 2);
+    }
+
+    p("zelo-point in CW&CCW : elec-centor radian : M0 %+6.4f / M1 %+6.4f\n", temp_offset[0], temp_offset[1]);
     HAL_Delay(1);  // write out uart buffer
 
     temp_offset[0] += ROTATION_OFFSET_RADIAN;
@@ -756,9 +770,11 @@ void receiveUserSerialCommand(void)
         break;
       case 'q':
         manual_offset_radian += 0.01;
+        p("offset %+4.2f\n", manual_offset_radian);
         break;
       case 'a':
         manual_offset_radian -= 0.01;
+        p("offset %+4.2f\n", manual_offset_radian);
         break;
       case 'w':
         cmd[0].speed += 0.5;
@@ -996,7 +1012,7 @@ int main(void)
   HAL_Delay(100);
 
   loadFlashData();
-  p("** Orion VV driver V1 (2) start! **\n");
+  p("\n\n** Orion VV driver V4 start! **\n");
 
   for (int i = 0; i < 2; i++) {
     pid[i].pid_kp = 0.2;
