@@ -673,10 +673,10 @@ void calibrationMode(void)
     p("CW + CCW M0 %+6.4f / M1 %+6.4f\n", calib[0].result_ccw + calib[0].result_cw, calib[1].result_ccw + calib[1].result_cw);
 
     for (int i = 0; i < 2; i++) {
-      if (calib[i].result_cw < M_PI && calib[i].result_ccw > M_PI) {
+      if (calib[i].result_cw < M_PI * 0.5 && calib[i].result_ccw > M_PI * 1.5) {
         calib[i].result_cw += M_PI * 2;
       }
-      if (calib[i].result_cw > M_PI && calib[i].result_ccw < M_PI) {
+      if (calib[i].result_cw > M_PI * 1.5 && calib[i].result_ccw < M_PI * 0.5) {
         calib[i].result_ccw += M_PI * 2;
       }
 
@@ -1094,6 +1094,9 @@ int main(void)
   /*writeRegisterMA702(1, 0x0E, 0x77);
 	HAL_Delay(10);*/
 
+  // id = 0xE, filter window
+  // default : 119, f-cut = 370Hz
+
   p("id = 0x00,reg = 0x%02x\n", readRegisterMA702(1, 0));  // Z offset-L
   HAL_Delay(1);
   p("id = 0x01,reg = 0x%02x\n", readRegisterMA702(1, 1));  // Z offset-H
@@ -1116,9 +1119,6 @@ int main(void)
   HAL_Delay(1);
   p("id = 0x1B,reg = 0x%02x\n", readRegisterMA702(1, 0x1B));  // MGH&L
   HAL_Delay(1);
-
-  // id = 0xE, filter window
-  // default : 119, f-cut = 370Hz
 
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
