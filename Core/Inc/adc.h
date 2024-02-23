@@ -74,3 +74,4 @@ void updateADC_M1(void);
 #endif
 
 #endif /* __ADC_H__ */
+

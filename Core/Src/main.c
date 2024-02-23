@@ -18,14 +18,13 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
 #include "adc.h"
 #include "can.h"
 #include "dma.h"
-#include "gpio.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -63,7 +62,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void sendCanData();
+void sendCanData(void);
 void startCalibrationMode(void);
 
 /* USER CODE BEGIN PFP */
@@ -124,9 +123,10 @@ float error_value;
 #define MOTOR_CALIB_START_CNT (1500)
 #define MOTOR_CALIB_VOLTAGE_LOW (3.0)
 #define MOTOR_CALIB_VOLTAGE_HIGH (10.0)
+#define MOTOR_CALIB_CYCLE (12)
 
-#define MOTOR_CALIB_M0_M1_ERROR_TRERANCE (0.4)
-#define MOTOR_CALIB_CW_CCW_ERROR_TRERANCE (0.4)
+#define MOTOR_CALIB_M0_M1_ERROR_TRERANCE (1.0)
+#define MOTOR_CALIB_CW_CCW_ERROR_TRERANCE (1.0)
 
 void calcMotorSpeed(int motor)
 {
@@ -244,6 +244,7 @@ void waitPowerOnTimeout()
     sendError(0, error_id, error_info, error_value);
     HAL_Delay(2);
   }
+  HAL_Delay(2);
   HAL_NVIC_SystemReset();
 }
 
@@ -505,14 +506,18 @@ void runMode(void)
         }
 
         if (fabs(rps_per_v_cw_l[0] - rps_per_v_ccw_l[0]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(rps_per_v_cw_l[1] - rps_per_v_ccw_l[1]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
+          p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH (LOW)\n\n");
           calib_process.motor_calib_cnt = 0;
           return;
         }
 
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
-        calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
+        if (rps_per_v_cw_l[0] < 4.0) {
+          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
+        } else {
+          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH / 2;
+        }
         p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
@@ -521,17 +526,23 @@ void runMode(void)
         rps_per_v_cw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_h[0], rps_per_v_cw_h[1]);
 
-        if (fabs(rps_per_v_cw_h[0] - rps_per_v_cw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!!\n\n");
+        /*if (fabs(rps_per_v_cw_h[0] - rps_per_v_cw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+          p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH (HIGH)\n\n");
           calib_process.motor_calib_cnt = 0;
           return;
-        }
+        }*/
 
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
-        calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
+
+        calib_process.motor_calib_mode++;
+        if (rps_per_v_cw_l[0] < 4.0) {
+          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
+        } else {
+          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH / 2;
+        }
         p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
@@ -543,7 +554,7 @@ void runMode(void)
         calib[1].rps_integral = 0;
         p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_h[0], rps_per_v_ccw_h[1]);
         p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
-
+        /*
         if (fabs(rps_per_v_ccw_h[0] - rps_per_v_ccw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
           p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH\n\n");
           calib_process.motor_calib_cnt = 0;
@@ -554,7 +565,7 @@ void runMode(void)
           p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
           calib_process.motor_calib_cnt = 0;
           return;
-        }
+        }*/
 
         p("save calib result...\n");
         writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
@@ -570,23 +581,6 @@ void runMode(void)
         break;
     }
   }
-
-  /*if (calib_process.motor_calib_cnt == 1) {
-    float rps_per_v_cw_l[2];
-    rps_per_v_cw_l[0] = calib[0].rps_integral / MOTOR_CALIB_VOLTAGE_LOW / MOTOR_CALIB_START_CNT;
-    rps_per_v_cw_l[1] = calib[1].rps_integral / MOTOR_CALIB_VOLTAGE_LOW / MOTOR_CALIB_START_CNT;
-    p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
-
-    writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
-
-    HAL_Delay(10);
-    p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
-    p("motor data : %4.1f %4.1f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
-
-    HAL_Delay(1000);
-    NVIC_SystemReset();
-    // complete motor rps calib
-  }*/
 
   static uint8_t print_cnt = 0;
 
@@ -655,14 +649,15 @@ void calibrationMode(void)
   // 初期値はcalib_force_rotation_speedが+でCCWからキャリブレーション。
 
   // END of 1st-calibration cycle (CCW)
-  if (calib[0].result_ccw_cnt > 5 && calib[1].result_ccw_cnt > 5 && calib_force_rotation_speed > 0) {
+  if (calib[0].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib_force_rotation_speed > 0) {
     calib_force_rotation_speed = -calib_force_rotation_speed;  //CCW方向終わったので、回転方向反転
     p("zelo-point in CCW(1st-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_ccw, calib[1].result_ccw);
+    HAL_Delay(1);  // write out uart buffer
   }
 
   // END of 2nd-calibration cycle (CW)
-  if (calib[0].result_cw_cnt > 5 && calib[1].result_cw_cnt > 5) {
-    p("zelo-point in CW(2st-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_cw, calib[1].result_cw);
+  if (calib[0].result_cw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_cw_cnt > MOTOR_CALIB_CYCLE) {
+    p("zelo-point in CW(2nd-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_cw, calib[1].result_cw);
 
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
@@ -927,7 +922,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-  if (getTempFET0() > MOTOR_OVER_TEMPERATURE || getTempFET1() > MOTOR_OVER_TEMPERATURE) {
+  /*if (getTempFET0() > MOTOR_OVER_TEMPERATURE || getTempFET1() > MOTOR_OVER_TEMPERATURE) {
     forceStop();
     p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET0(), getTempFET1());
     setLedBlue(true);
@@ -943,7 +938,7 @@ void protect(void)
       error_value = (float)getTempFET1();
     }
     waitPowerOnTimeout();
-  }
+  }*/
   if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT) {
     forceStop();
     p("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
@@ -1221,27 +1216,32 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_TIM1 | RCC_PERIPHCLK_TIM8 | RCC_PERIPHCLK_ADC34;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
+                              |RCC_PERIPHCLK_TIM8|RCC_PERIPHCLK_ADC34;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
     Error_Handler();
   }
 }
@@ -1264,7 +1264,7 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef USE_FULL_ASSERT
+#ifdef  USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -1272,7 +1272,7 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t * file, uint32_t line)
+void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
