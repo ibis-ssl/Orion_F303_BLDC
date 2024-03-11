@@ -84,9 +84,9 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef* canHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* CAN interrupt Init */
-    HAL_NVIC_SetPriority(USB_HP_CAN_TX_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(USB_HP_CAN_TX_IRQn, 15, 0);
     HAL_NVIC_EnableIRQ(USB_HP_CAN_TX_IRQn);
-    HAL_NVIC_SetPriority(USB_LP_CAN_RX0_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(USB_LP_CAN_RX0_IRQn, 15, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN_RX0_IRQn);
     HAL_NVIC_SetPriority(CAN_RX1_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(CAN_RX1_IRQn);

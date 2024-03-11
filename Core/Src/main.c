@@ -62,10 +62,10 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void sendCanData(void);
-void startCalibrationMode(void);
-
 /* USER CODE BEGIN PFP */
+
+void sendCanData(void);
+void startCalibrationMode();
 
 /* USER CODE END PFP */
 
