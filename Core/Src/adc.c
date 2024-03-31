@@ -458,8 +458,8 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
 
 inline float getBatteryVoltage(void) { return adc_raw.batt_v * 3.3 * 11 / 4096; }
 // 50V/V * 5m = 250mV/A
-inline float getCurrentM0(void) { return (adc_raw.cs_m0 - 2048) * 3.3 / 4096 * 4; }
-inline float getCurrentM1(void) { return (adc_raw.cs_m1 - 2048) * 3.3 / 4096 * 4; }
+inline float getCurrentM0(void) { return (adc_raw.cs_m0 - adc_raw.cs_adc_offset) * 3.3 / 4096 * 4; }
+inline float getCurrentM1(void) { return (adc_raw.cs_m1 - adc_raw.cs_adc_offset) * 3.3 / 4096 * 4; }
 
 inline int getTempFET0(void) { return (-((float)adc_raw.temp_fet0 * 3.3 / 4096) + 1.5) * 70 + 25; }
 inline int getTempFET1(void) { return (-((float)adc_raw.temp_fet1 * 3.3 / 4096) + 1.5) * 70 + 25; }

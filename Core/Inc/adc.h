@@ -49,6 +49,7 @@ typedef struct
   int temp_fet1;
   int temp_m0;
   int temp_m1;
+  int cs_adc_offset;
 } adc_raw_t;
 extern adc_raw_t adc_raw;
 /* USER CODE END Private defines */

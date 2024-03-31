@@ -18,13 +18,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+
 #include "adc.h"
 #include "can.h"
 #include "dma.h"
+#include "gpio.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
-#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -42,6 +43,10 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+// 1kHz
+#define START_UP_FREE_WHEEL_CNT (3000)
+#define KICK_FREE_WHEEL_CNT (500)
 
 /* USER CODE END PTD */
 
@@ -78,7 +83,7 @@ bool uart_rx_flag = false;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) { uart_rx_flag = true; }
 
-uint32_t free_wheel_cnt = 500;
+uint32_t free_wheel_cnt = START_UP_FREE_WHEEL_CNT;
 
 // 0 ~ M_PI*2 * 4
 float manual_offset_radian = 0;
@@ -303,7 +308,7 @@ void can_rx_callback(void)
       break;
     case 0x110:
       if (can_rx_buf.data[0] == 3) {
-        free_wheel_cnt = 500;
+        free_wheel_cnt = KICK_FREE_WHEEL_CNT;
       }
       break;
     default:
@@ -597,7 +602,8 @@ void runMode(void)
         p("RPS %+6.1f %+6.1f Free %3d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
         break;
       case 3:
-        p("Out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
+        p("RAW %5d %5d ", ma702[0].enc_raw, ma702[1].enc_raw);
+        //p("Out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
         break;
       case 4:
         //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
@@ -878,7 +884,7 @@ void sendCanData(void)
 
 void protect(void)
 {
-  if (getCurrentM0() > 8.0 || getCurrentM1() > 8.0) {
+  if (getCurrentM0() > 6.0 || getCurrentM1() > 6.0) {
     forceStop();
     p("over current!! : %+6.2f %+6.2f\n", getCurrentM0(), getCurrentM1());
     setLedBlue(false);
@@ -958,6 +964,8 @@ void protect(void)
     waitPowerOnTimeout();
   }
 }
+
+bool isNotZeroCurrent() { return getCurrentM0() > 0.5 || getCurrentM1() > 0.5; }
 
 /* USER CODE END 0 */
 
@@ -1139,21 +1147,66 @@ int main(void)
     }
   }
 
+  p("ADC : %5d %5d\n", adc_raw.cs_m0, adc_raw.cs_m1);
+  if (adc_raw.cs_m0 < 100 && adc_raw.cs_m1 < 100) {
+    // 正方向電流のみモデル
+    // ZXCT1084
+    adc_raw.cs_adc_offset = 0;
+  } else {
+    // 正負電流
+    // INA199
+    adc_raw.cs_adc_offset = 2048;
+  }
+
+  p("M0 Low-side FET PWM start\n");
+
   HAL_TIM_PWM_Init(&htim8);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);
+
+  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  HAL_Delay(1);
+  if (isNotZeroCurrent()) {
+    forceStop();
+  }
+
+  p("M1 Low-side FET PWM start\n");
 
   HAL_TIM_PWM_Init(&htim1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+
+  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  HAL_Delay(1);
+  if (isNotZeroCurrent()) {
+    forceStop();
+  }
+
+  p("M1 High-side FET PWM start\n");
+
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);
+
+  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  HAL_Delay(1);
+  if (isNotZeroCurrent()) {
+    forceStop();
+  }
+
+  p("M1 High-side FET PWM start\n");
+
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
+
+  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  HAL_Delay(1);
+  if (isNotZeroCurrent()) {
+    forceStop();
+  }
 
   CAN_Filter_Init(flash.board_id);
 
@@ -1216,32 +1269,27 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1
-                              |RCC_PERIPHCLK_TIM8|RCC_PERIPHCLK_ADC34;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_TIM1 | RCC_PERIPHCLK_TIM8 | RCC_PERIPHCLK_ADC34;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-  {
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {
     Error_Handler();
   }
 }
@@ -1264,7 +1312,7 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -1272,7 +1320,7 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
+void assert_failed(uint8_t * file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
