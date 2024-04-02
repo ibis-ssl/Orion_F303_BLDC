@@ -50,6 +50,7 @@ typedef struct
   int temp_m0;
   int temp_m1;
   int cs_adc_offset;
+  int gd_dcdc_v;
 } adc_raw_t;
 extern adc_raw_t adc_raw;
 /* USER CODE END Private defines */
@@ -68,6 +69,7 @@ int getTempM0(void);
 int getTempFET1(void);
 void updateADC_M0(void);
 void updateADC_M1(void);
+float getGateDriverDCDCVoltage(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

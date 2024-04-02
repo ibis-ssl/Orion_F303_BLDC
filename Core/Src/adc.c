@@ -91,7 +91,7 @@ void MX_ADC1_Init(void)
   sConfigInjected.InjectedChannel = ADC_CHANNEL_1;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_1;
   sConfigInjected.InjectedSingleDiff = ADC_SINGLE_ENDED;
-  sConfigInjected.InjectedNbrOfConversion = 3;
+  sConfigInjected.InjectedNbrOfConversion = 4;
   sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_61CYCLES_5;
   sConfigInjected.ExternalTrigInjecConvEdge = ADC_EXTERNALTRIGINJECCONV_EDGE_RISING;
   sConfigInjected.ExternalTrigInjecConv = ADC_INJECTED_SOFTWARE_START;
@@ -118,6 +118,15 @@ void MX_ADC1_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_5;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_3;
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Injected Channel
+  */
+  sConfigInjected.InjectedChannel = ADC_CHANNEL_2;
+  sConfigInjected.InjectedRank = ADC_INJECTED_RANK_4;
   if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
   {
     Error_Handler();
@@ -320,10 +329,11 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     __HAL_RCC_GPIOF_CLK_ENABLE();
     /**ADC1 GPIO Configuration
     PA0     ------> ADC1_IN1
+    PA1     ------> ADC1_IN2
     PA3     ------> ADC1_IN4
     PF4     ------> ADC1_IN5
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_3;
+    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_3;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -402,10 +412,11 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
 
     /**ADC1 GPIO Configuration
     PA0     ------> ADC1_IN1
+    PA1     ------> ADC1_IN2
     PA3     ------> ADC1_IN4
     PF4     ------> ADC1_IN5
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_3);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_3);
 
     HAL_GPIO_DeInit(GPIOF, GPIO_PIN_4);
 
@@ -466,12 +477,16 @@ inline int getTempFET1(void) { return (-((float)adc_raw.temp_fet1 * 3.3 / 4096) 
 int getTempM1(void) { return (-((float)adc_raw.temp_m0 * 3.3 / 4096) + 1.5) * 70 + 25; }
 int getTempM0(void) { return (-((float)adc_raw.temp_m1 * 3.3 / 4096) + 1.5) * 70 + 25; }
 
+inline float getGateDriverDCDCVoltage(void) { return (adc_raw.gd_dcdc_v) * 3.3 * 11 / 4096; }
+
+// timer割り込みの中で更新する
 inline void updateADC_M0(void)
 {
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   adc_raw.cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
   adc_raw.temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
   adc_raw.temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
+  adc_raw.gd_dcdc_v = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_4);
   HAL_ADCEx_InjectedStart(&hadc1);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }

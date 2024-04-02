@@ -3258,7 +3258,7 @@ Disassembly of section .text:
  8002556:	6d62      	ldr	r2, [r4, #84]	; 0x54
  8002558:	429a      	cmp	r2, r3
  800255a:	dd55      	ble.n	8002608 <protect+0xf8>
- 800255c:	f001 fafc 	bl	8003b58 <forceStop>
+ 800255c:	f001 fafc 	bl	8003b58 <forceStopAllPwmOutputAndTimer>
  8002560:	6d62      	ldr	r2, [r4, #84]	; 0x54
  8002562:	6aa1      	ldr	r1, [r4, #40]	; 0x28
  8002564:	483e      	ldr	r0, [pc, #248]	; (8002660 <protect+0x150>)
@@ -3284,7 +3284,7 @@ Disassembly of section .text:
  8002596:	ecbd 8b02 	vpop	{d8}
  800259a:	e8bd 4030 	ldmia.w	sp!, {r4, r5, lr}
  800259e:	f003 b8ad 	b.w	80056fc <HAL_NVIC_SystemReset>
- 80025a2:	f001 fad9 	bl	8003b58 <forceStop>
+ 80025a2:	f001 fad9 	bl	8003b58 <forceStopAllPwmOutputAndTimer>
  80025a6:	f7fe fdcf 	bl	8001148 <getCurrentM0>
  80025aa:	ee10 5a10 	vmov	r5, s0
  80025ae:	f7fe fde7 	bl	8001180 <getCurrentM1>
@@ -3322,7 +3322,7 @@ Disassembly of section .text:
  8002608:	b005      	add	sp, #20
  800260a:	ecbd 8b02 	vpop	{d8}
  800260e:	bd30      	pop	{r4, r5, pc}
- 8002610:	f001 faa2 	bl	8003b58 <forceStop>
+ 8002610:	f001 faa2 	bl	8003b58 <forceStopAllPwmOutputAndTimer>
  8002614:	f7fe fd80 	bl	8001118 <getBatteryVoltage>
  8002618:	ee10 0a10 	vmov	r0, s0
  800261c:	f7fd ff94 	bl	8000548 <__aeabi_f2d>
@@ -4138,7 +4138,7 @@ Disassembly of section .text:
  8002fde:	e58b      	b.n	8002af8 <main+0x3e8>
  8002fe0:	4814      	ldr	r0, [pc, #80]	; (8003034 <main+0x924>)
  8002fe2:	f000 fed1 	bl	8003d88 <p>
- 8002fe6:	f000 fdb7 	bl	8003b58 <forceStop>
+ 8002fe6:	f000 fdb7 	bl	8003b58 <forceStopAllPwmOutputAndTimer>
  8002fea:	e7fe      	b.n	8002fea <main+0x8da>
  8002fec:	f7fe fb4a 	bl	8001684 <isPushedSW2>
  8002ff0:	2800      	cmp	r0, #0
@@ -5245,10 +5245,10 @@ Disassembly of section .text:
  8003b50:	200005ec 	.word	0x200005ec
  8003b54:	200005a0 	.word	0x200005a0
 
-08003b58 <forceStop>:
+08003b58 <forceStopAllPwmOutputAndTimer>:
  8003b58:	b538      	push	{r3, r4, r5, lr}
- 8003b5a:	4c25      	ldr	r4, [pc, #148]	; (8003bf0 <forceStop+0x98>)
- 8003b5c:	4d25      	ldr	r5, [pc, #148]	; (8003bf4 <forceStop+0x9c>)
+ 8003b5a:	4c25      	ldr	r4, [pc, #148]	; (8003bf0 <forceStopAllPwmOutputAndTimer+0x98>)
+ 8003b5c:	4d25      	ldr	r5, [pc, #148]	; (8003bf4 <forceStopAllPwmOutputAndTimer+0x9c>)
  8003b5e:	4620      	mov	r0, r4
  8003b60:	f003 f81e 	bl	8006ba0 <HAL_TIM_Base_Stop_IT>
  8003b64:	4628      	mov	r0, r5

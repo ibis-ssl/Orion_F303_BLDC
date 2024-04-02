@@ -52,9 +52,9 @@ enum {
   OVER_CURRENT = 0x0002,
   MOTOR_OVER_HEAT = 0x0004,
   OVER_LOAD = 0x0008,
+  ENC_ERROR = 0x0010,
+  OVER_VOLTAGE = 0x0020,
 };
-
-
 
 typedef struct
 {
@@ -85,7 +85,7 @@ typedef struct
 typedef struct
 {
   int pre_enc_cnt_raw;
-  int diff_cnt_max, diff_cnt_min;
+  int diff_cnt_max;
 
   float rps;
   float pre_rps;
@@ -95,6 +95,7 @@ typedef struct
 typedef struct
 {
   float voltage_per_rps;
+  float output_voltage_limit;
 } motor_param_t;
 /* USER CODE END EM */
 

@@ -254,7 +254,7 @@ Discarded input sections
                 0x0000000000000000       0x54 ./Core/Src/tim.o
  .text.fast_sin
                 0x0000000000000000       0x34 ./Core/Src/tim.o
- .text.setPwm0  0x0000000000000000       0x20 ./Core/Src/tim.o
+ .text.setPwmOutPutAllZero  0x0000000000000000       0x20 ./Core/Src/tim.o
  .text          0x0000000000000000        0x0 ./Core/Src/usart.o
  .data          0x0000000000000000        0x0 ./Core/Src/usart.o
  .bss           0x0000000000000000        0x0 ./Core/Src/usart.o
@@ -2075,9 +2075,9 @@ LOAD c:/st/stm32cubeide_1.10.1/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
  .text.setOutputRadianM1
                 0x0000000008003a68       0xf0 ./Core/Src/tim.o
                 0x0000000008003a68                setOutputRadianM1
- .text.forceStop
+ .text.forceStopAllPwmOutputAndTimer
                 0x0000000008003b58       0xa0 ./Core/Src/tim.o
-                0x0000000008003b58                forceStop
+                0x0000000008003b58                forceStopAllPwmOutputAndTimer
  .text.MX_USART1_UART_Init
                 0x0000000008003bf8       0x3c ./Core/Src/usart.o
                 0x0000000008003bf8                MX_USART1_UART_Init

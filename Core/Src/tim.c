@@ -319,8 +319,7 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* tim_pwmHandle)
 float rad_to_sin_cnv_array[1024] = {0};
 inline void initFirstSin(void)
 {
-  for (int i = 0; i < 1024; i++)
-  {
+  for (int i = 0; i < 1024; i++) {
     float temp_rad = (float)i / 256 * M_PI * 2;
     rad_to_sin_cnv_array[i] = sin(temp_rad);
     // printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
@@ -328,30 +327,23 @@ inline void initFirstSin(void)
   }
 }
 
-inline float fast_sin(float rad)
-{
-  return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)];
-}
+inline float fast_sin(float rad) { return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)]; }
 
-#define OUTPUT_VOLTAGE_LIMIT (24)
 #define BATTERY_VOLTAGE_BOTTOM (18)
 #define TIM_PWM_CENTOR (900)
 #define X2_PER_R3 (1.154)
 
-inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage)
+inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
 {
   int voltage_propotional_cnt;
 
-  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM)
-  {
+  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
     battery_voltage = BATTERY_VOLTAGE_BOTTOM;
   }
-  if (output_voltage < 0)
-  {
+  if (output_voltage < 0) {
     output_voltage = -output_voltage;
   }
-  if (output_voltage > OUTPUT_VOLTAGE_LIMIT)
-  {
+  if (output_voltage > output_voltage_limit) {
     output_voltage = 0;
   }
   voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTOR * X2_PER_R3;
@@ -362,19 +354,16 @@ inline void setOutputRadianM0(float out_rad, float output_voltage, float battery
   htim1.Instance->CCR3 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
 
-inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage)
+inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
 {
   int voltage_propotional_cnt;
-  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM)
-  {
+  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
     battery_voltage = BATTERY_VOLTAGE_BOTTOM;
   }
-  if (output_voltage < 0)
-  {
+  if (output_voltage < 0) {
     output_voltage = -output_voltage;
   }
-  if (output_voltage > OUTPUT_VOLTAGE_LIMIT)
-  {
+  if (output_voltage > output_voltage_limit) {
     output_voltage = 0;
   }
   voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTOR * X2_PER_R3;
@@ -385,7 +374,7 @@ inline void setOutputRadianM1(float out_rad, float output_voltage, float battery
   htim8.Instance->CCR3 = TIM_PWM_CENTOR + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
 
-void forceStop(void)
+void forceStopAllPwmOutputAndTimer(void)
 {
   HAL_TIM_Base_Stop_IT(&htim1);
   HAL_TIM_Base_Stop_IT(&htim8);
@@ -417,12 +406,57 @@ void forceStop(void)
   __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
 }
 
-void setPwm0(void){
+void setPwmOutPutFreeWheel(void)
+{
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_3);
+
+  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_3);
+
+  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_3);
+
+  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
+}
+
+void resumePwmOutput(void)
+{
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
+
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);
+
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
+}
+
+void setPwmOutPutAllZero(void)
+{
   htim8.Instance->CCR1 = 0;
   htim8.Instance->CCR2 = 0;
   htim8.Instance->CCR3 = 0;
   htim1.Instance->CCR1 = 0;
   htim1.Instance->CCR2 = 0;
   htim1.Instance->CCR3 = 0;
+}
+
+void stopTimerInterrupt(void)
+{
+  HAL_TIM_Base_Stop_IT(&htim1);
+  HAL_TIM_Base_Stop_IT(&htim8);
 }
 /* USER CODE END 1 */

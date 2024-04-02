@@ -50,10 +50,13 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void initFirstSin(void);
 float fast_sin(float rad);
 
-void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage);
-void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage);
-void forceStop(void);
-void setPwm0(void);
+void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
+void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
+void forceStopAllPwmOutputAndTimer(void);
+void setPwmOutPutFreeWheel(void);
+void resumePwmOutput(void);
+void setPwmOutPutAllZero(void);
+void stopTimerInterrupt(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
