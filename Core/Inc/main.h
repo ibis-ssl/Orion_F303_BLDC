@@ -58,15 +58,19 @@ enum {
 
 typedef struct
 {
-  float pre_elec_radian;
-  float radian_ave;
   int ave_cnt;
   int pre_raw;
-  float result_cw;
   int result_cw_cnt;
-  float result_ccw;
   int result_ccw_cnt;
   float rps_integral;
+
+  struct
+  {
+    float radian_ave_x, radian_ave_y;
+    float result_cw_x, result_cw_y;
+    float result_ccw_x, result_ccw_y;
+  } xy_field;
+
 } calib_point_t;
 typedef struct
 {

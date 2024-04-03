@@ -172,22 +172,27 @@ void calcMotorSpeed(int motor)
 
 void checkAngleCalibMode(int motor)
 {
-  calib[motor].radian_ave += ma702[motor].output_radian;
+  calib[motor].xy_field.radian_ave_x += cos(ma702[motor].output_radian);
+  calib[motor].xy_field.radian_ave_y += sin(ma702[motor].output_radian);
   calib[motor].ave_cnt++;
   if (calib[motor].pre_raw > HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw < HARF_OF_ENC_CNT_MAX && calib_force_rotation_speed > 0) {
     // ccw
     calibration_print_flag = true;
     calib[motor].result_ccw_cnt++;
-    calib[motor].result_ccw = calib[motor].radian_ave / calib[motor].ave_cnt;
-    calib[motor].radian_ave = 0;
+    calib[motor].xy_field.result_cw_x = calib[motor].xy_field.radian_ave_x / calib[motor].ave_cnt;
+    calib[motor].xy_field.result_cw_y = calib[motor].xy_field.radian_ave_y / calib[motor].ave_cnt;
+    calib[motor].xy_field.radian_ave_x = 0;
+    calib[motor].xy_field.radian_ave_y = 0;
     calib[motor].ave_cnt = 0;
   }
   if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_force_rotation_speed < 0) {
     // cw
     calibration_print_flag = true;
     calib[motor].result_cw_cnt++;
-    calib[motor].result_cw = calib[motor].radian_ave / calib[motor].ave_cnt;
-    calib[motor].radian_ave = 0;
+    calib[motor].xy_field.result_ccw_x = calib[motor].xy_field.radian_ave_x / calib[motor].ave_cnt;
+    calib[motor].xy_field.result_ccw_y = calib[motor].xy_field.radian_ave_y / calib[motor].ave_cnt;
+    calib[motor].xy_field.radian_ave_x = 0;
+    calib[motor].xy_field.radian_ave_y = 0;
     calib[motor].ave_cnt = 0;
   }
   calib[motor].pre_raw = ma702[motor].enc_raw;
@@ -611,6 +616,7 @@ void runMode(void)
 
   static uint8_t print_cnt = 0;
   // ここは1KHzでまわっている
+  // モーターキャリブレーション中はprint止める
   if (calib_process.motor_calib_cnt == 0) {
     // 1サイクルごとの負荷を減らすために分割して送信
     print_cnt++;
@@ -621,19 +627,20 @@ void runMode(void)
         // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
         break;
       case 2:
-        p("RPS %+6.1f %+6.1f Free %3d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
+        p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
         break;
       case 3:
-        p("RAW %5d %5d ", ma702[0].enc_raw, ma702[1].enc_raw);
-        p("Out_v %+5.1f %5.1f ", cmd[0].out_v, cmd[1].out_v);
+        p("RAW %5d %5d Out_v %+5.1f %5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
         break;
       case 4:
         //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
-        p("Rx %4ld CPU %3d GD %4d %4.1f ", can_rx_cnt, main_loop_remain_counter, adc_raw.gd_dcdc_v, getGateDriverDCDCVoltage());
+        p("Rx %4ld CPU %3d GD %4.1f ", can_rx_cnt, main_loop_remain_counter, getGateDriverDCDCVoltage());
         can_rx_cnt = 0;
         break;
       case 5:
-        p("T %3d %3d %3d %3d ", getTempFET0(), getTempFET1(), getTempM0(), getTempM1());
+        // FET温度はv4.2で取得できない
+        // getTempFET0(), getTempFET1(),
+        p("T %+4d %+4d ", getTempM0(), getTempM1());
         //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
         break;
       case 6:
@@ -644,13 +651,14 @@ void runMode(void)
         p("LoadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
         break;
       case 8:
-        p("TO %4d %4d", cmd[0].timeout_cnt, cmd[1].timeout_cnt);
+        p("TO %4d %4d diff max M0 %+6d, M1 %+6d ", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max);
         // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
-        p("diff max M0 %+6d, M1 %+6d ", motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max);
         motor_real[0].diff_cnt_max = 0;
         motor_real[1].diff_cnt_max = 0;
         ma702[0].diff_max = 0;
         ma702[0].diff_min = 65535;
+        ma702[1].diff_max = 0;
+        ma702[1].diff_min = 65535;
         break;
       default:
         p("\n");
@@ -665,6 +673,14 @@ void runMode(void)
 /* Can't running 1kHz */
 void calibrationMode(void)
 {
+  // 角度0のときにprint
+  if (calibration_print_flag) {
+    calibration_print_flag = false;
+    p("enc = %+5.2f %+5.2f  / M0 X %+5.2f Y %+5.2f / M1 X %+5.2f Y %+5.2f / Rad %+5.2f %+5.2f\n", ma702[0].output_radian, ma702[1].output_radian, cos(ma702[0].output_radian),
+      sin(ma702[0].output_radian), cos(ma702[1].output_radian), sin(ma702[1].output_radian), atan2(sin(ma702[0].output_radian), cos(ma702[0].output_radian)),
+      atan2(sin(ma702[1].output_radian), cos(ma702[1].output_radian)));
+  }
+
   /*
   p("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
   p("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
@@ -677,86 +693,71 @@ void calibrationMode(void)
   // END of 1st-calibration cycle (CCW)
   if (calib[0].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib_force_rotation_speed > 0) {
     calib_force_rotation_speed = -calib_force_rotation_speed;  //CCW方向終わったので、回転方向反転
-    p("zelo-point in CCW(1st-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_ccw, calib[1].result_ccw);
-    HAL_Delay(1);  // write out uart buffer
+    HAL_Delay(1);                                              // write out uart buffer
   }
 
   // END of 2nd-calibration cycle (CW)
   if (calib[0].result_cw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_cw_cnt > MOTOR_CALIB_CYCLE) {
-    p("zelo-point in CW(2nd-step) result M0 %+6.4f / M1 %+6.4f\n", calib[0].result_cw, calib[1].result_cw);
-
+    // 強制転流モード完了
+    manual_offset_radian = 0;
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
     HAL_Delay(1);  // write out uart buffer
 
-    float temp_offset[2] = {0, 0};
-
-    p("CW + CCW M0 %+6.4f / M1 %+6.4f\n", calib[0].result_ccw + calib[0].result_cw, calib[1].result_ccw + calib[1].result_cw);
+    float xy_field_ave_x[2] = {0}, xy_field_ave_y[2] = {0}, xy_field_offset_radian[2] = {0, 0};
 
     for (int i = 0; i < 2; i++) {
-      if (calib[i].result_cw < M_PI * 0.5 && calib[i].result_ccw > M_PI * 1.5) {
-        calib[i].result_cw += M_PI * 2;
+      p("Motor : %d\n", i);
+      p("CW X %+5.2f Y %+5.2f\n", calib[i].xy_field.result_cw_x, calib[i].xy_field.result_cw_y);
+      p("CCW X %+5.2f Y %+5.2f\n", calib[i].xy_field.result_ccw_x, calib[i].xy_field.result_ccw_y);
+      p("CW rad %+5.2f\n", atan2(calib[i].xy_field.result_cw_y, calib[i].xy_field.result_cw_x));
+      p("CCW rad %+5.2f\n", atan2(calib[i].xy_field.result_ccw_y, calib[i].xy_field.result_ccw_x));
+
+      xy_field_ave_x[i] = calib[i].xy_field.result_cw_x + calib[i].xy_field.result_ccw_x;
+      xy_field_ave_y[i] = calib[i].xy_field.result_cw_y + calib[i].xy_field.result_ccw_y;
+      xy_field_offset_radian[i] = (2 * M_PI) - atan2(xy_field_ave_y[i], xy_field_ave_x[i]);
+      p("CW+CCW X %+5.2f Y %+5.2f\n", xy_field_ave_x[i], xy_field_ave_y[i]);
+
+      xy_field_offset_radian[i] += ROTATION_OFFSET_RADIAN;
+      if (xy_field_offset_radian[i] > M_PI * 2) {
+        xy_field_offset_radian[i] -= M_PI * 2;
       }
-      if (calib[i].result_cw > M_PI * 1.5 && calib[i].result_ccw < M_PI * 0.5) {
-        calib[i].result_ccw += M_PI * 2;
+      if (xy_field_offset_radian[i] < 0) {
+        xy_field_offset_radian[i] += M_PI * 2;
       }
 
-      temp_offset[i] = (M_PI * 2) - ((calib[i].result_ccw + calib[i].result_cw) / 2);
-    }
+      p("Rad M0 %+5.2f\n\n", xy_field_offset_radian[i]);
 
-    p("zelo-point in CW&CCW : elec-centor radian : M0 %+6.4f / M1 %+6.4f\n", temp_offset[0], temp_offset[1]);
-    HAL_Delay(1);  // write out uart buffer
+      // モーターキャリブレーション前に更新
+      enc_offset[i].zero_calib = xy_field_offset_radian[i];
 
-    temp_offset[0] += ROTATION_OFFSET_RADIAN;
-    if (temp_offset[0] > M_PI * 2) {
-      temp_offset[0] -= M_PI * 2;
-    }
-    if (temp_offset[0] < 0) {
-      temp_offset[0] += M_PI * 2;
-    }
-    temp_offset[1] += ROTATION_OFFSET_RADIAN;
-    if (temp_offset[1] > M_PI * 2) {
-      temp_offset[1] -= M_PI * 2;
-    }
-    if (temp_offset[1] < 0) {
-      temp_offset[1] += M_PI * 2;
-    }
+      // モーターキャリブレーション結果を書き込むときに、メモリ上のエンコーダーキャリブレーション値も更新しないと戻ってしまう??
+      flash.calib[i] = enc_offset[i].zero_calib;
 
-    enc_offset[0].zero_calib = temp_offset[0];
-    enc_offset[1].zero_calib = temp_offset[1];
-    p("complete enc calibration!!\nccw %6f cw %6f result user offset M0 %6.3f M1 %6.3f\n", calib[0].result_ccw, calib[0].result_cw, temp_offset[0], temp_offset[1]);
-
-    cmd[0].out_v_final = 0;
-    cmd[1].out_v_final = 0;
-
-    calib[0].result_cw_cnt = 0;
-    calib[1].result_cw_cnt = 0;
-    calib[0].ave_cnt = 0;
-    calib[1].ave_cnt = 0;
-    calib[0].radian_ave = 0;
-    calib[1].radian_ave = 0;
+      calib[i].result_cw_cnt = 0;
+      calib[i].ave_cnt = 0;
+      cmd[i].out_v_final = 0;
+    }
 
     writeEncCalibrationValue(enc_offset[0].zero_calib, enc_offset[1].zero_calib);
 
-    // エンコーダキャリブレーション完了
-    // モーターキャリブレーションに切り替え
+    for (int i = 0; i < 2;i++){
+      // モーターキャリブレーション前に更新
+      enc_offset[i].zero_calib = xy_field_offset_radian[i];
 
-    manual_offset_radian = 0;
+      // モーターキャリブレーション結果を書き込むときに、メモリ上のエンコーダーキャリブレーション値も更新しないと戻ってしまう??
+      flash.calib[i] = xy_field_offset_radian[i];
+    }
+
+    // エンコーダキャリブレーション完了
     calib_process.enc_calib_cnt = 0;
 
+    // モーターキャリブレーションに切り替え
     calib_process.motor_calib_mode = 0;
     calib_process.motor_calib_cnt = 1;
 
-    HAL_Delay(100);
-    p("flash data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
-    flash.calib[0] = enc_offset[0].zero_calib;
-    flash.calib[1] = enc_offset[1].zero_calib;
+    p("calib %+5.2f %+5.2f", enc_offset[0].zero_calib, enc_offset[1].zero_calib);
     HAL_Delay(900);
-  }
-
-  if (calibration_print_flag) {
-    calibration_print_flag = false;
-    p("enc = %+5.2f %+5.2f\n", ma702[0].output_radian, ma702[1].output_radian);
   }
 }
 
@@ -1018,6 +1019,7 @@ void protect(void)
 }
 
 bool isNotZeroCurrent() { return getCurrentM0() > 0.5 || getCurrentM1() > 0.5; }
+//bool isNotZeroCurrent() { return false; }
 
 /* USER CODE END 0 */
 
@@ -1209,7 +1211,7 @@ int main(void)
     }
   }
 
-  p("ADC : %5d %5d\n", adc_raw.cs_m0, adc_raw.cs_m1);
+  p("ADC : %5d %5d GD %4.2f Batt %4.2f\n", adc_raw.cs_m0, adc_raw.cs_m1, getGateDriverDCDCVoltage(), getBatteryVoltage());
   if (adc_raw.cs_m0 < 100 && adc_raw.cs_m1 < 100) {
     // 正方向電流のみモデル
     // ZXCT1084
@@ -1220,6 +1222,17 @@ int main(void)
     adc_raw.cs_adc_offset = 2048;
   }
 
+  /*
+  HAL_TIM_PWM_Init(&htim8);
+  HAL_TIM_PWM_Init(&htim1);
+  resumePwmOutput();
+
+  while (true)
+    ;
+
+  //*/
+
+  ///*
   p("M0 Low-side FET PWM start\n");
 
   HAL_TIM_PWM_Init(&htim8);
@@ -1227,9 +1240,10 @@ int main(void)
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
 
-  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
   HAL_Delay(1);
   if (isNotZeroCurrent()) {
+    power_enable_cnt = 500;
     forceStopAllPwmOutputAndTimer();
     waitPowerOnTimeout();
   }
@@ -1241,9 +1255,10 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
 
-  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
   HAL_Delay(1);
   if (isNotZeroCurrent()) {
+    power_enable_cnt = 500;
     forceStopAllPwmOutputAndTimer();
     waitPowerOnTimeout();
   }
@@ -1254,9 +1269,10 @@ int main(void)
   HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);
   HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);
 
-  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
   HAL_Delay(1);
   if (isNotZeroCurrent()) {
+    power_enable_cnt = 500;
     forceStopAllPwmOutputAndTimer();
     waitPowerOnTimeout();
   }
@@ -1267,12 +1283,15 @@ int main(void)
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
   HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
 
-  p("Current M0 %+5.1f M1 %5.1f\n", getCurrentM0(), getCurrentM1());
+  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
   HAL_Delay(1);
   if (isNotZeroCurrent()) {
+    power_enable_cnt = 500;
     forceStopAllPwmOutputAndTimer();
     waitPowerOnTimeout();
   }
+
+  //*/
 
   CAN_Filter_Init(flash.board_id);
 
