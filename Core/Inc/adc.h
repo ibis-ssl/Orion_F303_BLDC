@@ -29,7 +29,7 @@ extern "C" {
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 extern ADC_HandleTypeDef hadc1;
@@ -70,6 +70,7 @@ int getTempFET1(void);
 void updateADC_M0(void);
 void updateADC_M1(void);
 float getGateDriverDCDCVoltage(void);
+bool isNotZeroCurrent();
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

@@ -21,6 +21,8 @@
 #include "adc.h"
 
 /* USER CODE BEGIN 0 */
+#include <stdbool.h>
+
 adc_raw_t adc_raw;
 /* USER CODE END 0 */
 
@@ -502,4 +504,7 @@ inline void updateADC_M1(void)
   HAL_ADCEx_InjectedStart(&hadc3);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
+
+bool isNotZeroCurrent() { return getCurrentM0() > 0.5 || getCurrentM1() > 0.5; }
+
 /* USER CODE END 1 */

@@ -45,7 +45,7 @@
 /* USER CODE BEGIN PTD */
 
 // 1kHz
-#define START_UP_FREE_WHEEL_CNT (3000)
+#define START_UP_FREE_WHEEL_CNT (1000)
 #define KICK_FREE_WHEEL_CNT (500)
 
 /* USER CODE END PTD */
@@ -120,9 +120,9 @@ float error_value;
 
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
-#define BATTERY_UNVER_VOLTAGE (20.0)
-#define BATTERY_OVER_VOLTAGE (30.0)
-#define MOTOR_OVER_TEMPERATURE (70)  // 80 -> 70 deg (実機テストによる)
+#define THR_BATTERY_UNVER_VOLTAGE (20.0)
+#define THR_BATTERY_OVER_VOLTAGE (30.0)
+#define THR_MOTOR_OVER_TEMPERATURE (70)  // 80 -> 70 deg (実機テストによる)
 
 #define MOTOR_CALIB_INIT_CNT (2500)
 #define MOTOR_CALIB_READY_CNT (2000)
@@ -133,8 +133,12 @@ float error_value;
 
 #define MOTOR_CALIB_M0_M1_ERROR_TRERANCE (1.0)
 #define MOTOR_CALIB_CW_CCW_ERROR_TRERANCE (1.0)
+#define MOTOR_CALIB_UNDER_LIMIT (1.0)
 
 #define SPEED_CMD_LIMIT_RPS (50)
+// ヤバい速度指令を無視するしきい値
+#define SPEED_REAL_LIMIT_GAIN (float)(1.5)
+// エンコーダー飛んだ時に異常な速度を検出するしきい値
 
 volatile bool calibration_print_flag = false;
 volatile bool enc_over_speed_cnt_error_flag = false;
@@ -398,6 +402,7 @@ void speedToOutputVoltage(int motor)
     cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
   }
 
+  // 過負荷カウント
   if (output_voltage_diff > +pid[motor].error_integral_limit) {
     if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
       pid[motor].load_limit_cnt++;
@@ -436,10 +441,6 @@ void runMode(void)
     manual_offset_radian = 0;
   }
 
-  if (calib_process.motor_calib_cnt > 1) {
-    calib_process.motor_calib_cnt--;
-  }
-
   //- 0.5 max spd 0.75
   //+ 3.45 max spd 3.25
 
@@ -470,208 +471,65 @@ void runMode(void)
       cmd[i].out_v = 0;
     }
 
-    if (calib_process.motor_calib_cnt > 1) {
-      if (calib_process.motor_calib_cnt < MOTOR_CALIB_START_CNT) {
-        calib[i].rps_integral += motor_real[i].rps;
-      }
-
-      // そのまま逆転させるとエラいことになるので一度電圧0にする
-      if (calib_process.motor_calib_cnt < MOTOR_CALIB_READY_CNT) {
-        cmd[i].out_v = calib_process.motor_calib_voltage;
-      } else {
-        cmd[i].out_v = 0;
-      }
-    } else if (calib_process.motor_calib_cnt == 1) {
-      cmd[i].out_v = 0;
-    }
-
-    // Output Voltage Override
-
     setFinalOutputVoltage(i);  // select Vq-offset angle
-  }
-
-  if (calib_process.motor_calib_cnt == 1) {
-    static float rps_per_v_cw_l[2], rps_per_v_ccw_l[2], rps_per_v_cw_h[2], rps_per_v_ccw_h[2];
-
-    switch (calib_process.motor_calib_mode) {
-      case 0:
-        p("\n\nstart motor calib!!\n\n");
-        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
-
-        calib_process.motor_calib_mode = 1;
-        calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_LOW;
-        calib[0].rps_integral = 0;
-        calib[1].rps_integral = 0;
-        p("set output V = %f\n", calib_process.motor_calib_voltage);
-        break;
-
-      case 1:
-        rps_per_v_cw_l[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_cw_l[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        calib[0].rps_integral = 0;
-        calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
-
-        if (fabs(rps_per_v_cw_l[0] - rps_per_v_cw_l[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!!\n\n");
-          calib_process.motor_calib_cnt = 0;
-          return;
-        }
-
-        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
-        calib_process.motor_calib_mode++;
-        calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_LOW;
-        p("set output V = %f\n", calib_process.motor_calib_voltage);
-        break;
-
-      case 2:
-        rps_per_v_ccw_l[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_ccw_l[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        calib[0].rps_integral = 0;
-        calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_l[0], rps_per_v_ccw_l[1]);
-
-        if (fabs(rps_per_v_ccw_l[0] - rps_per_v_ccw_l[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH\n\n");
-          calib_process.motor_calib_cnt = 0;
-          return;
-        }
-
-        if (fabs(rps_per_v_cw_l[0] - rps_per_v_ccw_l[0]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(rps_per_v_cw_l[1] - rps_per_v_ccw_l[1]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH (LOW)\n\n");
-          calib_process.motor_calib_cnt = 0;
-          return;
-        }
-
-        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
-        calib_process.motor_calib_mode++;
-        if (rps_per_v_cw_l[0] < 4.0) {
-          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
-        } else {
-          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH / 2;
-        }
-        p("set output V = %f\n", calib_process.motor_calib_voltage);
-        break;
-
-      case 3:
-        rps_per_v_cw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_cw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        calib[0].rps_integral = 0;
-        calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_h[0], rps_per_v_cw_h[1]);
-
-        /*if (fabs(rps_per_v_cw_h[0] - rps_per_v_cw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH (HIGH)\n\n");
-          calib_process.motor_calib_cnt = 0;
-          return;
-        }*/
-
-        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
-        calib_process.motor_calib_mode++;
-
-        calib_process.motor_calib_mode++;
-        if (rps_per_v_cw_l[0] < 4.0) {
-          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
-        } else {
-          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH / 2;
-        }
-        p("set output V = %f\n", calib_process.motor_calib_voltage);
-        break;
-
-      default:
-
-        rps_per_v_ccw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        rps_per_v_ccw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
-        calib[0].rps_integral = 0;
-        calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_h[0], rps_per_v_ccw_h[1]);
-        p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
-        /*
-        if (fabs(rps_per_v_ccw_h[0] - rps_per_v_ccw_h[1]) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!! M0-M1 PARAM UNMATCH\n\n");
-          calib_process.motor_calib_cnt = 0;
-          return;
-        }
-
-        if (fabs(rps_per_v_cw_h[0] - rps_per_v_ccw_h[0]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(rps_per_v_cw_h[1] - rps_per_v_ccw_h[1]) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
-          p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
-          calib_process.motor_calib_cnt = 0;
-          return;
-        }*/
-
-        p("save calib result...\n");
-        writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
-
-        HAL_Delay(10);
-        p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
-        p("motor data : %4.1f %4.1f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
-
-        HAL_Delay(1000);
-
-        NVIC_SystemReset();
-
-        break;
-    }
   }
 
   static uint8_t print_cnt = 0;
   // ここは1KHzでまわっている
-  // モーターキャリブレーション中はprint止める
-  if (calib_process.motor_calib_cnt == 0) {
-    // 1サイクルごとの負荷を減らすために分割して送信
-    print_cnt++;
-    switch (print_cnt) {
-      case 1:
-        // p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
-        p("CS %+5.2f %+5.2f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
-        // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
-        break;
-      case 2:
-        p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
-        break;
-      case 3:
-        p("RAW %5d %5d Out_v %+5.1f %5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
-        break;
-      case 4:
-        //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
-        p("Rx %4ld CPU %3d GD %4.1f ", can_rx_cnt, main_loop_remain_counter, getGateDriverDCDCVoltage());
-        can_rx_cnt = 0;
-        break;
-      case 5:
-        // FET温度はv4.2で取得できない
-        // getTempFET0(), getTempFET1(),
-        p("T %+4d %+4d ", getTempM0(), getTempM1());
-        //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
-        break;
-      case 6:
-        p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
-        can_send_fail_cnt = 0;
-        break;
-      case 7:
-        p("LoadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
-        break;
-      case 8:
-        p("TO %4d %4d diff max M0 %+6d, M1 %+6d ", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max);
-        // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
-        motor_real[0].diff_cnt_max = 0;
-        motor_real[1].diff_cnt_max = 0;
-        ma702[0].diff_max = 0;
-        ma702[0].diff_min = 65535;
-        ma702[1].diff_max = 0;
-        ma702[1].diff_min = 65535;
-        break;
-      default:
-        p("\n");
-        print_cnt = 0;
-        break;
-    }
-    // ADC raw ALL
-    //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+
+  // 1サイクルごとの負荷を減らすために分割して送信
+  print_cnt++;
+  switch (print_cnt) {
+    case 1:
+      // p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
+      p("CS %+5.2f %+5.2f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+      // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
+      break;
+    case 2:
+      p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
+      break;
+    case 3:
+      p("RAW %5d %5d Out_v %+5.1f %5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
+      break;
+    case 4:
+      //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
+      p("Rx %4ld CPU %3d GD %4.1f ", can_rx_cnt, main_loop_remain_counter, getGateDriverDCDCVoltage());
+      can_rx_cnt = 0;
+      break;
+    case 5:
+      // FET温度はv4.2で取得できない
+      // getTempFET0(), getTempFET1(),
+      p("T %+4d %+4d ", getTempM0(), getTempM1());
+      //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
+      break;
+    case 6:
+      p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
+      can_send_fail_cnt = 0;
+      break;
+    case 7:
+      p("LoadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
+      break;
+    case 8:
+      p("TO %4d %4d diff max M0 %+6d, M1 %+6d ", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max);
+      // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
+      motor_real[0].diff_cnt_max = 0;
+      motor_real[1].diff_cnt_max = 0;
+      ma702[0].diff_max = 0;
+      ma702[0].diff_min = 65535;
+      ma702[1].diff_max = 0;
+      ma702[1].diff_min = 65535;
+      break;
+    default:
+      p("\n");
+      print_cnt = 0;
+      break;
   }
+  // ADC raw ALL
+  //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 }
 
 /* Can't running 1kHz */
-void calibrationMode(void)
+void encoderCalibrationMode(void)
 {
   // 角度0のときにprint
   if (calibration_print_flag) {
@@ -680,11 +538,6 @@ void calibrationMode(void)
       sin(ma702[0].output_radian), cos(ma702[1].output_radian), sin(ma702[1].output_radian), atan2(sin(ma702[0].output_radian), cos(ma702[0].output_radian)),
       atan2(sin(ma702[1].output_radian), cos(ma702[1].output_radian)));
   }
-
-  /*
-  p("M0 ave %6.3f cnt %3d M1 ave %6.3f cnt %3d ", calib[0].radian_ave, calib[0].ave_cnt, calib[1].radian_ave, calib[1].ave_cnt);
-  p("result M0 %6.4f M1 %6.4f ", calib[0].result_cw, calib[1].result_cw);
-  p("M0raw %6d M1raw %6d offset %4.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian);*/
 
   // calib_force_rotation_speedが+でCCW
   // calib_force_rotation_speedが-でCW回転する。
@@ -699,7 +552,6 @@ void calibrationMode(void)
   // END of 2nd-calibration cycle (CW)
   if (calib[0].result_cw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_cw_cnt > MOTOR_CALIB_CYCLE) {
     // 強制転流モード完了
-    manual_offset_radian = 0;
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
     HAL_Delay(1);  // write out uart buffer
@@ -741,7 +593,7 @@ void calibrationMode(void)
 
     writeEncCalibrationValue(enc_offset[0].zero_calib, enc_offset[1].zero_calib);
 
-    for (int i = 0; i < 2;i++){
+    for (int i = 0; i < 2; i++) {
       // モーターキャリブレーション前に更新
       enc_offset[i].zero_calib = xy_field_offset_radian[i];
 
@@ -751,6 +603,7 @@ void calibrationMode(void)
 
     // エンコーダキャリブレーション完了
     calib_process.enc_calib_cnt = 0;
+    manual_offset_radian = 0;  // 割り込みの中で加算してしまうので,enc_calib_cnt = 0にしてからでないといけない
 
     // モーターキャリブレーションに切り替え
     calib_process.motor_calib_mode = 0;
@@ -761,11 +614,172 @@ void calibrationMode(void)
   }
 }
 
+bool checkMotorRpsError(float m0, float m1)
+{
+  if (fabs(m0 - m1) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+    p("\n\nCALIBRATION ERROR!!!\n\n");
+    calib_process.motor_calib_cnt = 0;
+    return true;
+  }
+  if (m0 < MOTOR_CALIB_UNDER_LIMIT && m1 < MOTOR_CALIB_UNDER_LIMIT) {
+    p("\n\nCALIBRATION ERROR!!!\n\n");
+    calib_process.motor_calib_cnt = 0;
+    return true;
+  }
+  return false;
+}
+
+bool checkMotorRpsHighLowError(float m0_cw, float m1_cw, float m0_ccw, float m1_ccw)
+{
+  if (fabs(m0_cw - m0_ccw) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(m1_cw - m1_ccw) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
+    p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
+    calib_process.motor_calib_cnt = 0;
+    return true;
+  }
+  return false;
+}
+
+void motorCalibrationMode(void)
+{
+  if (calib_process.motor_calib_cnt > 1) {
+    calib_process.motor_calib_cnt--;
+  }
+
+  // Output Voltage Override
+  for (int i = 0; i < 2; i++) {
+    if (calib_process.motor_calib_cnt > 1) {
+      if (calib_process.motor_calib_cnt < MOTOR_CALIB_START_CNT) {
+        calib[i].rps_integral += motor_real[i].rps;
+      }
+
+      // そのまま逆転させるとエラいことになるので一度電圧0にする
+      if (calib_process.motor_calib_cnt < MOTOR_CALIB_READY_CNT) {
+        cmd[i].out_v = calib_process.motor_calib_voltage;
+      } else {
+        cmd[i].out_v = 0;
+      }
+    } else if (calib_process.motor_calib_cnt == 1) {
+      cmd[i].out_v = 0;
+    }
+
+    setFinalOutputVoltage(i);  // select Vq-offset angle
+  }
+
+  if (calib_process.motor_calib_cnt == 1) {
+    static float rps_per_v_cw_l[2], rps_per_v_ccw_l[2], rps_per_v_cw_h[2], rps_per_v_ccw_h[2];
+
+    switch (calib_process.motor_calib_mode) {
+      case 0:
+        p("\n\nstart motor calib!!\n\n");
+        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
+
+        calib_process.motor_calib_mode = 1;
+        calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_LOW;
+        calib[0].rps_integral = 0;
+        calib[1].rps_integral = 0;
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
+        break;
+
+      case 1:
+        rps_per_v_cw_l[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_cw_l[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        calib[0].rps_integral = 0;
+        calib[1].rps_integral = 0;
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+
+        if (checkMotorRpsError(rps_per_v_cw_l[0], rps_per_v_cw_l[1])) {
+          return;
+        }
+
+        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
+        calib_process.motor_calib_mode++;
+        calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_LOW;
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
+        break;
+
+      case 2:
+        rps_per_v_ccw_l[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_ccw_l[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        calib[0].rps_integral = 0;
+        calib[1].rps_integral = 0;
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_l[0], rps_per_v_ccw_l[1]);
+
+        if (checkMotorRpsError(rps_per_v_ccw_l[0], rps_per_v_ccw_l[1])) {
+          return;
+        } else if (checkMotorRpsHighLowError(rps_per_v_cw_l[0], rps_per_v_cw_l[1], rps_per_v_ccw_l[0], rps_per_v_ccw_l[1])) {
+          return;
+        }
+
+        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
+        calib_process.motor_calib_mode++;
+        if (rps_per_v_cw_l[0] < 4.0) {
+          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
+        } else {
+          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH / 2;
+        }
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
+        break;
+
+      case 3:
+        rps_per_v_cw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_cw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        calib[0].rps_integral = 0;
+        calib[1].rps_integral = 0;
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_cw_h[0], rps_per_v_cw_h[1]);
+
+        if (checkMotorRpsError(rps_per_v_cw_h[0], rps_per_v_cw_h[1])) {
+          return;
+        }
+
+        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
+        calib_process.motor_calib_mode++;
+
+        calib_process.motor_calib_mode++;
+        if (rps_per_v_cw_l[0] < 4.0) {
+          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
+        } else {
+          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH / 2;
+        }
+        p("set output V = %f\n", calib_process.motor_calib_voltage);
+        break;
+
+      default:
+
+        rps_per_v_ccw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        rps_per_v_ccw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
+        calib[0].rps_integral = 0;
+        calib[1].rps_integral = 0;
+        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_h[0], rps_per_v_ccw_h[1]);
+        p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
+
+        if (checkMotorRpsError(rps_per_v_ccw_h[0], rps_per_v_ccw_h[1])) {
+          return;
+        } else if (checkMotorRpsHighLowError(rps_per_v_cw_h[0], rps_per_v_cw_h[1], rps_per_v_ccw_h[0], rps_per_v_ccw_h[1])) {
+          return;
+        }
+
+        p("save calib result...\n");
+        writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+
+        HAL_Delay(10);
+        p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
+        p("motor data : %4.1f %4.1f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
+
+        HAL_Delay(1000);
+
+        NVIC_SystemReset();
+
+        break;
+    }
+  }
+}
+
 void startCalibrationMode(void)
 {
   p("calibration mode!\n");
 
   calib_process.enc_calib_cnt = MOTOR_CALIB_INIT_CNT;
+  calib_process.motor_calib_cnt = 0;
   manual_offset_radian = 0;
 
   cmd[0].speed = 0;
@@ -773,6 +787,22 @@ void startCalibrationMode(void)
 
   cmd[0].out_v_final = 2.0;
   cmd[1].out_v_final = 2.0;
+
+  // キャリブレーションモード中の動作
+
+  // エンコーダーキャリブレーション
+  // エンコーダー : 通常動作と同じ
+  // 出力角度 : 低速で強制転流
+  // CAN受信 : 早期returnで全部無視
+  // 出力電圧 : 固定
+  // main : encoderCalibrationMode()
+
+  // モーターキャリブレーション
+  // エンコーダー : 通常動作と同じ
+  // 出力角度 : 通常動作と同じ
+  // CAN受信 : 早期returnで全部無視
+  // 出力電圧 : CW,CCWで各2数段階,2段階めは1段階めの回転数に応じて変更
+  // main : runMode()
 }
 
 void receiveUserSerialCommand(void)
@@ -939,7 +969,7 @@ void protect(void)
     waitPowerOnTimeout();
   }
 
-  if (getBatteryVoltage() < BATTERY_UNVER_VOLTAGE) {
+  if (getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
     forceStopAllPwmOutputAndTimer();
     p("UNDER voltage!! %6.3f", getBatteryVoltage());
     setLedBlue(true);
@@ -951,8 +981,8 @@ void protect(void)
     waitPowerOnTimeout();
   }
 
-  if (getBatteryVoltage() > BATTERY_OVER_VOLTAGE) {
-    setPwmOutPutAllZero();
+  if (getBatteryVoltage() > THR_BATTERY_OVER_VOLTAGE) {
+    setPwmAll(0);
     //stopTimerInterrupt();
     p("OVER voltage!! %6.3f", getBatteryVoltage());
     setLedBlue(true);
@@ -964,7 +994,7 @@ void protect(void)
     waitPowerOnTimeout();
   }
 
-  if (getTempM0() > MOTOR_OVER_TEMPERATURE || getTempM1() > MOTOR_OVER_TEMPERATURE) {
+  if (getTempM0() > THR_MOTOR_OVER_TEMPERATURE || getTempM1() > THR_MOTOR_OVER_TEMPERATURE) {
     forceStopAllPwmOutputAndTimer();
     p("OVER Motor temperature!! M0 : %3d M1 : %3d", getTempM0(), getTempM1());
     setLedBlue(true);
@@ -981,7 +1011,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-  /*if (getTempFET0() > MOTOR_OVER_TEMPERATURE || getTempFET1() > MOTOR_OVER_TEMPERATURE) {
+  /*if (getTempFET0() > THR_MOTOR_OVER_TEMPERATURE || getTempFET1() > THR_MOTOR_OVER_TEMPERATURE) {
     forceStopAllPwmOutputAndTimer();
     p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET0(), getTempFET1());
     setLedBlue(true);
@@ -1017,9 +1047,6 @@ void protect(void)
     waitPowerOnTimeout();
   }
 }
-
-bool isNotZeroCurrent() { return getCurrentM0() > 0.5 || getCurrentM1() > 0.5; }
-//bool isNotZeroCurrent() { return false; }
 
 /* USER CODE END 0 */
 
@@ -1097,7 +1124,7 @@ int main(void)
     // 100kV : 0.6 rps/v
     // M0 0.175, M1 0.347 v/rps
 
-    if (flash.rps_per_v_cw[i] > 1 || flash.rps_per_v_cw[i] < 10) {
+    if (1 < flash.rps_per_v_cw[i] && flash.rps_per_v_cw[i] < 10) {
       motor_param[i].voltage_per_rps = 1 / flash.rps_per_v_cw[i];
     } else {
       motor_param[i].voltage_per_rps = V_PER_RPS_DEFAULT;
@@ -1107,29 +1134,6 @@ int main(void)
   HAL_Delay(1);
   p("Kv M0 %6.3f M1 %6.3f rpm/V\n", flash.rps_per_v_cw[0] * 60, flash.rps_per_v_cw[1] * 60);
 
-  if (isPushedSW1()) {
-    flash.board_id = 0;
-    writeCanBoardID(flash.board_id);
-    p("sed board id %d\n", flash.board_id);
-    HAL_Delay(1000);
-  } else if (isPushedSW2()) {
-    flash.board_id = 1;
-    writeCanBoardID(flash.board_id);
-    p("sed board id %d\n", flash.board_id);
-    HAL_Delay(1000);
-  }
-  if (isPushedSW4()) {
-    startCalibrationMode();
-    p("enc calibration mode!!\n");
-    while (isPushedSW4())
-      ;
-  } else if (isPushedSW3()) {
-    p("motor calibration mode!!\n");
-    startCalibrationMode();
-    while (isPushedSW3())
-      ;
-  }
-
   __HAL_SPI_ENABLE(&hspi1);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
@@ -1137,8 +1141,8 @@ int main(void)
   //
   HAL_Delay(1);
 
-  motor_param[0].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[0] * 1.5;
-  motor_param[1].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[1] * 1.5;
+  motor_param[0].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[0] * SPEED_REAL_LIMIT_GAIN;
+  motor_param[1].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[1] * SPEED_REAL_LIMIT_GAIN;
   p("output voltage limit : %5.2f %5.2f\n", motor_param[0].output_voltage_limit, motor_param[1].output_voltage_limit);
   HAL_Delay(1);
   p("0x00 0x01 0x02 0x03 0x04 0x05 0x06 0x09 0x0E 0x10 0x1B\n");
@@ -1201,10 +1205,10 @@ int main(void)
   HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
   uint32_t over_startup_voltage = 0;
-  p("waiting startup voltage.... : %3.1fV\n", BATTERY_UNVER_VOLTAGE + 2);
+  p("waiting startup voltage.... : %3.1fV\n", THR_BATTERY_UNVER_VOLTAGE + 2);
   while (over_startup_voltage < 500) {
     HAL_Delay(1);
-    if (getBatteryVoltage() > BATTERY_UNVER_VOLTAGE + 2.0) {
+    if (getBatteryVoltage() > THR_BATTERY_UNVER_VOLTAGE + 2.0) {
       over_startup_voltage++;
     } else {
       over_startup_voltage = 0;
@@ -1222,76 +1226,79 @@ int main(void)
     adc_raw.cs_adc_offset = 2048;
   }
 
-  /*
+  // M0 : tim1
+  // M1 : tim8
+
   HAL_TIM_PWM_Init(&htim8);
   HAL_TIM_PWM_Init(&htim1);
+  setPwmAll(TIM_PWM_CENTER);
+
+  // PWM出力をHIGH/LOW順番に1chずつONにして短絡チェック
+  int turn_on_channel = 0;
+  while (turn_on_channel < 6) {
+    switch (turn_on_channel) {
+      case 0:
+        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);  // M0 low
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);  // M1 low
+        break;
+      case 1:
+        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);  // M0 low
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);  // M1 low
+        break;
+      case 2:
+        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);  // M0 low
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);  // M1 low
+        break;
+      case 3:
+        HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);  // M1 high & low
+        HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);  // M0 high & low
+        break;
+      case 4:
+        HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);  // M1 high & low
+        HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);  // M0 high & low
+        break;
+      case 5:
+        HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);  // M1 high & low
+        HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);  // M0 high & low
+        break;
+      default:
+        break;
+    }
+
+    interrupt_timer_cnt = 0;
+    while (interrupt_timer_cnt < INTERRUPT_KHZ_1MS * 50) {
+      if (isNotZeroCurrent() || getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
+        power_enable_cnt = 500;
+        forceStopAllPwmOutputAndTimer();
+        p("Current MM0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentM0(), getCurrentM1(), turn_on_channel);
+        waitPowerOnTimeout();
+      }
+    }
+    p("ch:%2d CurrentCheck OK!! M0 %+6.3f M1 %+6.3f Battery %5.2f GD %5.2f\n", turn_on_channel, getCurrentM0(), getCurrentM1(), getBatteryVoltage(), getGateDriverDCDCVoltage());
+    turn_on_channel++;
+  }
+  // 全部ONにする
   resumePwmOutput();
 
-  while (true)
-    ;
-
   //*/
 
-  ///*
-  p("M0 Low-side FET PWM start\n");
-
-  HAL_TIM_PWM_Init(&htim8);
-  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
-
-  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
-  HAL_Delay(1);
-  if (isNotZeroCurrent()) {
-    power_enable_cnt = 500;
-    forceStopAllPwmOutputAndTimer();
-    waitPowerOnTimeout();
+  if (isPushedSW1()) {
+    flash.board_id = 0;
+    writeCanBoardID(flash.board_id);
+    p("sed board id %d\n", flash.board_id);
+    HAL_Delay(1000);
+  } else if (isPushedSW2()) {
+    flash.board_id = 1;
+    writeCanBoardID(flash.board_id);
+    p("sed board id %d\n", flash.board_id);
+    HAL_Delay(1000);
   }
-
-  p("M1 Low-side FET PWM start\n");
-
-  HAL_TIM_PWM_Init(&htim1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-
-  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
-  HAL_Delay(1);
-  if (isNotZeroCurrent()) {
-    power_enable_cnt = 500;
-    forceStopAllPwmOutputAndTimer();
-    waitPowerOnTimeout();
+  if (isPushedSW4()) {
+    startCalibrationMode();
+    p("enc calibration mode!!\n");
+    while (isPushedSW4())
+      ;
   }
-
-  p("M1 High-side FET PWM start\n");
-
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);
-
-  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
-  HAL_Delay(1);
-  if (isNotZeroCurrent()) {
-    power_enable_cnt = 500;
-    forceStopAllPwmOutputAndTimer();
-    waitPowerOnTimeout();
-  }
-
-  p("M1 High-side FET PWM start\n");
-
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
-
-  p("Current M0 %+5.1f M1 %+5.1f\n", getCurrentM0(), getCurrentM1());
-  HAL_Delay(1);
-  if (isNotZeroCurrent()) {
-    power_enable_cnt = 500;
-    forceStopAllPwmOutputAndTimer();
-    waitPowerOnTimeout();
-  }
-
-  //*/
 
   CAN_Filter_Init(flash.board_id);
 
@@ -1315,7 +1322,9 @@ int main(void)
     sendCanData();
 
     if (calib_process.enc_calib_cnt != 0) {
-      calibrationMode();
+      encoderCalibrationMode();
+    } else if (calib_process.motor_calib_cnt != 0) {
+      motorCalibrationMode();
     } else {
       runMode();
     }

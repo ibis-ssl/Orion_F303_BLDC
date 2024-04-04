@@ -37,13 +37,14 @@ extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim8;
 
 /* USER CODE BEGIN Private defines */
+#define TIM_PWM_CENTER (900)
 
 /* USER CODE END Private defines */
 
 void MX_TIM1_Init(void);
 void MX_TIM8_Init(void);
 
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef * htim);
 
 /* USER CODE BEGIN Prototypes */
 
@@ -55,8 +56,8 @@ void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltag
 void forceStopAllPwmOutputAndTimer(void);
 void setPwmOutPutFreeWheel(void);
 void resumePwmOutput(void);
-void setPwmOutPutAllZero(void);
 void stopTimerInterrupt(void);
+void setPwmAll(uint32_t pwm_cnt);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
@@ -64,4 +65,3 @@ void stopTimerInterrupt(void);
 #endif
 
 #endif /* __TIM_H__ */
-
