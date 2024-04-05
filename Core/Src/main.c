@@ -161,7 +161,7 @@ void calcMotorSpeed(int motor)
   // 異常な回転数の場合に無視
   if (abs((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 1.5 && free_wheel_cnt == 0) {
     setPwmOutPutFreeWheel();
-    // forceStopAllPwmOutputAndTimerだとtim自体も止めるのでフリー回転のみ
+    free_wheel_cnt += 10;
     enc_over_speed_cnt_error_flag = true;
     enc_over_speed_cnt_error_enc_idx = 0;
     enc_over_speed_cnt_error_enc_cnt = temp;
@@ -450,10 +450,11 @@ void runMode(void)
     } else if (isPushedSW2()) {
       cmd[i].speed = -10.0;
     } else if (isPushedSW3()) {
-      //
       cmd[i].speed = -20.0;
+      //resumePwmOutput();
     } else if (isPushedSW4()) {
       cmd[i].speed = -40.0;
+      //setPwmOutPutFreeWheel();
     }
 
     speedToOutputVoltage(i);
@@ -510,7 +511,7 @@ void runMode(void)
       p("LoadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
-      p("TO %4d %4d diff max M0 %+6d, M1 %+6d ", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max);
+      p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_over_speed_cnt_error_flag);
       // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
@@ -957,7 +958,7 @@ void protect(void)
     waitPowerOnTimeout();
   }  //*/
 
-  if (enc_over_speed_cnt_error_flag) {
+  /* if (enc_over_speed_cnt_error_flag) {
     forceStopAllPwmOutputAndTimer();
     p("encoder error!!! ENC M%d diff %5d", enc_over_speed_cnt_error_enc_idx, enc_over_speed_cnt_error_enc_cnt);
     setLedBlue(true);
@@ -968,6 +969,7 @@ void protect(void)
     error_value = motor_real[enc_over_speed_cnt_error_enc_idx].diff_cnt_max;
     waitPowerOnTimeout();
   }
+  */
 
   if (getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
     forceStopAllPwmOutputAndTimer();
@@ -1277,8 +1279,6 @@ int main(void)
     p("ch:%2d CurrentCheck OK!! M0 %+6.3f M1 %+6.3f Battery %5.2f GD %5.2f\n", turn_on_channel, getCurrentM0(), getCurrentM1(), getBatteryVoltage(), getGateDriverDCDCVoltage());
     turn_on_channel++;
   }
-  // 全部ONにする
-  resumePwmOutput();
 
   //*/
 

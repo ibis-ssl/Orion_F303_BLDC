@@ -23,6 +23,7 @@
 /* USER CODE BEGIN 0 */
 #include <math.h>
 
+#include "stm32f3xx_hal_tim_ex.h"
 /* USER CODE END 0 */
 
 TIM_HandleTypeDef htim1;
@@ -355,8 +356,7 @@ void setPwmAll(uint32_t pwm_cnt)
 
 void forceStopAllPwmOutputAndTimer(void)
 {
-  HAL_TIM_Base_Stop_IT(&htim1);
-  HAL_TIM_Base_Stop_IT(&htim8);
+  setPwmAll(TIM_PWM_CENTER);
 
   HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
@@ -374,48 +374,62 @@ void forceStopAllPwmOutputAndTimer(void)
   HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
   HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
 
-  setPwmAll(TIM_PWM_CENTER);
+  HAL_TIM_Base_Stop_IT(&htim1);
+  HAL_TIM_Base_Stop_IT(&htim8);
 
   __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim8);
   __HAL_TIM_MOE_DISABLE_UNCONDITIONALLY(&htim1);
 }
 
+static void TIM_CCxNChannelCmd(TIM_TypeDef * TIMx, uint32_t Channel, uint32_t ChannelNState)
+{
+  uint32_t tmp;
+
+  tmp = TIM_CCER_CC1NE << (Channel & 0x1FU); /* 0x1FU = 31 bits max shift */
+
+  /* Reset the CCxNE Bit */
+  TIMx->CCER &= ~tmp;
+
+  /* Set or reset the CCxNE Bit */
+  TIMx->CCER |= (uint32_t)(ChannelNState << (Channel & 0x1FU)); /* 0x1FU = 31 bits max shift */
+}
+
 void setPwmOutPutFreeWheel(void)
 {
-  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_3);
+  TIM_CCxChannelCmd(htim1.Instance, TIM_CHANNEL_1, TIM_CCx_DISABLE);
+  TIM_CCxChannelCmd(htim1.Instance, TIM_CHANNEL_2, TIM_CCx_DISABLE);
+  TIM_CCxChannelCmd(htim1.Instance, TIM_CHANNEL_3, TIM_CCx_DISABLE);
 
-  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Stop(&htim8, TIM_CHANNEL_3);
+  TIM_CCxChannelCmd(htim8.Instance, TIM_CHANNEL_1, TIM_CCx_DISABLE);
+  TIM_CCxChannelCmd(htim8.Instance, TIM_CHANNEL_2, TIM_CCx_DISABLE);
+  TIM_CCxChannelCmd(htim8.Instance, TIM_CHANNEL_3, TIM_CCx_DISABLE);
 
-  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Stop(&htim1, TIM_CHANNEL_3);
+  TIM_CCxNChannelCmd(htim1.Instance, TIM_CHANNEL_1, TIM_CCxN_DISABLE);
+  TIM_CCxNChannelCmd(htim1.Instance, TIM_CHANNEL_2, TIM_CCxN_DISABLE);
+  TIM_CCxNChannelCmd(htim1.Instance, TIM_CHANNEL_3, TIM_CCxN_DISABLE);
 
-  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Stop(&htim8, TIM_CHANNEL_3);
+  TIM_CCxNChannelCmd(htim8.Instance, TIM_CHANNEL_1, TIM_CCxN_DISABLE);
+  TIM_CCxNChannelCmd(htim8.Instance, TIM_CHANNEL_2, TIM_CCxN_DISABLE);
+  TIM_CCxNChannelCmd(htim8.Instance, TIM_CHANNEL_3, TIM_CCxN_DISABLE);
 }
 
 void resumePwmOutput(void)
 {
-  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);
+  TIM_CCxChannelCmd(htim1.Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
+  TIM_CCxChannelCmd(htim1.Instance, TIM_CHANNEL_2, TIM_CCx_ENABLE);
+  TIM_CCxChannelCmd(htim1.Instance, TIM_CHANNEL_3, TIM_CCx_ENABLE);
 
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  TIM_CCxChannelCmd(htim8.Instance, TIM_CHANNEL_1, TIM_CCx_ENABLE);
+  TIM_CCxChannelCmd(htim8.Instance, TIM_CHANNEL_2, TIM_CCx_ENABLE);
+  TIM_CCxChannelCmd(htim8.Instance, TIM_CHANNEL_3, TIM_CCx_ENABLE);
 
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);
+  TIM_CCxNChannelCmd(htim1.Instance, TIM_CHANNEL_1, TIM_CCxN_ENABLE);
+  TIM_CCxNChannelCmd(htim1.Instance, TIM_CHANNEL_2, TIM_CCxN_ENABLE);
+  TIM_CCxNChannelCmd(htim1.Instance, TIM_CHANNEL_3, TIM_CCxN_ENABLE);
 
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);
-  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);
+  TIM_CCxNChannelCmd(htim8.Instance, TIM_CHANNEL_1, TIM_CCxN_ENABLE);
+  TIM_CCxNChannelCmd(htim8.Instance, TIM_CHANNEL_2, TIM_CCxN_ENABLE);
+  TIM_CCxNChannelCmd(htim8.Instance, TIM_CHANNEL_3, TIM_CCxN_ENABLE);
 }
 
 void stopTimerInterrupt(void)
