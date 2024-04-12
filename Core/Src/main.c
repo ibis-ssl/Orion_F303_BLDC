@@ -483,7 +483,7 @@ void runMode(void)
   switch (print_cnt) {
     case 1:
       // p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
-      p("CS %+5.2f %+5.2f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+      p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
     case 2:
@@ -1270,9 +1270,9 @@ int main(void)
     interrupt_timer_cnt = 0;
     while (interrupt_timer_cnt < INTERRUPT_KHZ_1MS * 50) {
       if (isNotZeroCurrent() || getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
-        power_enable_cnt = 500;
         forceStopAllPwmOutputAndTimer();
-        p("Current MM0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentM0(), getCurrentM1(), turn_on_channel);
+        p("fail check!! Current M0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentM0(), getCurrentM1(), turn_on_channel);
+        power_enable_cnt = 500;
         waitPowerOnTimeout();
       }
     }
