@@ -120,7 +120,7 @@ float error_value;
 
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
-#define THR_BATTERY_UNVER_VOLTAGE (20.0)
+#define THR_BATTERY_UNVER_VOLTAGE (18.0)
 #define THR_BATTERY_OVER_VOLTAGE (35.0)
 #define THR_MOTOR_OVER_TEMPERATURE (70)  // 80 -> 70 deg (実機テストによる)
 
