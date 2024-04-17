@@ -33,7 +33,6 @@ ADC_HandleTypeDef hadc3;
 /* ADC1 init function */
 void MX_ADC1_Init(void)
 {
-
   /* USER CODE BEGIN ADC1_Init 0 */
 
   /* USER CODE END ADC1_Init 0 */
@@ -62,16 +61,14 @@ void MX_ADC1_Init(void)
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
+  if (HAL_ADC_Init(&hadc1) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure the ADC multi-mode
   */
   multimode.Mode = ADC_MODE_INDEPENDENT;
-  if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK)
-  {
+  if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK) {
     Error_Handler();
   }
 
@@ -83,8 +80,7 @@ void MX_ADC1_Init(void)
   sConfig.SamplingTime = ADC_SAMPLETIME_61CYCLES_5;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK) {
     Error_Handler();
   }
 
@@ -102,8 +98,7 @@ void MX_ADC1_Init(void)
   sConfigInjected.QueueInjectedContext = DISABLE;
   sConfigInjected.InjectedOffset = 0;
   sConfigInjected.InjectedOffsetNumber = ADC_OFFSET_NONE;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
 
@@ -111,8 +106,7 @@ void MX_ADC1_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_4;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_2;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
 
@@ -120,8 +114,7 @@ void MX_ADC1_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_5;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_3;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
 
@@ -129,19 +122,16 @@ void MX_ADC1_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_2;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_4;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
-
 }
 /* ADC2 init function */
 void MX_ADC2_Init(void)
 {
-
   /* USER CODE BEGIN ADC2_Init 0 */
 
   /* USER CODE END ADC2_Init 0 */
@@ -169,8 +159,7 @@ void MX_ADC2_Init(void)
   hadc2.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc2.Init.LowPowerAutoWait = DISABLE;
   hadc2.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-  if (HAL_ADC_Init(&hadc2) != HAL_OK)
-  {
+  if (HAL_ADC_Init(&hadc2) != HAL_OK) {
     Error_Handler();
   }
 
@@ -182,8 +171,7 @@ void MX_ADC2_Init(void)
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
-  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
-  {
+  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK) {
     Error_Handler();
   }
 
@@ -201,8 +189,7 @@ void MX_ADC2_Init(void)
   sConfigInjected.QueueInjectedContext = DISABLE;
   sConfigInjected.InjectedOffset = 0;
   sConfigInjected.InjectedOffsetNumber = ADC_OFFSET_NONE;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
 
@@ -210,8 +197,7 @@ void MX_ADC2_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_2;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_2;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
 
@@ -219,19 +205,16 @@ void MX_ADC2_Init(void)
   */
   sConfigInjected.InjectedChannel = ADC_CHANNEL_3;
   sConfigInjected.InjectedRank = ADC_INJECTED_RANK_3;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc2, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN ADC2_Init 2 */
 
   /* USER CODE END ADC2_Init 2 */
-
 }
 /* ADC3 init function */
 void MX_ADC3_Init(void)
 {
-
   /* USER CODE BEGIN ADC3_Init 0 */
 
   /* USER CODE END ADC3_Init 0 */
@@ -260,16 +243,14 @@ void MX_ADC3_Init(void)
   hadc3.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc3.Init.LowPowerAutoWait = DISABLE;
   hadc3.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-  if (HAL_ADC_Init(&hadc3) != HAL_OK)
-  {
+  if (HAL_ADC_Init(&hadc3) != HAL_OK) {
     Error_Handler();
   }
 
   /** Configure the ADC multi-mode
   */
   multimode.Mode = ADC_MODE_INDEPENDENT;
-  if (HAL_ADCEx_MultiModeConfigChannel(&hadc3, &multimode) != HAL_OK)
-  {
+  if (HAL_ADCEx_MultiModeConfigChannel(&hadc3, &multimode) != HAL_OK) {
     Error_Handler();
   }
 
@@ -281,8 +262,7 @@ void MX_ADC3_Init(void)
   sConfig.SamplingTime = ADC_SAMPLETIME_61CYCLES_5;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
-  if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK)
-  {
+  if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK) {
     Error_Handler();
   }
 
@@ -300,30 +280,26 @@ void MX_ADC3_Init(void)
   sConfigInjected.QueueInjectedContext = DISABLE;
   sConfigInjected.InjectedOffset = 0;
   sConfigInjected.InjectedOffsetNumber = ADC_OFFSET_NONE;
-  if (HAL_ADCEx_InjectedConfigChannel(&hadc3, &sConfigInjected) != HAL_OK)
-  {
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc3, &sConfigInjected) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN ADC3_Init 2 */
 
   /* USER CODE END ADC3_Init 2 */
-
 }
 
-static uint32_t HAL_RCC_ADC12_CLK_ENABLED=0;
+static uint32_t HAL_RCC_ADC12_CLK_ENABLED = 0;
 
-void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
+void HAL_ADC_MspInit(ADC_HandleTypeDef * adcHandle)
 {
-
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(adcHandle->Instance==ADC1)
-  {
-  /* USER CODE BEGIN ADC1_MspInit 0 */
+  if (adcHandle->Instance == ADC1) {
+    /* USER CODE BEGIN ADC1_MspInit 0 */
 
-  /* USER CODE END ADC1_MspInit 0 */
+    /* USER CODE END ADC1_MspInit 0 */
     /* ADC1 clock enable */
     HAL_RCC_ADC12_CLK_ENABLED++;
-    if(HAL_RCC_ADC12_CLK_ENABLED==1){
+    if (HAL_RCC_ADC12_CLK_ENABLED == 1) {
       __HAL_RCC_ADC12_CLK_ENABLE();
     }
 
@@ -335,7 +311,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     PA3     ------> ADC1_IN4
     PF4     ------> ADC1_IN5
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_3;
+    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_3;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -345,18 +321,16 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
 
-  /* USER CODE BEGIN ADC1_MspInit 1 */
+    /* USER CODE BEGIN ADC1_MspInit 1 */
 
-  /* USER CODE END ADC1_MspInit 1 */
-  }
-  else if(adcHandle->Instance==ADC2)
-  {
-  /* USER CODE BEGIN ADC2_MspInit 0 */
+    /* USER CODE END ADC1_MspInit 1 */
+  } else if (adcHandle->Instance == ADC2) {
+    /* USER CODE BEGIN ADC2_MspInit 0 */
 
-  /* USER CODE END ADC2_MspInit 0 */
+    /* USER CODE END ADC2_MspInit 0 */
     /* ADC2 clock enable */
     HAL_RCC_ADC12_CLK_ENABLED++;
-    if(HAL_RCC_ADC12_CLK_ENABLED==1){
+    if (HAL_RCC_ADC12_CLK_ENABLED == 1) {
       __HAL_RCC_ADC12_CLK_ENABLE();
     }
 
@@ -366,20 +340,18 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     PA5     ------> ADC2_IN2
     PA6     ------> ADC2_IN3
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6;
+    GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /* USER CODE BEGIN ADC2_MspInit 1 */
+    /* USER CODE BEGIN ADC2_MspInit 1 */
 
-  /* USER CODE END ADC2_MspInit 1 */
-  }
-  else if(adcHandle->Instance==ADC3)
-  {
-  /* USER CODE BEGIN ADC3_MspInit 0 */
+    /* USER CODE END ADC2_MspInit 1 */
+  } else if (adcHandle->Instance == ADC3) {
+    /* USER CODE BEGIN ADC3_MspInit 0 */
 
-  /* USER CODE END ADC3_MspInit 0 */
+    /* USER CODE END ADC3_MspInit 0 */
     /* ADC3 clock enable */
     __HAL_RCC_ADC34_CLK_ENABLE();
 
@@ -392,23 +364,21 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* adcHandle)
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /* USER CODE BEGIN ADC3_MspInit 1 */
+    /* USER CODE BEGIN ADC3_MspInit 1 */
 
-  /* USER CODE END ADC3_MspInit 1 */
+    /* USER CODE END ADC3_MspInit 1 */
   }
 }
 
-void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
+void HAL_ADC_MspDeInit(ADC_HandleTypeDef * adcHandle)
 {
+  if (adcHandle->Instance == ADC1) {
+    /* USER CODE BEGIN ADC1_MspDeInit 0 */
 
-  if(adcHandle->Instance==ADC1)
-  {
-  /* USER CODE BEGIN ADC1_MspDeInit 0 */
-
-  /* USER CODE END ADC1_MspDeInit 0 */
+    /* USER CODE END ADC1_MspDeInit 0 */
     /* Peripheral clock disable */
     HAL_RCC_ADC12_CLK_ENABLED--;
-    if(HAL_RCC_ADC12_CLK_ENABLED==0){
+    if (HAL_RCC_ADC12_CLK_ENABLED == 0) {
       __HAL_RCC_ADC12_CLK_DISABLE();
     }
 
@@ -418,22 +388,20 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     PA3     ------> ADC1_IN4
     PF4     ------> ADC1_IN5
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_3);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_3);
 
     HAL_GPIO_DeInit(GPIOF, GPIO_PIN_4);
 
-  /* USER CODE BEGIN ADC1_MspDeInit 1 */
+    /* USER CODE BEGIN ADC1_MspDeInit 1 */
 
-  /* USER CODE END ADC1_MspDeInit 1 */
-  }
-  else if(adcHandle->Instance==ADC2)
-  {
-  /* USER CODE BEGIN ADC2_MspDeInit 0 */
+    /* USER CODE END ADC1_MspDeInit 1 */
+  } else if (adcHandle->Instance == ADC2) {
+    /* USER CODE BEGIN ADC2_MspDeInit 0 */
 
-  /* USER CODE END ADC2_MspDeInit 0 */
+    /* USER CODE END ADC2_MspDeInit 0 */
     /* Peripheral clock disable */
     HAL_RCC_ADC12_CLK_ENABLED--;
-    if(HAL_RCC_ADC12_CLK_ENABLED==0){
+    if (HAL_RCC_ADC12_CLK_ENABLED == 0) {
       __HAL_RCC_ADC12_CLK_DISABLE();
     }
 
@@ -442,17 +410,15 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     PA5     ------> ADC2_IN2
     PA6     ------> ADC2_IN3
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6);
 
-  /* USER CODE BEGIN ADC2_MspDeInit 1 */
+    /* USER CODE BEGIN ADC2_MspDeInit 1 */
 
-  /* USER CODE END ADC2_MspDeInit 1 */
-  }
-  else if(adcHandle->Instance==ADC3)
-  {
-  /* USER CODE BEGIN ADC3_MspDeInit 0 */
+    /* USER CODE END ADC2_MspDeInit 1 */
+  } else if (adcHandle->Instance == ADC3) {
+    /* USER CODE BEGIN ADC3_MspDeInit 0 */
 
-  /* USER CODE END ADC3_MspDeInit 0 */
+    /* USER CODE END ADC3_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_ADC34_CLK_DISABLE();
 
@@ -461,50 +427,56 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* adcHandle)
     */
     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_13);
 
-  /* USER CODE BEGIN ADC3_MspDeInit 1 */
+    /* USER CODE BEGIN ADC3_MspDeInit 1 */
 
-  /* USER CODE END ADC3_MspDeInit 1 */
+    /* USER CODE END ADC3_MspDeInit 1 */
   }
 }
 
 /* USER CODE BEGIN 1 */
 
 inline float getBatteryVoltage(void) { return adc_raw.batt_v * 3.3 * 11 / 4096; }
-// 50V/V * 5m = 250mV/A
-inline float getCurrentM0(void) { return (adc_raw.cs_m0 - adc_raw.cs_adc_offset) * 3.3 / 4096 * 4; }
-inline float getCurrentM1(void) { return (adc_raw.cs_m1 - adc_raw.cs_adc_offset) * 3.3 / 4096 * 4; }
-
-inline int getTempFET0(void) { return (-((float)adc_raw.temp_fet0 * 3.3 / 4096) + 1.5) * 70 + 25; }
-inline int getTempFET1(void) { return (-((float)adc_raw.temp_fet1 * 3.3 / 4096) + 1.5) * 70 + 25; }
-int getTempM1(void) { return (-((float)adc_raw.temp_m0 * 3.3 / 4096) + 1.5) * 70 + 25; }
-int getTempM0(void) { return (-((float)adc_raw.temp_m1 * 3.3 / 4096) + 1.5) * 70 + 25; }
 
 inline float getGateDriverDCDCVoltage(void) { return (adc_raw.gd_dcdc_v) * 3.3 * 11 / 4096; }
 
 // timer割り込みの中で更新する
-inline void updateADC_M0(void)
+inline void updateADC_M1(void)
 {
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-  adc_raw.cs_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
-  adc_raw.temp_m0 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
-  adc_raw.temp_m1 = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
+  adc_raw.cs_motor[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+  adc_raw.temp_motor[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
+  adc_raw.temp_motor[1] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
   adc_raw.gd_dcdc_v = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_4);
   HAL_ADCEx_InjectedStart(&hadc1);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
-inline void updateADC_M1(void)
+inline void updateADC_M0(void)
 {
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   adc_raw.batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
-  adc_raw.cs_m1 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
-  adc_raw.temp_fet0 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
-  adc_raw.temp_fet1 = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_3);
+  adc_raw.cs_motor[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+  adc_raw.temp_fet[0] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
+  adc_raw.temp_fet[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_3);
   HAL_ADCEx_InjectedStart(&hadc2);
   HAL_ADCEx_InjectedStart(&hadc3);
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
-bool isNotZeroCurrent() { return getCurrentM0() > 0.5 || getCurrentM1() > 0.5; }
+bool isNotZeroCurrent() { return getCurrentMotor(0) > 0.5 || getCurrentMotor(0) > 0.5; }
+// 50V/V * 5m = 250mV/A
+
+inline float getCurrentMotor(bool motor) { return (adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * 3.3 / 4096 * 4; }
+inline int getTempFET(bool motor) { return (-((float)adc_raw.temp_fet[motor] * 3.3 / 4096) + 1.5) * 70 + 25; }
+inline int getTempMotor(bool motor) { return (-((float)adc_raw.temp_motor[motor] * 3.3 / 4096) + 1.5) * 70 + 25; }
+
+inline void updateADC(bool motor)
+{
+  if (motor == 0) {
+    updateADC_M0();
+  } else {
+    updateADC_M1();
+  }
+}
 
 /* USER CODE END 1 */

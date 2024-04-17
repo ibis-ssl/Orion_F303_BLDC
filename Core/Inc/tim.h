@@ -29,6 +29,7 @@ extern "C" {
 #include "main.h"
 
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
 
 /* USER CODE END Includes */
 
@@ -51,13 +52,13 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef * htim);
 void initFirstSin(void);
 float fast_sin(float rad);
 
-void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
-void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
 void forceStopAllPwmOutputAndTimer(void);
 void setPwmOutPutFreeWheel(void);
 void resumePwmOutput(void);
 void stopTimerInterrupt(void);
 void setPwmAll(uint32_t pwm_cnt);
+void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

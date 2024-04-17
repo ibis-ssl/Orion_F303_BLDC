@@ -31,7 +31,6 @@ SPI_HandleTypeDef hspi1;
 /* SPI1 init function */
 void MX_SPI1_Init(void)
 {
-
   /* USER CODE BEGIN SPI1_Init 0 */
 
   /* USER CODE END SPI1_Init 0 */
@@ -53,25 +52,21 @@ void MX_SPI1_Init(void)
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
   hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
+  if (HAL_SPI_Init(&hspi1) != HAL_OK) {
     Error_Handler();
   }
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
-
 }
 
-void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
+void HAL_SPI_MspInit(SPI_HandleTypeDef * spiHandle)
 {
-
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(spiHandle->Instance==SPI1)
-  {
-  /* USER CODE BEGIN SPI1_MspInit 0 */
+  if (spiHandle->Instance == SPI1) {
+    /* USER CODE BEGIN SPI1_MspInit 0 */
 
-  /* USER CODE END SPI1_MspInit 0 */
+    /* USER CODE END SPI1_MspInit 0 */
     /* SPI1 clock enable */
     __HAL_RCC_SPI1_CLK_ENABLE();
 
@@ -81,7 +76,7 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
     PB4     ------> SPI1_MISO
     PB5     ------> SPI1_MOSI
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_5;
+    GPIO_InitStruct.Pin = GPIO_PIN_3 | GPIO_PIN_5;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
@@ -95,20 +90,18 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
     GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /* USER CODE BEGIN SPI1_MspInit 1 */
+    /* USER CODE BEGIN SPI1_MspInit 1 */
 
-  /* USER CODE END SPI1_MspInit 1 */
+    /* USER CODE END SPI1_MspInit 1 */
   }
 }
 
-void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
+void HAL_SPI_MspDeInit(SPI_HandleTypeDef * spiHandle)
 {
+  if (spiHandle->Instance == SPI1) {
+    /* USER CODE BEGIN SPI1_MspDeInit 0 */
 
-  if(spiHandle->Instance==SPI1)
-  {
-  /* USER CODE BEGIN SPI1_MspDeInit 0 */
-
-  /* USER CODE END SPI1_MspDeInit 0 */
+    /* USER CODE END SPI1_MspDeInit 0 */
     /* Peripheral clock disable */
     __HAL_RCC_SPI1_CLK_DISABLE();
 
@@ -117,11 +110,11 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
     PB4     ------> SPI1_MISO
     PB5     ------> SPI1_MOSI
     */
-    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5);
+    HAL_GPIO_DeInit(GPIOB, GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_5);
 
-  /* USER CODE BEGIN SPI1_MspDeInit 1 */
+    /* USER CODE BEGIN SPI1_MspDeInit 1 */
 
-  /* USER CODE END SPI1_MspDeInit 1 */
+    /* USER CODE END SPI1_MspDeInit 1 */
   }
 }
 
@@ -130,28 +123,22 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* spiHandle)
 #define HARF_OF_ENC_CNT_MAX (32768)
 #define ENC_CNT_MAX (65536)
 
-inline void updateDiff(int8_t enc)
+inline void updateDiff(bool enc)
 {
-
   int temp = ma702[enc].pre_enc_raw - ma702[enc].enc_raw;
-  if (temp < -HARF_OF_ENC_CNT_MAX)
-  {
+  if (temp < -HARF_OF_ENC_CNT_MAX) {
     temp += ENC_CNT_MAX;
-  }
-  else if (temp > HARF_OF_ENC_CNT_MAX)
-  {
+  } else if (temp > HARF_OF_ENC_CNT_MAX) {
     temp -= ENC_CNT_MAX;
   }
 
   ma702[enc].diff_enc = temp;
 
-  if (abs(ma702[enc].diff_max) < abs(temp))
-  {
+  if (abs(ma702[enc].diff_max) < abs(temp)) {
     ma702[enc].diff_max = temp;
     ma702[enc].diff_max_cnt = ma702[enc].enc_raw;
   }
-  if (abs(ma702[enc].diff_min) > abs(temp))
-  {
+  if (abs(ma702[enc].diff_min) > abs(temp)) {
     ma702[enc].diff_min = temp;
     ma702[enc].diff_min_cnt = ma702[enc].enc_raw;
   }
@@ -159,82 +146,61 @@ inline void updateDiff(int8_t enc)
 
 volatile static uint32_t delay_cnt = 0;
 
-uint8_t readRegisterMA702(uint8_t enc, uint8_t address)
+uint8_t readRegisterMA702(bool enc, uint8_t address)
 {
-  if (enc == 0)
-  {
+  if (enc == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  }
-  else
-  {
+  } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
   }
 
   hspi1.Instance->DR = 0x4000 | ((address & 0x1F) << 8);
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-  {
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
-  if (enc == 0)
-  {
+  if (enc == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 
-    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++)
-    {
+    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++) {
     }
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  }
-  else
-  {
+  } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 
-    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++)
-    {
+    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++) {
     }
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
   }
   uint16_t temp = hspi1.Instance->DR;
 
   hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-  {
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
 
-  if (enc == 0)
-  {
+  if (enc == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-  }
-  else
-  {
+  } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   }
 
   return hspi1.Instance->DR >> 8;
 }
 
-uint8_t writeRegisterMA702(uint8_t enc, uint8_t address, uint8_t value)
+uint8_t writeRegisterMA702(bool enc, uint8_t address, uint8_t value)
 {
-
-  if (enc == 0)
-  {
+  if (enc == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  }
-  else
-  {
+  } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
   }
 
   hspi1.Instance->DR = 0x8000 | ((address & 0x1F) << 8) | value;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-  {
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
-  if (enc == 0)
-  {
+  if (enc == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
     HAL_Delay(20);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  }
-  else
-  {
+  } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
     HAL_Delay(20);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
@@ -242,23 +208,19 @@ uint8_t writeRegisterMA702(uint8_t enc, uint8_t address, uint8_t value)
   uint16_t temp = hspi1.Instance->DR;
 
   hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-  {
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
 
-  if (enc == 0)
-  {
+  if (enc == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-  }
-  else
-  {
+  } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   }
 
   return hspi1.Instance->DR >> 8;
 }
 
-inline void updateMA702_M0(void)
+inline void updateMA702_M1(void)
 {
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
@@ -266,8 +228,7 @@ inline void updateMA702_M0(void)
 
   ma702[1].enc_raw = hspi1.Instance->DR;
   hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-  {
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
   ma702[1].enc_raw = hspi1.Instance->DR & 0xFFFC;
 
@@ -277,7 +238,7 @@ inline void updateMA702_M0(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
 }
 
-inline void updateMA702_M1(void)
+inline void updateMA702_M0(void)
 {
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
@@ -285,8 +246,7 @@ inline void updateMA702_M1(void)
 
   ma702[0].enc_raw = hspi1.Instance->DR;
   hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET)
-  {
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
   ma702[0].enc_raw = hspi1.Instance->DR & 0xFFFC;
 
@@ -297,16 +257,16 @@ inline void updateMA702_M1(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 }
 
-inline float getElecRadianMA702(int motor)
+inline void updateMA702(bool motor)
 {
-  return ma702[motor].output_radian;
+  if (motor == 0) {
+    updateMA702_M0();
+  } else {
+    updateMA702_M1();
+  }
 }
-inline int getRawMA702(int motor)
-{
-  return ma702[motor].enc_raw;
-}
-inline int getPreRawMA702(int motor)
-{
-  return ma702[motor].enc_raw - ma702[motor].pre_enc_raw;
-}
+
+inline float getElecRadianMA702(bool motor) { return ma702[motor].output_radian; }
+inline int getRawMA702(bool motor) { return ma702[motor].enc_raw; }
+inline int getPreRawMA702(bool motor) { return ma702[motor].enc_raw - ma702[motor].pre_enc_raw; }
 /* USER CODE END 1 */

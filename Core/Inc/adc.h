@@ -42,13 +42,10 @@ extern ADC_HandleTypeDef hadc3;
 
 typedef struct
 {
-  int cs_m0;
-  int cs_m1;
+  int cs_motor[2];
   int batt_v;
-  int temp_fet0;
-  int temp_fet1;
-  int temp_m0;
-  int temp_m1;
+  int temp_fet[2];
+  int temp_motor[2];
   int cs_adc_offset;
   int gd_dcdc_v;
 } adc_raw_t;
@@ -61,16 +58,14 @@ void MX_ADC3_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 float getBatteryVoltage(void);
-float getCurrentM0(void);
-float getCurrentM1(void);
-int getTempFET0(void);
-int getTempM1(void);
-int getTempM0(void);
-int getTempFET1(void);
-void updateADC_M0(void);
-void updateADC_M1(void);
 float getGateDriverDCDCVoltage(void);
 bool isNotZeroCurrent();
+
+float getCurrentMotor(bool motor);
+int getTempFET(bool motor);
+int getTempMotor(bool motor);
+void updateADC(bool motor);
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
@@ -78,4 +73,3 @@ bool isNotZeroCurrent();
 #endif
 
 #endif /* __ADC_H__ */
-

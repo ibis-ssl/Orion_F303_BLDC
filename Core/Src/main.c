@@ -120,6 +120,7 @@ float error_value;
 
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
+#define THR_MOTOR_OVER_CURRENT (6.5)
 #define THR_BATTERY_UNVER_VOLTAGE (18.0)
 #define THR_BATTERY_OVER_VOLTAGE (35.0)
 #define THR_MOTOR_OVER_TEMPERATURE (70)  // 80 -> 70 deg (実機テストによる)
@@ -145,7 +146,7 @@ volatile bool enc_over_speed_cnt_error_flag = false;
 volatile int enc_over_speed_cnt_error_enc_idx = 0;
 volatile int enc_over_speed_cnt_error_enc_cnt = 0;
 
-void calcMotorSpeed(int motor)
+void calcMotorSpeed(bool motor)
 {
   int temp = motor_real[motor].pre_enc_cnt_raw - ma702[motor].enc_raw;
   if (temp < -HARF_OF_ENC_CNT_MAX) {
@@ -174,7 +175,7 @@ void calcMotorSpeed(int motor)
   motor_real[motor].pre_enc_cnt_raw = ma702[motor].enc_raw;
 }
 
-void checkAngleCalibMode(int motor)
+void checkAngleCalibMode(bool motor)
 {
   calib[motor].xy_field.radian_ave_x += cos(ma702[motor].output_radian);
   calib[motor].xy_field.radian_ave_y += sin(ma702[motor].output_radian);
@@ -202,48 +203,30 @@ void checkAngleCalibMode(int motor)
   calib[motor].pre_raw = ma702[motor].enc_raw;
 }
 
-inline void calibrationProcess(int motor)
+inline void calibrationProcess_itr(bool motor)
 {
   manual_offset_radian += calib_force_rotation_speed;
 
+  // 出力電気角度 = 0 のときに、エンコーダー角度を計測
   if (manual_offset_radian > M_PI * 2) {
     manual_offset_radian -= M_PI * 2;
-    checkAngleCalibMode(motor);
+    checkAngleCalibMode(!motor);
   }
   if (manual_offset_radian < 0) {
     manual_offset_radian += M_PI * 2;
-    checkAngleCalibMode(motor);
+    checkAngleCalibMode(!motor);
   }
-  if (motor) {
-    updateADC_M0();
 
-    updateMA702_M0();
-    setOutputRadianM0(manual_offset_radian, cmd[0].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
-  } else {
-    updateADC_M1();
-
-    updateMA702_M1();
-
-    setOutputRadianM1(manual_offset_radian, cmd[1].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
-  }
+  updateADC(motor);
+  updateMA702(motor);
+  setOutputRadianMotor(motor, manual_offset_radian, cmd[motor].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
 }
 
-inline void motorProcess(int motor)
+inline void motorProcess_itr(bool motor)
 {
-  if (motor) {
-    updateADC_M0();
-
-    updateMA702_M0();
-
-    // ->5us
-    setOutputRadianM0(ma702[0].output_radian + enc_offset[0].final, cmd[0].out_v_final, getBatteryVoltage(), motor_param[0].output_voltage_limit);
-  } else {
-    updateADC_M1();
-
-    updateMA702_M1();
-
-    setOutputRadianM1(ma702[1].output_radian + enc_offset[1].final, cmd[1].out_v_final, getBatteryVoltage(), motor_param[1].output_voltage_limit);
-  }
+  updateADC(motor);
+  updateMA702(motor);
+  setOutputRadianMotor(motor, ma702[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
 }
 
 // 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
@@ -259,9 +242,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   motor_select_toggle = !motor_select_toggle;
   setLedBlue(false);
   if (calib_process.enc_calib_cnt != 0) {
-    calibrationProcess(motor_select_toggle);
+    calibrationProcess_itr(motor_select_toggle);
   } else {
-    motorProcess(motor_select_toggle);
+    motorProcess_itr(motor_select_toggle);
   }
 
   setLedBlue(true);
@@ -370,6 +353,7 @@ typedef struct
   float pre_real_rps;
   float diff_voltage_limit;
   int load_limit_cnt;
+  bool output_voltage_limitting;
 } motor_pid_control_t;
 motor_pid_control_t pid[2];
 
@@ -398,19 +382,18 @@ void speedToOutputVoltage(int motor)
   float output_voltage_diff = cmd[motor].out_v - pid[motor].eff_voltage;
   if (output_voltage_diff > +pid[motor].diff_voltage_limit) {
     cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
+    pid[motor].output_voltage_limitting = true;
+
   } else if (output_voltage_diff < -pid[motor].diff_voltage_limit) {
     cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
+    pid[motor].output_voltage_limitting = true;
+
+  } else {
+    pid[motor].output_voltage_limitting = false;
   }
 
-  // 過負荷カウント
-  if (output_voltage_diff > +pid[motor].error_integral_limit) {
-    if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
-      pid[motor].load_limit_cnt++;
-    }
-  } else if (output_voltage_diff < -pid[motor].error_integral_limit) {
-    if (fabs(motor_real[motor].rps) < fabs(cmd[motor].speed)) {
-      pid[motor].load_limit_cnt++;
-    }
+  if (pid[motor].output_voltage_limitting) {
+    pid[motor].load_limit_cnt++;
   } else if (pid[motor].load_limit_cnt > 0) {
     pid[motor].load_limit_cnt--;
   }
@@ -483,7 +466,7 @@ void runMode(void)
   switch (print_cnt) {
     case 1:
       // p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
-      p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentM0(), getCurrentM1(), getBatteryVoltage());
+      p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage());
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
     case 2:
@@ -499,16 +482,16 @@ void runMode(void)
       break;
     case 5:
       // FET温度はv4.2で取得できない
-      // getTempFET0(), getTempFET1(),
-      p("T %+4d %+4d ", getTempM0(), getTempM1());
+      //p("T %+4d %+4d ", getTempMotor(0), getTempMotor(1));
       //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
+      p("Eff %+6.2f %+6.2f %d %d ", pid[0].eff_voltage, pid[1].eff_voltage, pid[0].output_voltage_limitting, pid[1].output_voltage_limitting);
       break;
     case 6:
       p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
       can_send_fail_cnt = 0;
       break;
     case 7:
-      p("LoadCnt %3.2f %3.2f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
+      p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
       p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_over_speed_cnt_error_flag);
@@ -755,8 +738,8 @@ void motorCalibrationMode(void)
         writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
 
         HAL_Delay(10);
-        p("enc data : %4.1f %4.1f\n", flash.calib[0], flash.calib[1]);
-        p("motor data : %4.1f %4.1f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
+        p("enc data : %4.2f %4.2f\n", flash.calib[0], flash.calib[1]);
+        p("motor data : %4.2f %4.2f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
 
         HAL_Delay(1000);
 
@@ -902,17 +885,17 @@ void sendCanData(void)
       sendVoltage(flash.board_id, 1, getBatteryVoltage());
       break;
     case 4:
-      sendCurrent(flash.board_id, 0, getCurrentM0());
+      sendCurrent(flash.board_id, 0, getCurrentMotor(0));
       break;
     case 6:
-      sendCurrent(flash.board_id, 1, getCurrentM1());
+      sendCurrent(flash.board_id, 1, getCurrentMotor(1));
       break;
     case 8:
       // 本当はFETとモーター温度をまとめてint x4で送ったほうがいいかもしれないが、実用上のメリットが少ないので後回し
-      sendTemperature(flash.board_id, 0, getTempM0());
+      sendTemperature(flash.board_id, 0, getTempMotor(0));
       break;
     case 10:
-      sendTemperature(flash.board_id, 1, getTempM1());
+      sendTemperature(flash.board_id, 1, getTempMotor(1));
       break;
     case 12:
       // 拡張
@@ -933,23 +916,24 @@ void sendCanData(void)
 
 void protect(void)
 {
-  if (getCurrentM0() > 6.0 || getCurrentM1() > 6.0) {
-    forceStopAllPwmOutputAndTimer();
-    p("over current!! : %+6.2f %+6.2f\n", getCurrentM0(), getCurrentM1());
-    setLedBlue(false);
-    setLedGreen(true);
-    setLedRed(true);
-    error_id = OVER_CURRENT;
-    if (getCurrentM0() > getCurrentM1()) {
-      error_info = 0;
-      error_value = getCurrentM0();
-    } else {
-      error_info = 1;
-      error_value = getCurrentM1();
-    }
-    waitPowerOnTimeout();
-  }  //*/
+  for (int i = 0; i < 2; i++) {
+    if (getCurrentMotor(i) > THR_MOTOR_OVER_CURRENT && (pid[i].load_limit_cnt == 0 || pid[i].load_limit_cnt > 100)) {  // load_limit_cntが1~100の間は無視する
+      forceStopAllPwmOutputAndTimer();
 
+      p("M%d over current!! : %+6.2f / out_v %+6.2f / %d cnt %4d\n", i, getCurrentMotor(i), cmd[i].out_v_final, pid[i].output_voltage_limitting, pid[i].load_limit_cnt);
+      setLedBlue(false);
+      setLedGreen(true);
+      setLedRed(true);
+
+      error_id = OVER_CURRENT;
+      error_info = i;
+      error_value = getCurrentMotor(i);
+      waitPowerOnTimeout();
+    }
+  }
+
+  // エンコーダー値飛んだときにエラーにする
+  // 処理的には対策を入れているが、canの受信タイミングの影響で、キッカーの影響でエラーになってしまうかもしれないので今はエラーにしない。
   /* if (enc_over_speed_cnt_error_flag) {
     forceStopAllPwmOutputAndTimer();
     p("encoder error!!! ENC M%d diff %5d", enc_over_speed_cnt_error_enc_idx, enc_over_speed_cnt_error_enc_cnt);
@@ -988,37 +972,37 @@ void protect(void)
     waitPowerOnTimeout();
   }
 
-  if (getTempM0() > THR_MOTOR_OVER_TEMPERATURE || getTempM1() > THR_MOTOR_OVER_TEMPERATURE) {
+  if (getTempMotor(0) > THR_MOTOR_OVER_TEMPERATURE || getTempMotor(1) > THR_MOTOR_OVER_TEMPERATURE) {
     forceStopAllPwmOutputAndTimer();
-    p("OVER Motor temperature!! M0 : %3d M1 : %3d", getTempM0(), getTempM1());
+    p("OVER Motor temperature!! M0 : %3d M1 : %3d", getTempMotor(0), getTempMotor(1));
     setLedBlue(true);
     setLedGreen(true);
     setLedRed(true);
 
     error_id = MOTOR_OVER_HEAT;
-    if (getTempM0() > getTempM1()) {
+    if (getTempMotor(0) > getTempMotor(1)) {
       error_info = 0;
-      error_value = (float)getTempM0();
+      error_value = (float)getTempMotor(0);
     } else {
       error_info = 1;
-      error_value = (float)getTempM1();
+      error_value = (float)getTempMotor(1);
     }
     waitPowerOnTimeout();
   }
-  /*if (getTempFET0() > THR_MOTOR_OVER_TEMPERATURE || getTempFET1() > THR_MOTOR_OVER_TEMPERATURE) {
+  /*if (getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE || getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE) {
     forceStopAllPwmOutputAndTimer();
-    p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET0(), getTempFET1());
+    p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET(0), getTempFET(1));
     setLedBlue(true);
     setLedGreen(true);
     setLedRed(true);
 
     error_id = MOTOR_OVER_HEAT;
-    if (getTempFET0() > getTempFET1()) {
+    if (getTempFET(0) > getTempFET(1)) {
       error_info = 0;
-      error_value = (float)getTempFET0();
+      error_value = (float)getTempFET(0);
     } else {
       error_info = 1;
-      error_value = (float)getTempFET1();
+      error_value = (float)getTempFET(1);
     }
     waitPowerOnTimeout();
   }*/
@@ -1097,7 +1081,7 @@ int main(void)
     pid[i].pid_ki = 0.3;
     pid[i].pid_kd = 0.0;
     pid[i].error_integral_limit = 4.0;
-    pid[i].diff_voltage_limit = 5.0;  // 2.0 -> 4.0 -> 6.0
+    pid[i].diff_voltage_limit = 6.0;  // 2.0 -> 4.0 -> 6.0
 
     cmd[i].speed = 0;
     cmd[i].timeout_cnt = -1;
@@ -1209,8 +1193,8 @@ int main(void)
     }
   }
 
-  p("ADC : %5d %5d GD %4.2f Batt %4.2f\n", adc_raw.cs_m0, adc_raw.cs_m1, getGateDriverDCDCVoltage(), getBatteryVoltage());
-  if (adc_raw.cs_m0 < 100 && adc_raw.cs_m1 < 100) {
+  p("ADC : %5d %5d GD %4.2f Batt %4.2f\n", adc_raw.cs_motor[0], adc_raw.cs_motor[1], getGateDriverDCDCVoltage(), getBatteryVoltage());
+  if (adc_raw.cs_motor[0] < 100 && adc_raw.cs_motor[1] < 100) {
     // 正方向電流のみモデル
     // ZXCT1084
     adc_raw.cs_adc_offset = 0;
@@ -1263,12 +1247,12 @@ int main(void)
     while (interrupt_timer_cnt < INTERRUPT_KHZ_1MS * 50) {
       if (isNotZeroCurrent() || getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
         forceStopAllPwmOutputAndTimer();
-        p("fail check!! Current M0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentM0(), getCurrentM1(), turn_on_channel);
+        p("fail check!! Current M0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentMotor(0), getCurrentMotor(1), turn_on_channel);
         power_enable_cnt = 500;
         waitPowerOnTimeout();
       }
     }
-    p("ch:%2d CurrentCheck OK!! M0 %+6.3f M1 %+6.3f Battery %5.2f GD %5.2f\n", turn_on_channel, getCurrentM0(), getCurrentM1(), getBatteryVoltage(), getGateDriverDCDCVoltage());
+    p("ch:%2d CurrentCheck OK!! M0 %+6.3f M1 %+6.3f Battery %5.2f GD %5.2f\n", turn_on_channel, getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage(), getGateDriverDCDCVoltage());
     turn_on_channel++;
   }
 
