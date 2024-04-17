@@ -38,9 +38,8 @@
 #include <string.h>
 
 #include "flash.h"
-#include "stm32f3xx_hal.h"
-
 #include "motor.h"
+#include "stm32f3xx_hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -105,7 +104,6 @@ calib_process_t calib_process;
 
 #define V_PER_RPS_DEFAULT (0.15)
 
-
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
 #define THR_MOTOR_OVER_CURRENT (6.5)
@@ -127,8 +125,6 @@ calib_process_t calib_process;
 // ヤバい速度指令を無視するしきい値
 #define SPEED_REAL_LIMIT_GAIN (float)(1.5)
 // エンコーダー飛んだ時に異常な速度を検出するしきい値
-
-
 
 void checkAngleCalibMode(bool motor)
 {
@@ -963,7 +959,7 @@ int main(void)
   HAL_Delay(100);
 
   loadFlashData();
-  p("\n\n** Orion VV driver V4 start! **\n");
+  p("\n\n** Orion VV driver V4 start! %s %s **\n", __DATE__, __TIME__);
 
   calib_process.force_rotation_speed = 0.005;
   sys.free_wheel_cnt = START_UP_FREE_WHEEL_CNT;
