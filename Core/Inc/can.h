@@ -38,25 +38,24 @@ extern CAN_HandleTypeDef hcan;
 
 /* USER CODE BEGIN Private defines */
 
-  typedef union
+typedef union {
+  uint8_t data[8];
+
+  struct
   {
-    uint8_t data[8];
-    
-    struct
-    {
-      float rev_p_sec;
-      float omni_angle;
-    }speed;
+    float rev_p_sec;
+    float omni_angle;
+  } speed;
 
-    struct
-    {
-      uint16_t id;
-      uint16_t info;
-      float value;
-    } error;
-
+  struct
+  {
+    uint16_t id;
+    uint16_t info;
     float value;
-  } can_msg_buf_t;
+  } error;
+
+  float value;
+} can_msg_buf_t;
 
 /* USER CODE END Private defines */
 
@@ -64,15 +63,15 @@ void MX_CAN_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
-  void CAN_Filter_Init(uint16_t board_addr);
-  void updateCANRXBuffer(void);
-  void sendFloat(uint32_t can_id, float data);
-  void sendSpeed(int board_id, int motor, float speed,float angle);
-  void sendVoltage(int board_id, int motor, float voltage);
-  void sendTemperature(int board_id, int motor, float temp);
-  void sendCurrent(int board_id, int motor, float current);
-  void sendError(uint32_t can_id, int16_t error_id, int16_t error_info, float error_value);
-  uint32_t getCanError(void);
+void CAN_Filter_Init(uint16_t board_addr);
+void updateCANRXBuffer(void);
+void sendFloat(uint32_t can_id, float data);
+void sendSpeed(int board_id, int motor, float speed, float angle);
+void sendVoltage(int board_id, int motor, float voltage);
+void sendTemperature(int board_id, int motor, float temp);
+void sendCurrent(int board_id, int motor, float current);
+void sendError(uint16_t error_id, uint16_t error_info, float error_value);
+uint32_t getCanError(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus
@@ -80,4 +79,3 @@ void MX_CAN_Init(void);
 #endif
 
 #endif /* __CAN_H__ */
-

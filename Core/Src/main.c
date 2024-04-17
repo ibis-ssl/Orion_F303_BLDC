@@ -76,35 +76,50 @@ void startCalibrationMode();
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-extern uint32_t can_send_fail_cnt;
+extern uint32_t ex_can_send_fail_cnt;
+
+struct
+{
+  uint32_t free_wheel_cnt;
+  float manual_offset_radian;
+  uint32_t power_enable_cnt;
+} system;
+
+struct
+{
+  uint16_t id, info;
+  float value;
+} error;
 
 uint8_t uart_rx_buf[10] = {0};
 bool uart_rx_flag = false;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) { uart_rx_flag = true; }
 
-uint32_t free_wheel_cnt = START_UP_FREE_WHEEL_CNT;
-
 // 0 ~ M_PI*2 * 4
-float manual_offset_radian = 0;
 struct
 {
   uint32_t enc_calib_cnt;
   uint32_t motor_calib_cnt;  // disable : 0, init : 5000, start : 3500~ , end : 1
   uint32_t motor_calib_mode;
   float motor_calib_voltage;
+  float force_rotation_speed;
+
+  bool print_flag;
 } calib_process;
 
-float calib_force_rotation_speed = 0.005;
+struct
+{
+  bool detect_flag;
+  int idx;
+  int cnt;
+} enc_error_watcher;
+
 motor_control_cmd_t cmd[2];
 calib_point_t calib[2];
 enc_offset_t enc_offset[2];
 motor_real_t motor_real[2];
 motor_param_t motor_param[2];
-volatile uint32_t power_enable_cnt = 0;
-
-uint16_t error_id, error_info;
-float error_value;
 
 // 200kV -> 3.33rps/V -> 0.3 V/rps
 //#define RPS_TO_MOTOR_EFF_VOLTAGE (0.15)
@@ -141,11 +156,6 @@ float error_value;
 #define SPEED_REAL_LIMIT_GAIN (float)(1.5)
 // エンコーダー飛んだ時に異常な速度を検出するしきい値
 
-volatile bool calibration_print_flag = false;
-volatile bool enc_over_speed_cnt_error_flag = false;
-volatile int enc_over_speed_cnt_error_enc_idx = 0;
-volatile int enc_over_speed_cnt_error_enc_cnt = 0;
-
 void calcMotorSpeed(bool motor)
 {
   int temp = motor_real[motor].pre_enc_cnt_raw - ma702[motor].enc_raw;
@@ -160,12 +170,12 @@ void calcMotorSpeed(bool motor)
   }
 
   // 異常な回転数の場合に無視
-  if (abs((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 1.5 && free_wheel_cnt == 0) {
+  if (abs((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 1.5 && system.free_wheel_cnt == 0) {
     setPwmOutPutFreeWheel();
-    free_wheel_cnt += 10;
-    enc_over_speed_cnt_error_flag = true;
-    enc_over_speed_cnt_error_enc_idx = 0;
-    enc_over_speed_cnt_error_enc_cnt = temp;
+    system.free_wheel_cnt += 10;
+    enc_error_watcher.detect_flag = true;
+    enc_error_watcher.idx = 0;
+    enc_error_watcher.cnt = temp;
     return;
   }
 
@@ -180,9 +190,9 @@ void checkAngleCalibMode(bool motor)
   calib[motor].xy_field.radian_ave_x += cos(ma702[motor].output_radian);
   calib[motor].xy_field.radian_ave_y += sin(ma702[motor].output_radian);
   calib[motor].ave_cnt++;
-  if (calib[motor].pre_raw > HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw < HARF_OF_ENC_CNT_MAX && calib_force_rotation_speed > 0) {
+  if (calib[motor].pre_raw > HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw < HARF_OF_ENC_CNT_MAX && calib_process.force_rotation_speed > 0) {
     // ccw
-    calibration_print_flag = true;
+    calib_process.print_flag = true;
     calib[motor].result_ccw_cnt++;
     calib[motor].xy_field.result_cw_x = calib[motor].xy_field.radian_ave_x / calib[motor].ave_cnt;
     calib[motor].xy_field.result_cw_y = calib[motor].xy_field.radian_ave_y / calib[motor].ave_cnt;
@@ -190,9 +200,9 @@ void checkAngleCalibMode(bool motor)
     calib[motor].xy_field.radian_ave_y = 0;
     calib[motor].ave_cnt = 0;
   }
-  if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_force_rotation_speed < 0) {
+  if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_process.force_rotation_speed < 0) {
     // cw
-    calibration_print_flag = true;
+    calib_process.print_flag = true;
     calib[motor].result_cw_cnt++;
     calib[motor].xy_field.result_ccw_x = calib[motor].xy_field.radian_ave_x / calib[motor].ave_cnt;
     calib[motor].xy_field.result_ccw_y = calib[motor].xy_field.radian_ave_y / calib[motor].ave_cnt;
@@ -205,21 +215,21 @@ void checkAngleCalibMode(bool motor)
 
 inline void calibrationProcess_itr(bool motor)
 {
-  manual_offset_radian += calib_force_rotation_speed;
+  system.manual_offset_radian += calib_process.force_rotation_speed;
 
   // 出力電気角度 = 0 のときに、エンコーダー角度を計測
-  if (manual_offset_radian > M_PI * 2) {
-    manual_offset_radian -= M_PI * 2;
+  if (system.manual_offset_radian > M_PI * 2) {
+    system.manual_offset_radian -= M_PI * 2;
     checkAngleCalibMode(!motor);
   }
-  if (manual_offset_radian < 0) {
-    manual_offset_radian += M_PI * 2;
+  if (system.manual_offset_radian < 0) {
+    system.manual_offset_radian += M_PI * 2;
     checkAngleCalibMode(!motor);
   }
 
   updateADC(motor);
   updateMA702(motor);
-  setOutputRadianMotor(motor, manual_offset_radian, cmd[motor].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
+  setOutputRadianMotor(motor, system.manual_offset_radian, cmd[motor].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
 }
 
 inline void motorProcess_itr(bool motor)
@@ -253,10 +263,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 void waitPowerOnTimeout()
 {
   p("reset!!!");
-  while (power_enable_cnt > 0) {
-    power_enable_cnt--;
+  while (system.power_enable_cnt > 0) {
+    system.power_enable_cnt--;
     sendCanData();
-    sendError(0, error_id, error_info, error_value);
+    sendError(error.id, error.info, error.value);
     HAL_Delay(2);
   }
   HAL_Delay(2);
@@ -287,7 +297,7 @@ void can_rx_callback(void)
         if (can_rx_buf.data[1] == 0) {
           HAL_NVIC_SystemReset();
         } else if (can_rx_buf.data[1] == 1) {
-          power_enable_cnt = 100;
+          system.power_enable_cnt = 100;
         }
       }
       break;
@@ -318,7 +328,7 @@ void can_rx_callback(void)
     case 0x110:
       if (can_rx_buf.data[0] == 3) {
         setPwmOutPutFreeWheel();
-        free_wheel_cnt = KICK_FREE_WHEEL_CNT;
+        system.free_wheel_cnt = KICK_FREE_WHEEL_CNT;
       }
       break;
     default:
@@ -357,9 +367,9 @@ typedef struct
 } motor_pid_control_t;
 motor_pid_control_t pid[2];
 
-void speedToOutputVoltage(int motor)
+void speedToOutputVoltage(motor_pid_control_t * pid, motor_real_t * real, motor_param_t * param, motor_control_cmd_t * cmd)
 {
-  pid[motor].eff_voltage = motor_real[motor].rps * motor_param[motor].voltage_per_rps;
+  pid->eff_voltage = motor_real->rps * param->voltage_per_rps;
   /*pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
 
   pid[motor].error_integral += pid[motor].error;
@@ -372,56 +382,56 @@ void speedToOutputVoltage(int motor)
   pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
   pid[motor].pre_real_rps = motor_real[motor].rps;*/
 
-  cmd[motor].out_v = cmd[motor].speed * motor_param[motor].voltage_per_rps;
+  cmd->out_v = cmd->speed * param->voltage_per_rps;
 
   // ローカルでの速度制御はしない(上位からトルクで制御したいため)
   //        +pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd; // PID
 
   // 出力電圧リミット
 
-  float output_voltage_diff = cmd[motor].out_v - pid[motor].eff_voltage;
-  if (output_voltage_diff > +pid[motor].diff_voltage_limit) {
-    cmd[motor].out_v = pid[motor].eff_voltage + pid[motor].diff_voltage_limit;
-    pid[motor].output_voltage_limitting = true;
+  float output_voltage_diff = cmd->out_v - pid->eff_voltage;
+  if (output_voltage_diff > +pid->diff_voltage_limit) {
+    cmd->out_v = pid->eff_voltage + pid->diff_voltage_limit;
+    pid->output_voltage_limitting = true;
 
-  } else if (output_voltage_diff < -pid[motor].diff_voltage_limit) {
-    cmd[motor].out_v = pid[motor].eff_voltage - pid[motor].diff_voltage_limit;
-    pid[motor].output_voltage_limitting = true;
+  } else if (output_voltage_diff < -pid->diff_voltage_limit) {
+    cmd->out_v = pid->eff_voltage - pid->diff_voltage_limit;
+    pid->output_voltage_limitting = true;
 
   } else {
-    pid[motor].output_voltage_limitting = false;
+    pid->output_voltage_limitting = false;
   }
 
-  if (pid[motor].output_voltage_limitting) {
-    pid[motor].load_limit_cnt++;
-  } else if (pid[motor].load_limit_cnt > 0) {
-    pid[motor].load_limit_cnt--;
+  if (pid->output_voltage_limitting) {
+    pid->load_limit_cnt++;
+  } else if (pid->load_limit_cnt > 0) {
+    pid->load_limit_cnt--;
   }
 }
 
-void setFinalOutputVoltage(int motor)
+void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset, float manual_offset)
 {
-  cmd[motor].out_v_final = cmd[motor].out_v;
-  if (cmd[motor].out_v_final < 0) {
+  cmd->out_v_final = cmd->out_v;
+  if (cmd->out_v_final < 0) {
     // 2.4
-    enc_offset[motor].final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset[motor].zero_calib + manual_offset_radian;
+    enc_offset->final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset->zero_calib + manual_offset;
   } else {
-    enc_offset[motor].final = enc_offset[motor].zero_calib + manual_offset_radian;
+    enc_offset->final = enc_offset->zero_calib + manual_offset;
   }
 }
 
 // 1KHz
 void runMode(void)
 {
-  if (free_wheel_cnt > 0) {
-    free_wheel_cnt--;
-    if (free_wheel_cnt == 0) {
+  if (system.free_wheel_cnt > 0) {
+    system.free_wheel_cnt--;
+    if (system.free_wheel_cnt == 0) {
       resumePwmOutput();
     }
   }
 
-  if (manual_offset_radian > M_PI * 2) {
-    manual_offset_radian = 0;
+  if (system.manual_offset_radian > M_PI * 2) {
+    system.manual_offset_radian = 0;
   }
 
   //- 0.5 max spd 0.75
@@ -440,7 +450,8 @@ void runMode(void)
       //setPwmOutPutFreeWheel();
     }
 
-    speedToOutputVoltage(i);
+    //speedToOutputVoltage(i);
+    speedToOutputVoltage(&pid[i], &motor_real[i], &motor_param[i], &cmd[i]);
 
     // Output Voltage Override
     if (cmd[i].timeout_cnt > 0) {
@@ -451,11 +462,11 @@ void runMode(void)
       cmd[i].out_v = 0;
     }
 
-    if (free_wheel_cnt > 0) {
+    if (system.free_wheel_cnt > 0) {
       cmd[i].out_v = 0;
     }
 
-    setFinalOutputVoltage(i);  // select Vq-offset angle
+    setFinalOutputVoltage(&cmd[i], &enc_offset[i], system.manual_offset_radian);  // select Vq-offset angle
   }
 
   static uint8_t print_cnt = 0;
@@ -470,7 +481,7 @@ void runMode(void)
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
     case 2:
-      p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
+      p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, system.free_wheel_cnt);
       break;
     case 3:
       p("RAW %5d %5d Out_v %+5.1f %+5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
@@ -487,14 +498,14 @@ void runMode(void)
       p("Eff %+6.2f %+6.2f %d %d ", pid[0].eff_voltage, pid[1].eff_voltage, pid[0].output_voltage_limitting, pid[1].output_voltage_limitting);
       break;
     case 6:
-      p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, can_send_fail_cnt);
-      can_send_fail_cnt = 0;
+      p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, ex_can_send_fail_cnt);
+      ex_can_send_fail_cnt = 0;
       break;
     case 7:
       p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
-      p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_over_speed_cnt_error_flag);
+      p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
       // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
@@ -509,28 +520,28 @@ void runMode(void)
       break;
   }
   // ADC raw ALL
-  //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+  //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, system.manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 }
 
 /* Can't running 1kHz */
 void encoderCalibrationMode(void)
 {
   // 角度0のときにprint
-  if (calibration_print_flag) {
-    calibration_print_flag = false;
+  if (calib_process.print_flag) {
+    calib_process.print_flag = false;
     p("enc = %+5.2f %+5.2f  / M0 X %+5.2f Y %+5.2f / M1 X %+5.2f Y %+5.2f / Rad %+5.2f %+5.2f\n", ma702[0].output_radian, ma702[1].output_radian, cos(ma702[0].output_radian),
       sin(ma702[0].output_radian), cos(ma702[1].output_radian), sin(ma702[1].output_radian), atan2(sin(ma702[0].output_radian), cos(ma702[0].output_radian)),
       atan2(sin(ma702[1].output_radian), cos(ma702[1].output_radian)));
   }
 
-  // calib_force_rotation_speedが+でCCW
-  // calib_force_rotation_speedが-でCW回転する。
-  // 初期値はcalib_force_rotation_speedが+でCCWからキャリブレーション。
+  // calib_process.force_rotation_speedが+でCCW
+  // calib_process.force_rotation_speedが-でCW回転する。
+  // 初期値はcalib_process.force_rotation_speedが+でCCWからキャリブレーション。
 
   // END of 1st-calibration cycle (CCW)
-  if (calib[0].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib_force_rotation_speed > 0) {
-    calib_force_rotation_speed = -calib_force_rotation_speed;  //CCW方向終わったので、回転方向反転
-    HAL_Delay(1);                                              // write out uart buffer
+  if (calib[0].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib_process.force_rotation_speed > 0) {
+    calib_process.force_rotation_speed = -calib_process.force_rotation_speed;  //CCW方向終わったので、回転方向反転
+    HAL_Delay(1);                                                              // write out uart buffer
   }
 
   // END of 2nd-calibration cycle (CW)
@@ -587,7 +598,7 @@ void encoderCalibrationMode(void)
 
     // エンコーダキャリブレーション完了
     calib_process.enc_calib_cnt = 0;
-    manual_offset_radian = 0;  // 割り込みの中で加算してしまうので,enc_calib_cnt = 0にしてからでないといけない
+    system.manual_offset_radian = 0;  // 割り込みの中で加算してしまうので,enc_calib_cnt = 0にしてからでないといけない
 
     // モーターキャリブレーションに切り替え
     calib_process.motor_calib_mode = 0;
@@ -646,7 +657,7 @@ void motorCalibrationMode(void)
       cmd[i].out_v = 0;
     }
 
-    setFinalOutputVoltage(i);  // select Vq-offset angle
+    setFinalOutputVoltage(&cmd[i], &enc_offset[i], system.manual_offset_radian);  // select Vq-offset angle
   }
 
   if (calib_process.motor_calib_cnt == 1) {
@@ -756,7 +767,7 @@ void startCalibrationMode(void)
 
   calib_process.enc_calib_cnt = MOTOR_CALIB_INIT_CNT;
   calib_process.motor_calib_cnt = 0;
-  manual_offset_radian = 0;
+  system.manual_offset_radian = 0;
 
   cmd[0].speed = 0;
   cmd[1].speed = 0;
@@ -796,18 +807,18 @@ void receiveUserSerialCommand(void)
 
         calib_process.enc_calib_cnt = 0;
         calib_process.motor_calib_cnt = 0;
-        manual_offset_radian = 0;
+        system.manual_offset_radian = 0;
 
         cmd[0].out_v = 0;
         cmd[1].out_v = 0;
         break;
       case 'q':
-        manual_offset_radian += 0.01;
-        p("offset %+4.2f\n", manual_offset_radian);
+        system.manual_offset_radian += 0.01;
+        p("offset %+4.2f\n", system.manual_offset_radian);
         break;
       case 'a':
-        manual_offset_radian -= 0.01;
-        p("offset %+4.2f\n", manual_offset_radian);
+        system.manual_offset_radian -= 0.01;
+        p("offset %+4.2f\n", system.manual_offset_radian);
         break;
       case 'w':
         cmd[0].speed += 0.5;
@@ -925,24 +936,24 @@ void protect(void)
       setLedGreen(true);
       setLedRed(true);
 
-      error_id = OVER_CURRENT;
-      error_info = i;
-      error_value = getCurrentMotor(i);
+      error.id = OVER_CURRENT;
+      error.info = i;
+      error.value = getCurrentMotor(i);
       waitPowerOnTimeout();
     }
   }
 
   // エンコーダー値飛んだときにエラーにする
   // 処理的には対策を入れているが、canの受信タイミングの影響で、キッカーの影響でエラーになってしまうかもしれないので今はエラーにしない。
-  /* if (enc_over_speed_cnt_error_flag) {
+  /* if (enc_error_watcher.detect_flag) {
     forceStopAllPwmOutputAndTimer();
-    p("encoder error!!! ENC M%d diff %5d", enc_over_speed_cnt_error_enc_idx, enc_over_speed_cnt_error_enc_cnt);
+    p("encoder error!!! ENC M%d diff %5d", enc_error_watcher.idx, enc_error_watcher.cnt);
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    error_id = ENC_ERROR;
-    error_info = enc_over_speed_cnt_error_enc_idx;
-    error_value = motor_real[enc_over_speed_cnt_error_enc_idx].diff_cnt_max;
+    error.id = ENC_ERROR;
+    error.info = enc_error_watcher.idx;
+    error.value = motor_real[enc_error_watcher.idx].diff_cnt_max;
     waitPowerOnTimeout();
   }
   */
@@ -953,9 +964,9 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    error_id = UNDER_VOLTAGE;
-    error_info = 0;
-    error_value = getBatteryVoltage();
+    error.id = UNDER_VOLTAGE;
+    error.info = 0;
+    error.value = getBatteryVoltage();
     waitPowerOnTimeout();
   }
 
@@ -966,9 +977,9 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    error_id = OVER_VOLTAGE;
-    error_info = 0;
-    error_value = getBatteryVoltage();
+    error.id = OVER_VOLTAGE;
+    error.info = 0;
+    error.value = getBatteryVoltage();
     waitPowerOnTimeout();
   }
 
@@ -979,13 +990,13 @@ void protect(void)
     setLedGreen(true);
     setLedRed(true);
 
-    error_id = MOTOR_OVER_HEAT;
+    error.id = MOTOR_OVER_HEAT;
     if (getTempMotor(0) > getTempMotor(1)) {
-      error_info = 0;
-      error_value = (float)getTempMotor(0);
+      error.info = 0;
+      error.value = (float)getTempMotor(0);
     } else {
-      error_info = 1;
-      error_value = (float)getTempMotor(1);
+      error.info = 1;
+      error.value = (float)getTempMotor(1);
     }
     waitPowerOnTimeout();
   }
@@ -996,13 +1007,13 @@ void protect(void)
     setLedGreen(true);
     setLedRed(true);
 
-    error_id = MOTOR_OVER_HEAT;
+    error.id = MOTOR_OVER_HEAT;
     if (getTempFET(0) > getTempFET(1)) {
-      error_info = 0;
-      error_value = (float)getTempFET(0);
+      error.info = 0;
+      error.value = (float)getTempFET(0);
     } else {
-      error_info = 1;
-      error_value = (float)getTempFET(1);
+      error.info = 1;
+      error.value = (float)getTempFET(1);
     }
     waitPowerOnTimeout();
   }*/
@@ -1013,13 +1024,13 @@ void protect(void)
     setLedGreen(false);
     setLedRed(true);
 
-    error_id = OVER_LOAD;
+    error.id = OVER_LOAD;
     if (pid[0].load_limit_cnt > pid[1].load_limit_cnt) {
-      error_info = 0;
-      error_value = pid[0].load_limit_cnt;
+      error.info = 0;
+      error.value = pid[0].load_limit_cnt;
     } else {
-      error_info = 1;
-      error_value = pid[1].load_limit_cnt;
+      error.info = 1;
+      error.value = pid[1].load_limit_cnt;
     }
 
     waitPowerOnTimeout();
@@ -1075,6 +1086,9 @@ int main(void)
 
   loadFlashData();
   p("\n\n** Orion VV driver V4 start! **\n");
+
+  calib_process.force_rotation_speed = 0.005;
+  system.free_wheel_cnt = START_UP_FREE_WHEEL_CNT;
 
   for (int i = 0; i < 2; i++) {
     pid[i].pid_kp = 0.2;
@@ -1248,7 +1262,7 @@ int main(void)
       if (isNotZeroCurrent() || getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
         forceStopAllPwmOutputAndTimer();
         p("fail check!! Current M0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentMotor(0), getCurrentMotor(1), turn_on_channel);
-        power_enable_cnt = 500;
+        system.power_enable_cnt = 500;
         waitPowerOnTimeout();
       }
     }

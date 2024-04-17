@@ -2983,9 +2983,9 @@ LOAD c:/st/stm32cubeide_1.10.1/stm32cubeide/plugins/com.st.stm32cube.ide.mcu.ext
                 0x0000000020000270                hadc2
  .bss.hadc3     0x00000000200002c0       0x50 ./Core/Src/adc.o
                 0x00000000200002c0                hadc3
- .bss.can_send_fail_cnt
+ .bss.ex_can_send_fail_cnt
                 0x0000000020000310        0x4 ./Core/Src/can.o
-                0x0000000020000310                can_send_fail_cnt
+                0x0000000020000310                ex_can_send_fail_cnt
  .bss.hcan      0x0000000020000314       0x28 ./Core/Src/can.o
                 0x0000000020000314                hcan
  .bss.flash     0x000000002000033c        0xc ./Core/Src/flash.o
