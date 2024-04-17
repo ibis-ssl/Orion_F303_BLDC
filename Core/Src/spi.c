@@ -23,7 +23,7 @@
 /* USER CODE BEGIN 0 */
 #include <stdlib.h>
 
-struct ma702_t ma702[2];
+ma702_t ma702[2];
 /* USER CODE END 0 */
 
 SPI_HandleTypeDef hspi1;
@@ -119,9 +119,6 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef * spiHandle)
 }
 
 /* USER CODE BEGIN 1 */
-
-#define HARF_OF_ENC_CNT_MAX (32768)
-#define ENC_CNT_MAX (65536)
 
 inline void updateDiff(bool enc)
 {

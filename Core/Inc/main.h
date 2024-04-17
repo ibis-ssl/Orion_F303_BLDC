@@ -31,7 +31,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -55,6 +55,13 @@ enum {
   ENC_ERROR = 0x0010,
   OVER_VOLTAGE = 0x0020,
 };
+
+// by manual tuned
+#define ROTATION_OFFSET_RADIAN (2.0)
+#define ENC_CNT_MAX (65536)
+#define HARF_OF_ENC_CNT_MAX (32768)
+
+#define SPEED_CMD_LIMIT_RPS (50)
 
 typedef struct
 {
@@ -101,6 +108,50 @@ typedef struct
   float voltage_per_rps;
   float output_voltage_limit;
 } motor_param_t;
+
+typedef struct
+{
+  float eff_voltage;
+  float pid_kp, pid_kd, pid_ki;
+  float error, error_integral, error_diff;
+  float error_integral_limit;
+  float pre_real_rps;
+  float diff_voltage_limit;
+  int load_limit_cnt;
+  bool output_voltage_limitting;
+} motor_pid_control_t;
+
+typedef struct
+{
+  uint32_t free_wheel_cnt;     // エンコーダ飛び対策等 != 0でフリー回転(pwm全カット)
+  float manual_offset_radian;  // デバッグとキャリブレーション時のエンコーダオフセット
+  uint32_t power_enable_cnt;   // リセット時に待つ時間 x2ms
+} system_t;
+
+typedef struct
+{
+  uint16_t id, info;
+  float value;
+} error_t;
+
+typedef struct
+{
+  bool detect_flag;
+  int idx;
+  int cnt;
+} enc_error_watcher_t;
+
+typedef struct
+{
+  uint32_t enc_calib_cnt;
+  uint32_t motor_calib_cnt;  // disable : 0, init : 5000, start : 3500~ , end : 1
+  uint32_t motor_calib_mode;
+  float motor_calib_voltage;
+  float force_rotation_speed;
+
+  bool print_flag;
+} calib_process_t;
+
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/

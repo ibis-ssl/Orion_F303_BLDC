@@ -32,21 +32,20 @@ extern "C" {
 #include <math.h>
 #include <stdbool.h>
 
-
 /* USER CODE END Includes */
 
 extern SPI_HandleTypeDef hspi1;
 
 /* USER CODE BEGIN Private defines */
 
-struct ma702_t{
+typedef struct
+{
   float output_radian;
   int enc_raw;
   int enc_elec_raw;
   int pre_enc_raw;
-  int diff_enc,diff_min,diff_max,diff_max_cnt,diff_min_cnt;
-};
-
+  int diff_enc, diff_min, diff_max, diff_max_cnt, diff_min_cnt;
+} ma702_t;
 
 /* USER CODE END Private defines */
 
@@ -54,7 +53,7 @@ void MX_SPI1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
-extern struct ma702_t ma702[2];
+extern ma702_t ma702[2];
 
 uint8_t readRegisterMA702(bool enc, uint8_t address);
 uint8_t writeRegisterMA702(bool enc, uint8_t address, uint8_t value);
@@ -68,4 +67,3 @@ void updateMA702(bool motor);
 #endif
 
 #endif /* __SPI_H__ */
-
