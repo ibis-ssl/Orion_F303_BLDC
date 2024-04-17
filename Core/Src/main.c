@@ -128,7 +128,7 @@ float error_value;
 #define MOTOR_CALIB_READY_CNT (2000)
 #define MOTOR_CALIB_START_CNT (1500)
 #define MOTOR_CALIB_VOLTAGE_LOW (3.0)
-#define MOTOR_CALIB_VOLTAGE_HIGH (10.0)
+#define MOTOR_CALIB_VOLTAGE_HIGH (5.0)
 #define MOTOR_CALIB_CYCLE (12)
 
 #define MOTOR_CALIB_M0_M1_ERROR_TRERANCE (1.0)
@@ -490,7 +490,7 @@ void runMode(void)
       p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, free_wheel_cnt);
       break;
     case 3:
-      p("RAW %5d %5d Out_v %+5.1f %5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
+      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
       break;
     case 4:
       //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
@@ -713,11 +713,7 @@ void motorCalibrationMode(void)
 
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode++;
-        if (rps_per_v_cw_l[0] < 4.0) {
-          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
-        } else {
-          calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH / 2;
-        }
+        calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
         p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
@@ -736,11 +732,7 @@ void motorCalibrationMode(void)
         calib_process.motor_calib_mode++;
 
         calib_process.motor_calib_mode++;
-        if (rps_per_v_cw_l[0] < 4.0) {
-          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
-        } else {
-          calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH / 2;
-        }
+        calib_process.motor_calib_voltage = -MOTOR_CALIB_VOLTAGE_HIGH;
         p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 

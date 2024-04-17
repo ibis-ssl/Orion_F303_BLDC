@@ -221,6 +221,7 @@ void sendCurrent(int board_id, int motor, float current)
   sendFloat(0x230 + board_id * 2 + motor, current);
 }
 
+// id : motor
 void sendError(uint32_t can_id, int16_t error_id, int16_t error_info, float error_value)
 {
   can_msg_buf_t msg;
