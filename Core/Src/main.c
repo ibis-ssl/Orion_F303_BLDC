@@ -810,8 +810,8 @@ void protect(void)
       setLedGreen(true);
       setLedRed(true);
 
-      error.id = OVER_CURRENT;
-      error.info = i;
+      error.id = flash.board_id * 2 + i;
+      error.info = OVER_CURRENT;
       error.value = getCurrentMotor(i);
       waitPowerOnTimeout();
     }
@@ -825,8 +825,9 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    error.id = ENC_ERROR;
-    error.info = enc_error_watcher.idx;
+    
+    error.id = flash.board_id * 2 + enc_error_watcher.idx;
+    error.info = ENC_ERROR;
     error.value = motor_real[enc_error_watcher.idx].diff_cnt_max;
     waitPowerOnTimeout();
   }
@@ -838,8 +839,9 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    error.id = UNDER_VOLTAGE;
-    error.info = 0;
+
+    error.id = flash.board_id * 2;
+    error.info = UNDER_VOLTAGE;
     error.value = getBatteryVoltage();
     waitPowerOnTimeout();
   }
@@ -851,8 +853,9 @@ void protect(void)
     setLedBlue(true);
     setLedGreen(false);
     setLedRed(true);
-    error.id = OVER_VOLTAGE;
-    error.info = 0;
+
+    error.id = flash.board_id * 2;
+    error.info = OVER_VOLTAGE;
     error.value = getBatteryVoltage();
     waitPowerOnTimeout();
   }
@@ -864,12 +867,12 @@ void protect(void)
     setLedGreen(true);
     setLedRed(true);
 
-    error.id = MOTOR_OVER_HEAT;
+    error.info = MOTOR_OVER_HEAT;
     if (getTempMotor(0) > getTempMotor(1)) {
-      error.info = 0;
+      error.id = flash.board_id * 2;
       error.value = (float)getTempMotor(0);
     } else {
-      error.info = 1;
+      error.id = flash.board_id * 2 + 1;
       error.value = (float)getTempMotor(1);
     }
     waitPowerOnTimeout();
@@ -898,12 +901,12 @@ void protect(void)
     setLedGreen(false);
     setLedRed(true);
 
-    error.id = OVER_LOAD;
+    error.info = OVER_LOAD;
     if (pid[0].load_limit_cnt > pid[1].load_limit_cnt) {
-      error.info = 0;
+      error.id = flash.board_id * 2 + 0;
       error.value = pid[0].load_limit_cnt;
     } else {
-      error.info = 1;
+      error.id = flash.board_id * 2 + 1;
       error.value = pid[1].load_limit_cnt;
     }
 
