@@ -343,12 +343,12 @@ void runMode(void)
     setFinalOutputVoltage(&cmd[i], &enc_offset[i], sys.manual_offset_radian);  // select Vq-offset angle
   }
 
-  static uint8_t print_cnt = 0;
   // ここは1KHzでまわっている
 
   // 1サイクルごとの負荷を減らすために分割して送信
-  print_cnt++;
-  switch (print_cnt) {
+  sys.print_cnt++;
+
+  switch (sys.print_cnt) {
     case 1:
       // p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
       p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage());
@@ -366,10 +366,13 @@ void runMode(void)
       can_rx_cnt = 0;
       break;
     case 5:
+      if (sys.print_idx == 0) {
+        p("Eff %+6.2f %+6.2f %d %d ", pid[0].eff_voltage, pid[1].eff_voltage, pid[0].output_voltage_limitting, pid[1].output_voltage_limitting);
+      } else {
+        p("FET-T %+4d %+4d Motor-T %+4d %+4d", getTempFET(0), getTempFET(1), getTempMotor(0), getTempMotor(1));
+      }
       // FET温度はv4.2で取得できない
-      //p("T %+4d %+4d ", getTempMotor(0), getTempMotor(1));
       //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
-      p("Eff %+6.2f %+6.2f %d %d ", pid[0].eff_voltage, pid[1].eff_voltage, pid[0].output_voltage_limitting, pid[1].output_voltage_limitting);
       break;
     case 6:
       p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, ex_can_send_fail_cnt);
@@ -390,7 +393,7 @@ void runMode(void)
       break;
     default:
       p("\n");
-      print_cnt = 0;
+      sys.print_cnt = 0;
       break;
   }
   // ADC raw ALL
@@ -749,6 +752,13 @@ void receiveUserSerialCommand(void)
         forceStopAllPwmOutputAndTimer();
         while (1)
           ;
+        break;
+      case '\n':
+        sys.print_idx++;
+        if (sys.print_idx > 1) {
+          sys.print_idx = 0;
+        }
+        p("\nprint idx : %d\n");
         break;
     }
   }

@@ -126,6 +126,7 @@ typedef struct
   uint32_t free_wheel_cnt;     // エンコーダ飛び対策等 != 0でフリー回転(pwm全カット)
   float manual_offset_radian;  // デバッグとキャリブレーション時のエンコーダオフセット
   uint32_t power_enable_cnt;   // リセット時に待つ時間 x2ms
+  uint32_t print_cnt, print_idx;
 } system_t;
 
 typedef struct
