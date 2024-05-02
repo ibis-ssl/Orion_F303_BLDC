@@ -1,10 +1,8 @@
 # Orion_F303_BLDC
-やめちまえ電流ベクトル制御
+やめちまえ電流ベクトル制御  
 
-200kV
+電圧次元までしか制御しないことで低コストな基板で2モーター駆動を実現
 
-14.8V/40rps
-3.6V/10rps=600rpm
-166 rpm/Vになる
-200 rpm/Vのはずなので1.2倍ぐらいの誤差
-実行電圧は√3/2なので
+[MAD Motor EEE 4006](https://store.mad-motor.com/products/mad-4006-eee-brushless-motor-for-the-long-range-inspection-drone-mapping-drone-surveying-drone-quadcopter-hexcopter-mulitirotor)  
+200kV(カスタマイズ)  
+300kV(カスタマイズ･製造不良？？)
