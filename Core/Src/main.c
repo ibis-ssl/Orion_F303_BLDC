@@ -368,11 +368,12 @@ void runMode(void)
     case 5:
       if (sys.print_idx == 0) {
         p("Eff %+6.2f %+6.2f %d %d ", pid[0].eff_voltage, pid[1].eff_voltage, pid[0].output_voltage_limitting, pid[1].output_voltage_limitting);
-      } else {
+      } else if (sys.print_idx == 1) {
+        // FET温度はv4.2で取得できない
         p("FET-T %+4d %+4d Motor-T %+4d %+4d", getTempFET(0), getTempFET(1), getTempMotor(0), getTempMotor(1));
+      } else {
+        p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
       }
-      // FET温度はv4.2で取得できない
-      //p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
       break;
     case 6:
       p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, ex_can_send_fail_cnt);
@@ -750,12 +751,11 @@ void receiveUserSerialCommand(void)
       case '0':
         p("enter sleep!\n");
         forceStopAllPwmOutputAndTimer();
-        while (1)
-          ;
+        while (1);
         break;
       case '\n':
         sys.print_idx++;
-        if (sys.print_idx > 1) {
+        if (sys.print_idx > 2) {
           sys.print_idx = 0;
         }
         p("\nprint idx : %d\n");
@@ -1173,8 +1173,7 @@ int main(void)
   if (isPushedSW4()) {
     startCalibrationMode();
     p("enc calibration mode!!\n");
-    while (isPushedSW4())
-      ;
+    while (isPushedSW4());
   }
 
   CAN_Filter_Init(flash.board_id);
@@ -1212,8 +1211,7 @@ int main(void)
 
     // 周期固定するために待つ
     main_loop_remain_counter = INTERRUPT_KHZ_1MS - interrupt_timer_cnt;
-    while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS)
-      ;
+    while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS);
     interrupt_timer_cnt = 0;
 
     setLedRed(false);
