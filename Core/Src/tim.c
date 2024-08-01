@@ -185,9 +185,9 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef * tim_pwmHandle)
     __HAL_RCC_TIM8_CLK_ENABLE();
 
     /* TIM8 interrupt Init */
-    HAL_NVIC_SetPriority(TIM8_UP_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(TIM8_UP_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(TIM8_UP_IRQn);
-    HAL_NVIC_SetPriority(TIM8_CC_IRQn, 0, 0);
+    HAL_NVIC_SetPriority(TIM8_CC_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(TIM8_CC_IRQn);
     /* USER CODE BEGIN TIM8_MspInit 1 */
 
@@ -303,7 +303,8 @@ inline float fast_sin(float rad) { return rad_to_sin_cnv_array[(uint8_t)(rad / (
 #define BATTERY_VOLTAGE_BOTTOM (18)
 #define X2_PER_R3 (1.154)
 
-inline void setOutputRadianMotor(bool motor,float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit){
+inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
+{
   int voltage_propotional_cnt;
 
   if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
@@ -329,7 +330,7 @@ inline void setOutputRadianMotor(bool motor,float out_rad, float output_voltage,
   }
 }
 
-  inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
+inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
 {
   int voltage_propotional_cnt;
 
