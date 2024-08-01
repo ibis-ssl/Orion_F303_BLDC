@@ -189,8 +189,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   // TIM8 : M0
   static bool motor_select_toggle = false;
   interrupt_timer_cnt++;
-
   motor_select_toggle = !motor_select_toggle;
+
+  if (sys.is_starting_mode) {
+    updateADC(motor_select_toggle);
+    return;
+  }
+
   setLedBlue(false);
   if (calib_process.enc_calib_cnt != 0) {
     calibrationProcess_itr(motor_select_toggle);
@@ -971,6 +976,8 @@ int main(void)
   setLedBlue(true);
   HAL_Delay(100);
 
+  sys.is_starting_mode = true;
+
   loadFlashData();
   p("\n\n** Orion VV driver V4 start! %s %s **\n", __DATE__, __TIME__);
 
@@ -1113,30 +1120,25 @@ int main(void)
   setPwmAll(TIM_PWM_CENTER);
 
   // PWM出力をHIGH/LOW順番に1chずつONにして短絡チェック
+  // なぜか LOW→LOW→LOW→HIGH→HIGH→HIGHとやると止まるのでHIGH&LOWでやっている
   int turn_on_channel = 0;
-  while (turn_on_channel < 6) {
+  while (turn_on_channel < 3) {
     switch (turn_on_channel) {
       case 0:
-        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);  // M0 low
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);  // M1 low
-        break;
-      case 1:
-        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);  // M0 low
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);  // M1 low
-        break;
-      case 2:
-        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);  // M0 low
-        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);  // M1 low
-        break;
-      case 3:
+        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);     // M0 low
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);     // M1 low
         HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);  // M1 high & low
         HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);  // M0 high & low
         break;
-      case 4:
+      case 1:
+        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);     // M0 low
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);     // M1 low
         HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);  // M1 high & low
         HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);  // M0 high & low
         break;
-      case 5:
+      case 2:
+        HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);     // M0 low
+        HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);     // M1 low
         HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);  // M1 high & low
         HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);  // M0 high & low
         break;
@@ -1154,9 +1156,9 @@ int main(void)
       }
     }
     p("ch:%2d CurrentCheck OK!! M0 %+6.3f M1 %+6.3f Battery %5.2f GD %5.2f\n", turn_on_channel, getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage(), getGateDriverDCDCVoltage());
+    HAL_Delay(10);
     turn_on_channel++;
   }
-
   //*/
 
   if (isPushedSW1()) {
@@ -1184,6 +1186,9 @@ int main(void)
   setLedRed(false);
   setLedGreen(false);
   setLedBlue(false);
+
+  sys.is_starting_mode = false;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */

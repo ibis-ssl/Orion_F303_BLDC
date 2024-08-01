@@ -127,6 +127,7 @@ typedef struct
   float manual_offset_radian;  // デバッグとキャリブレーション時のエンコーダオフセット
   uint32_t power_enable_cnt;   // リセット時に待つ時間 x2ms
   uint32_t print_cnt, print_idx;
+  bool is_starting_mode;
 } system_t;
 
 typedef struct
