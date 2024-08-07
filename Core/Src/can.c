@@ -116,24 +116,26 @@ void CAN_Filter_Init(uint16_t board_addr)
   CAN_FilterTypeDef sFilterConfig;
   sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
   sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
+  sFilterConfig.FilterActivation = ENABLE;
+
   sFilterConfig.FilterBank = 0;
   sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5;      //speed
   sFilterConfig.FilterIdLow = (0x310) << 5;                        //motor calib
-  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;  //speed
-  sFilterConfig.FilterMaskIdLow = (0x320) << 5;                    // notused
+  sFilterConfig.FilterMaskIdHigh = (0x000) << 5;                   // emg stop
+  sFilterConfig.FilterMaskIdLow = (0x001) << 5;                    // error report
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
-  sFilterConfig.FilterActivation = ENABLE;
-  //sFilterConfig.SlaveStartFilterBank = 0; dont supported F3xx
+
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
     Error_Handler();
   }
 
   sFilterConfig.FilterIdHigh = (0x110) << 5;      // kick
   sFilterConfig.FilterIdLow = (0x010) << 5;       // power enable
-  sFilterConfig.FilterMaskIdHigh = (0x000) << 5;  // emg stop
-  sFilterConfig.FilterMaskIdLow = (0x001) << 5;   // error report
+  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;  //speed
+  sFilterConfig.FilterMaskIdLow = (0x320) << 5;                    // notused
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
   sFilterConfig.FilterBank = 1;
+  
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
     Error_Handler();
   }
