@@ -247,11 +247,11 @@ void can_rx_callback(void)
         }
       }
       break;
+
     case 0x100:
       cmd[0].speed = tmp_speed;
       cmd[0].timeout_cnt = 100;
       break;
-
     case 0x101:
       cmd[1].speed = tmp_speed;
       cmd[1].timeout_cnt = 100;
@@ -265,18 +265,22 @@ void can_rx_callback(void)
       cmd[1].speed = tmp_speed;
       cmd[1].timeout_cnt = 100;
       break;
+
     case 0x310:
       startCalibrationMode();
       break;
+
     case 0x320:
       // not used
       break;
+
     case 0x110:
       if (can_rx_buf.data[0] == 3) {
         setPwmOutPutFreeWheel();
         sys.free_wheel_cnt = KICK_FREE_WHEEL_CNT;
       }
       break;
+
     default:
       break;
   }
@@ -1050,7 +1054,7 @@ int main(void)
     // 119(0x77) = 370Hz (default)
     // 390Hz = MA702
     // 136(0x88) = 185Hz
-    writeRegisterMA702(i, 0x0E, 0x77);
+    writeRegisterMA702(i, 0x0E, 0x99);
     HAL_Delay(10);
     p("reg = 0x%02x", readRegisterMA702(i, 0));  // Z offset-L
     HAL_Delay(1);
@@ -1282,6 +1286,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  forceStopAllPwmOutputAndTimer();
   while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
