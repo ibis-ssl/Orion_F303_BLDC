@@ -48,6 +48,7 @@
 // 1kHz
 #define START_UP_FREE_WHEEL_CNT (1000)
 #define KICK_FREE_WHEEL_CNT (500)
+//400ms NG
 
 /* USER CODE END PTD */
 
@@ -1035,50 +1036,9 @@ int main(void)
   motor_param[1].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[1] * SPEED_REAL_LIMIT_GAIN;
   p("output voltage limit : %5.2f %5.2f\n", motor_param[0].output_voltage_limit, motor_param[1].output_voltage_limit);
   HAL_Delay(1);
-  p("0x00 0x01 0x02 0x03 0x04 0x05 0x06 0x09 0x0E 0x10 0x1B\n");
-  for (int i = 0; i < 2; i++) {
-    HAL_Delay(10);
-    writeRegisterMA702(i, 5, 0xFF);
-    HAL_Delay(10);
-    writeRegisterMA702(i, 6, 0x1C);
-    HAL_Delay(10);
-    writeRegisterMA702(i, 0x10, 0x9C);
-    HAL_Delay(10);
-    writeRegisterMA702(i, 0x1B, 0x43);
-    HAL_Delay(10);
 
-    // id = 0xE, filter window
-    // default : 119, f-cut = 370Hz
-
-    // 187(0xBB) = 23Hz (MA730,NG)
-    // 119(0x77) = 370Hz (default)
-    // 390Hz = MA702
-    // 136(0x88) = 185Hz
-    writeRegisterMA702(i, 0x0E, 0x99);
-    HAL_Delay(10);
-    p("reg = 0x%02x", readRegisterMA702(i, 0));  // Z offset-L
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 1));  // Z offset-H
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 2));  // BCT (off-axis param)
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 3));  // ETY,ETX
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 4));  // PPT-L/ILIP
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 5));  // PPT-H
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 6));  // MGLT/MGHT
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 9));  // RD
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 0xE));  // FW
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 0x10));  // HYS
-    HAL_Delay(1);
-    p("0x%02x ", readRegisterMA702(i, 0x1B));  // MGH&L
-    HAL_Delay(1);
-    p("\n");
+  while (1) {
+    p("enc0 : %6d enc1 : %6d", ma702[0].enc_raw, ma702[1].enc_raw);
   }
 
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);

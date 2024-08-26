@@ -141,129 +141,44 @@ inline void updateDiff(bool enc)
   }
 }
 
-volatile static uint32_t delay_cnt = 0;
 
-uint8_t readRegisterMA702(bool enc, uint8_t address)
-{
-  if (enc == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-  }
+uint8_t readRegisterAS5047P(bool enc, uint8_t address) {
 
-  hspi1.Instance->DR = 0x4000 | ((address & 0x1F) << 8);
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
-  }
-  if (enc == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-
-    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++) {
-    }
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-
-    for (delay_cnt = 0; delay_cnt < 2; delay_cnt++) {
-    }
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-  }
-  uint16_t temp = hspi1.Instance->DR;
-
-  hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
-  }
-
-  if (enc == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-  }
-
-  return hspi1.Instance->DR >> 8;
+  
 }
 
-uint8_t writeRegisterMA702(bool enc, uint8_t address, uint8_t value)
+inline void updateAS5047P_Common(ma702_t * enc)
 {
-  if (enc == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-  }
+  enc->pre_enc_raw = enc->enc_raw;
 
-  hspi1.Instance->DR = 0x8000 | ((address & 0x1F) << 8) | value;
+  enc->enc_raw = hspi1.Instance->DR;
+  hspi1.Instance->DR = 0x3FFF | (1 << 14);
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
-  if (enc == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-    HAL_Delay(20);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-    HAL_Delay(20);
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-  }
-  uint16_t temp = hspi1.Instance->DR;
+  // 分解能は14bitだが、後段であまり算をするため、16bitに変換
+  enc->enc_raw = (hspi1.Instance->DR & 0x3FFF) << 2;
 
-  hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
-  }
-
-  if (enc == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-  }
-
-  return hspi1.Instance->DR >> 8;
+  enc->enc_elec_raw = 5461 - (enc->enc_raw % 5461);
+  enc->output_radian = (float)enc->enc_elec_raw / 5461 * 2 * M_PI;
 }
 
-inline void updateMA702_M1(void)
-{
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-
-  ma702[1].pre_enc_raw = ma702[1].enc_raw;
-
-  ma702[1].enc_raw = hspi1.Instance->DR;
-  hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
-  }
-  ma702[1].enc_raw = hspi1.Instance->DR & 0xFFFC;
-
-  ma702[1].enc_elec_raw = 5461 - (ma702[1].enc_raw % 5461);
-  ma702[1].output_radian = (float)ma702[1].enc_elec_raw / 5461 * 2 * M_PI;
-  updateDiff(1);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-}
-
-inline void updateMA702_M0(void)
-{
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-
-  ma702[0].pre_enc_raw = ma702[0].enc_raw;
-
-  ma702[0].enc_raw = hspi1.Instance->DR;
-  hspi1.Instance->DR = 0;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
-  }
-  ma702[0].enc_raw = hspi1.Instance->DR & 0xFFFC;
-
-  ma702[0].enc_elec_raw = 5461 - (ma702[0].enc_raw % 5461);
-  ma702[0].output_radian = (float)ma702[0].enc_elec_raw / 5461 * 2 * M_PI;
-
-  updateDiff(0);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-}
-
-inline void updateMA702(bool motor)
+void updateAS5047P(bool motor)
 {
   if (motor == 0) {
-    updateMA702_M0();
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+
+    updateAS5047P_Common(&ma702[0]);
+    updateDiff(0);
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   } else {
-    updateMA702_M1();
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+
+    updateAS5047P_Common(&ma702[1]);
+    updateDiff(1);
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
   }
 }
 
-inline float getElecRadianMA702(bool motor) { return ma702[motor].output_radian; }
-inline int getRawMA702(bool motor) { return ma702[motor].enc_raw; }
-inline int getPreRawMA702(bool motor) { return ma702[motor].enc_raw - ma702[motor].pre_enc_raw; }
 /* USER CODE END 1 */
