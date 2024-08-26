@@ -170,14 +170,16 @@ inline void calibrationProcess_itr(bool motor)
   }
 
   updateADC(motor);
-  updateMA702(motor);
+  //updateMA702(motor);
+  updateAS5047P(motor);
   setOutputRadianMotor(motor, sys.manual_offset_radian, cmd[motor].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
 }
 
 inline void motorProcess_itr(bool motor)
 {
   updateADC(motor);
-  updateMA702(motor);
+  //updateMA702(motor);
+  updateAS5047P(motor);
   setOutputRadianMotor(motor, ma702[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
 }
 
@@ -1038,7 +1040,12 @@ int main(void)
   HAL_Delay(1);
 
   while (1) {
+    updateAS5047P(0);
+    HAL_Delay(1);
+    updateAS5047P(1);
+    HAL_Delay(1);
     p("enc0 : %6d enc1 : %6d", ma702[0].enc_raw, ma702[1].enc_raw);
+    HAL_Delay(150);
   }
 
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);

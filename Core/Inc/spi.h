@@ -56,7 +56,6 @@ void MX_SPI1_Init(void);
 extern ma702_t ma702[2];
 
 uint8_t readRegisterAS5047P(bool enc, uint8_t address);
-uint8_t writeRegisterAS5047P(bool enc, uint8_t address, uint8_t value);
 void updateAS5047P(bool motor);
 
 /* USER CODE END Prototypes */
