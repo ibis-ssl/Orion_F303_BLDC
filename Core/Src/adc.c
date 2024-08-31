@@ -464,9 +464,13 @@ inline void updateADC_M0(void)
 }
 
 bool isNotZeroCurrent() { return getCurrentMotor(0) > 0.5 || getCurrentMotor(0) > 0.5; }
-// 50V/V * 5m = 250mV/A
 
-inline float getCurrentMotor(bool motor) { return (adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * 3.3 / 4096 * 4; }
+// legacy version
+// INA199   50V/V *  5m = 250mV/A : 1/4
+// ZXCT1084 25V/V * 10m = 250mV/A : 1/4
+
+// ZXCT1084 25V/V *  5m = 125mV/A : 1/8
+inline float getCurrentMotor(bool motor) { return (adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * 3.3 / 4096 * 8; }
 inline int getTempFET(bool motor) { return (-((float)adc_raw.temp_fet[motor] * 3.3 / 4096) + 1.5) * 70 + 25; }
 inline int getTempMotor(bool motor) { return (-((float)adc_raw.temp_motor[motor] * 3.3 / 4096) + 1.5) * 70 + 25; }
 
