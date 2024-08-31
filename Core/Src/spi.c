@@ -42,7 +42,7 @@ void MX_SPI1_Init(void)
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
   hspi1.Init.DataSize = SPI_DATASIZE_16BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
   hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
@@ -141,11 +141,7 @@ inline void updateDiff(bool enc)
   }
 }
 
-
-uint8_t readRegisterAS5047P(bool enc, uint8_t address) {
-
-  
-}
+uint8_t readRegisterAS5047P(bool enc, uint8_t address) {}
 
 inline void updateAS5047P_Common(ma702_t * enc)
 {
