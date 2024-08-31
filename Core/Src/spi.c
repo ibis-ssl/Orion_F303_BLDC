@@ -148,7 +148,8 @@ inline void updateAS5047P_Common(ma702_t * enc)
   enc->pre_enc_raw = enc->enc_raw;
 
   enc->enc_raw = hspi1.Instance->DR;
-  hspi1.Instance->DR = 0x3FFF | (1 << 14);
+  //hspi1.Instance->DR = 0x3FFF | (1 << 14);
+  hspi1.Instance->DR = 0xFFFF;
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
   // 分解能は14bitだが、後段であまり算をするため、16bitに変換

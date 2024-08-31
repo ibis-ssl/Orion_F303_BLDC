@@ -1038,15 +1038,6 @@ int main(void)
   p("output voltage limit : %5.2f %5.2f\n", motor_param[0].output_voltage_limit, motor_param[1].output_voltage_limit);
   HAL_Delay(1);
 
-  while (1) {
-    updateAS5047P(0);
-    HAL_Delay(1);
-    updateAS5047P(1);
-    HAL_Delay(1);
-    p("enc0 : %6d enc1 : %6d\n", ma702[0].enc_raw, ma702[1].enc_raw);
-    HAL_Delay(150);
-  }
-
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
   HAL_ADCEx_Calibration_Start(&hadc3, ADC_SINGLE_ENDED);
