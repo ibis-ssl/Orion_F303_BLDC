@@ -47,7 +47,7 @@
 
 // 1kHz
 #define START_UP_FREE_WHEEL_CNT (1000)
-#define KICK_FREE_WHEEL_CNT (500)
+#define KICK_FREE_WHEEL_CNT (100)
 //400ms NG
 
 /* USER CODE END PTD */
