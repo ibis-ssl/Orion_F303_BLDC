@@ -47,13 +47,13 @@ extern "C" {
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
 enum {
-  NONE = 0,
-  UNDER_VOLTAGE = 0x0001,
-  OVER_CURRENT = 0x0002,
-  MOTOR_OVER_HEAT = 0x0004,
-  OVER_LOAD = 0x0008,
-  ENC_ERROR = 0x0010,
-  OVER_VOLTAGE = 0x0020,
+  BLDC_NONE = 0,
+  BLDC_UNDER_VOLTAGE = 0x0001,
+  BLDC_OVER_CURRENT = 0x0002,
+  BLDC_MOTOR_OVER_HEAT = 0x0004,
+  BLDC_OVER_LOAD = 0x0008,
+  BLDC_ENC_ERROR = 0x0010,
+  BLDC_OVER_VOLTAGE = 0x0020,
 };
 
 // by manual tuned

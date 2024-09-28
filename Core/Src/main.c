@@ -47,7 +47,7 @@
 
 // 1kHz
 #define START_UP_FREE_WHEEL_CNT (1000)
-#define KICK_FREE_WHEEL_CNT (100)
+#define KICK_FREE_WHEEL_CNT (200)
 //400ms NG
 
 /* USER CODE END PTD */
@@ -330,7 +330,7 @@ void runMode(void)
     } else if (isPushedSW2()) {
       cmd[i].speed = -10.0;
     } else if (isPushedSW3()) {
-      cmd[i].speed = -20.0;
+      cmd[i].speed = 20.0;
       //resumePwmOutput();
     } else if (isPushedSW4()) {
       cmd[i].speed = -40.0;
@@ -833,7 +833,7 @@ void protect(void)
       setLedRed(true);
 
       error.id = flash.board_id * 2 + i;
-      error.info = OVER_CURRENT;
+      error.info = BLDC_OVER_CURRENT;
       error.value = getCurrentMotor(i);
       waitPowerOnTimeout();
     }
@@ -849,7 +849,7 @@ void protect(void)
     setLedRed(true);
     
     error.id = flash.board_id * 2 + enc_error_watcher.idx;
-    error.info = ENC_ERROR;
+    error.info = BLDC_ENC_ERROR;
     error.value = motor_real[enc_error_watcher.idx].diff_cnt_max;
     waitPowerOnTimeout();
   }
@@ -863,7 +863,7 @@ void protect(void)
     setLedRed(true);
 
     error.id = flash.board_id * 2;
-    error.info = UNDER_VOLTAGE;
+    error.info = BLDC_UNDER_VOLTAGE;
     error.value = getBatteryVoltage();
     waitPowerOnTimeout();
   }
@@ -877,7 +877,7 @@ void protect(void)
     setLedRed(true);
 
     error.id = flash.board_id * 2;
-    error.info = OVER_VOLTAGE;
+    error.info = BLDC_OVER_VOLTAGE;
     error.value = getBatteryVoltage();
     waitPowerOnTimeout();
   }
@@ -889,7 +889,7 @@ void protect(void)
     setLedGreen(true);
     setLedRed(true);
 
-    error.info = MOTOR_OVER_HEAT;
+    error.info = BLDC_MOTOR_OVER_HEAT;
     if (getTempMotor(0) > getTempMotor(1)) {
       error.id = flash.board_id * 2;
       error.value = (float)getTempMotor(0);
@@ -906,7 +906,7 @@ void protect(void)
     setLedGreen(true);
     setLedRed(true);
 
-    error.id = MOTOR_OVER_HEAT;
+    error.id = BLDC_MOTOR_OVER_HEAT;
     if (getTempFET(0) > getTempFET(1)) {
       error.info = 0;
       error.value = (float)getTempFET(0);
@@ -923,7 +923,7 @@ void protect(void)
     setLedGreen(false);
     setLedRed(true);
 
-    error.info = OVER_LOAD;
+    error.info = BLDC_OVER_LOAD;
     if (pid[0].load_limit_cnt > pid[1].load_limit_cnt) {
       error.id = flash.board_id * 2 + 0;
       error.value = pid[0].load_limit_cnt;
