@@ -280,7 +280,7 @@ void can_rx_callback(void)
     case 0x110:
       if (can_rx_buf.data[0] == 3) {
         setPwmOutPutFreeWheel();
-        sys.free_wheel_cnt = KICK_FREE_WHEEL_CNT;
+        sys.free_wheel_cnt = can_rx_buf.data[2];
       }
       break;
 
