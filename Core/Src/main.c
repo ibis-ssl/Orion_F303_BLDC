@@ -227,19 +227,25 @@ can_msg_buf_t can_rx_buf;
 CAN_RxHeaderTypeDef can_rx_header;
 // 50rps x 3.14 x 55mm = 8.635 m/s
 
+static inline float clampSize(float in, float max)
+{
+  if (in > max) {
+    in = max;
+  }
+  if (in < -max) {
+    in = -max;
+  }
+  return in;
+}
+
 void can_rx_callback(void)
 {
-  float tmp_speed = 0;
+  // モーターキャリブレーション中は無視
   if (calib_process.enc_calib_cnt != 0 || calib_process.motor_calib_cnt != 0) {
     return;
   }
+
   can_rx_cnt++;
-  tmp_speed = can_rx_buf.value[0];
-  if (tmp_speed > SPEED_CMD_LIMIT_RPS) {
-    tmp_speed = SPEED_CMD_LIMIT_RPS;
-  } else if (tmp_speed < -SPEED_CMD_LIMIT_RPS) {
-    tmp_speed = -SPEED_CMD_LIMIT_RPS;
-  }
   switch (can_rx_header.StdId) {
     case 0x010:
       if (can_rx_buf.data[0] == 0) {
@@ -251,21 +257,16 @@ void can_rx_callback(void)
       }
       break;
 
+      // IDによる振り分け
     case 0x100:
-      cmd[0].speed = tmp_speed;
+    case 0x102:
+      cmd[0].speed = clampSize(can_rx_buf.value[0], SPEED_CMD_LIMIT_RPS);
       cmd[0].timeout_cnt = 100;
-      break;
-    case 0x101:
-      cmd[1].speed = tmp_speed;
-      cmd[1].timeout_cnt = 100;
       break;
 
-    case 0x102:
-      cmd[0].speed = tmp_speed;
-      cmd[0].timeout_cnt = 100;
-      break;
+    case 0x101:
     case 0x103:
-      cmd[1].speed = tmp_speed;
+      cmd[1].speed = clampSize(can_rx_buf.value[0], SPEED_CMD_LIMIT_RPS);
       cmd[1].timeout_cnt = 100;
       break;
 
@@ -1193,6 +1194,7 @@ int main(void)
     setLedRed(true);
 
     // 周期固定するために待つ
+    // 無回転時50%、回転時80%
     main_loop_remain_counter = INTERRUPT_KHZ_1MS - interrupt_timer_cnt;
     while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS);
     interrupt_timer_cnt = 0;
