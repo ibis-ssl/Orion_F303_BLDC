@@ -129,10 +129,10 @@ calib_process_t calib_process;
 
 void checkAngleCalibMode(bool motor)
 {
-  calib[motor].xy_field.radian_ave_x += cos(ma702[motor].output_radian);
-  calib[motor].xy_field.radian_ave_y += sin(ma702[motor].output_radian);
+  calib[motor].xy_field.radian_ave_x += cos(as5047p[motor].output_radian);
+  calib[motor].xy_field.radian_ave_y += sin(as5047p[motor].output_radian);
   calib[motor].ave_cnt++;
-  if (calib[motor].pre_raw > HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw < HARF_OF_ENC_CNT_MAX && calib_process.force_rotation_speed > 0) {
+  if (calib[motor].pre_raw > HARF_OF_ENC_CNT_MAX && as5047p[motor].enc_raw < HARF_OF_ENC_CNT_MAX && calib_process.force_rotation_speed > 0) {
     // ccw
     calib_process.print_flag = true;
     calib[motor].result_ccw_cnt++;
@@ -142,7 +142,7 @@ void checkAngleCalibMode(bool motor)
     calib[motor].xy_field.radian_ave_y = 0;
     calib[motor].ave_cnt = 0;
   }
-  if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && ma702[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_process.force_rotation_speed < 0) {
+  if (calib[motor].pre_raw < HARF_OF_ENC_CNT_MAX && as5047p[motor].enc_raw > HARF_OF_ENC_CNT_MAX && calib_process.force_rotation_speed < 0) {
     // cw
     calib_process.print_flag = true;
     calib[motor].result_cw_cnt++;
@@ -152,7 +152,7 @@ void checkAngleCalibMode(bool motor)
     calib[motor].xy_field.radian_ave_y = 0;
     calib[motor].ave_cnt = 0;
   }
-  calib[motor].pre_raw = ma702[motor].enc_raw;
+  calib[motor].pre_raw = as5047p[motor].enc_raw;
 }
 
 inline void calibrationProcess_itr(bool motor)
@@ -180,7 +180,7 @@ inline void motorProcess_itr(bool motor)
   updateADC(motor);
   //updateMA702(motor);
   updateAS5047P(motor);
-  setOutputRadianMotor(motor, ma702[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
+  setOutputRadianMotor(motor, as5047p[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
 }
 
 // 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
@@ -362,7 +362,7 @@ void runMode(void)
 
   switch (sys.print_cnt) {
     case 1:
-      // p("M0raw %6d M1raw %6d ", ma702[0].enc_raw, ma702[1].enc_raw);
+      // p("M0raw %6d M1raw %6d ", as5047p[0].enc_raw, as5047p[1].enc_raw);
       p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage());
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
@@ -370,7 +370,7 @@ void runMode(void)
       p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
       break;
     case 3:
-      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", ma702[0].enc_raw, ma702[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
+      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", as5047p[0].enc_raw, as5047p[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
       break;
     case 4:
       //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
@@ -396,13 +396,13 @@ void runMode(void)
       break;
     case 8:
       p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
-      // p("min %+6d cnt %6d / max %+6d cnt %6d ", ma702[0].diff_min, ma702[0].diff_min_cnt, ma702[0].diff_max, ma702[0].diff_max_cnt);
+      // p("min %+6d cnt %6d / max %+6d cnt %6d ", as5047p[0].diff_min, as5047p[0].diff_min_cnt, as5047p[0].diff_max, as5047p[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
-      ma702[0].diff_max = 0;
-      ma702[0].diff_min = 65535;
-      ma702[1].diff_max = 0;
-      ma702[1].diff_min = 65535;
+      as5047p[0].diff_max = 0;
+      as5047p[0].diff_min = 65535;
+      as5047p[1].diff_max = 0;
+      as5047p[1].diff_min = 65535;
       break;
     default:
       p("\n");
@@ -410,7 +410,7 @@ void runMode(void)
       break;
   }
   // ADC raw ALL
-  //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", ma702[0].enc_raw, ma702[1].enc_raw, sys.manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
+  //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", as5047p[0].enc_raw, as5047p[1].enc_raw, sys.manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 }
 
 /* Can't running 1kHz */
@@ -419,9 +419,9 @@ void encoderCalibrationMode(void)
   // 角度0のときにprint
   if (calib_process.print_flag) {
     calib_process.print_flag = false;
-    p("enc = %+5.2f %+5.2f  / M0 X %+5.2f Y %+5.2f / M1 X %+5.2f Y %+5.2f / Rad %+5.2f %+5.2f\n", ma702[0].output_radian, ma702[1].output_radian, cos(ma702[0].output_radian),
-      sin(ma702[0].output_radian), cos(ma702[1].output_radian), sin(ma702[1].output_radian), atan2(sin(ma702[0].output_radian), cos(ma702[0].output_radian)),
-      atan2(sin(ma702[1].output_radian), cos(ma702[1].output_radian)));
+    p("enc = %+5.2f %+5.2f  / M0 X %+5.2f Y %+5.2f / M1 X %+5.2f Y %+5.2f / Rad %+5.2f %+5.2f\n", as5047p[0].output_radian, as5047p[1].output_radian, cos(as5047p[0].output_radian),
+      sin(as5047p[0].output_radian), cos(as5047p[1].output_radian), sin(as5047p[1].output_radian), atan2(sin(as5047p[0].output_radian), cos(as5047p[0].output_radian)),
+      atan2(sin(as5047p[1].output_radian), cos(as5047p[1].output_radian)));
   }
 
   // calib_process.force_rotation_speedが+でCCW
@@ -781,8 +781,8 @@ void sendCanData(void)
 {
   static int transfer_cnt;
 
-  sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)ma702[0].enc_raw * 2 * M_PI / 65535);
-  sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)ma702[1].enc_raw * 2 * M_PI / 65535);
+  sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)as5047p[0].enc_raw * 2 * M_PI / 65535);
+  sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)as5047p[1].enc_raw * 2 * M_PI / 65535);
 
   switch (transfer_cnt) {
     case 0:
@@ -899,7 +899,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-  /*if (getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE || getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE) {
+  if (getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE || getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE) {
     forceStopAllPwmOutputAndTimer();
     p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET(0), getTempFET(1));
     setLedBlue(true);
@@ -915,7 +915,8 @@ void protect(void)
       error.value = (float)getTempFET(1);
     }
     waitPowerOnTimeout();
-  }*/
+  }
+
   if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT) {
     forceStopAllPwmOutputAndTimer();
     p("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
@@ -1033,6 +1034,21 @@ int main(void)
   // 50 / 5 : 10ぐらい
   //
   HAL_Delay(1);
+
+  p("AS5047P registors\n");
+  HAL_Delay(1);
+  for (int i = 0; i < 2; i++) {
+    as5047p[i].reg.error = readRegisterAS5047P(i, 0x0001) & 0x07;       // 0-2 bit, clear error
+    as5047p[i].reg.error = readRegisterAS5047P(i, 0x0001) & 0x07;       // 0-2 bit
+    as5047p[i].reg.prog = readRegisterAS5047P(i, 0x0003) & 0x7F;        // 0-6bit
+    as5047p[i].reg.diagagc = readRegisterAS5047P(i, 0x3FFC) & 0xFFF;    //0-11bit
+    as5047p[i].reg.mag = readRegisterAS5047P(i, 0x3FFD) & 0x3FFF;       //0-13bit
+    as5047p[i].reg.angleenc = readRegisterAS5047P(i, 0x3FFE) & 0x3FFF;  //0-13bit
+    as5047p[i].reg.anglecom = readRegisterAS5047P(i, 0x3FFF) & 0x3FFF;  //0-13bit
+    p("err 0x%02x prg 0x%02x diagagc 0x%03x ", as5047p[i].reg.error, as5047p[i].reg.prog, as5047p[i].reg.diagagc);
+    p("mag 0x%03x angle : enc 0x%03x com 0x%03x\n", as5047p[i].reg.mag, as5047p[i].reg.angleenc, as5047p[i].reg.anglecom);
+    HAL_Delay(1);
+  }
 
   motor_param[0].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[0] * SPEED_REAL_LIMIT_GAIN;
   motor_param[1].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[1] * SPEED_REAL_LIMIT_GAIN;
@@ -1161,7 +1177,7 @@ int main(void)
     /* USER CODE BEGIN 3 */
     receiveUserSerialCommand();
     for (int i = 0; i < 2; i++) {
-      calcMotorSpeed(&motor_real[i], &ma702[i], &sys, &enc_error_watcher);
+      calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
     }
     sendCanData();
 

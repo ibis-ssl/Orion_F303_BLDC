@@ -23,7 +23,7 @@
 /* USER CODE BEGIN 0 */
 #include <stdlib.h>
 
-ma702_t ma702[2];
+as5047p_t as5047p[2];
 /* USER CODE END 0 */
 
 SPI_HandleTypeDef hspi1;
@@ -122,28 +122,47 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef * spiHandle)
 
 inline void updateDiff(bool enc)
 {
-  int temp = ma702[enc].pre_enc_raw - ma702[enc].enc_raw;
+  int temp = as5047p[enc].pre_enc_raw - as5047p[enc].enc_raw;
   if (temp < -HARF_OF_ENC_CNT_MAX) {
     temp += ENC_CNT_MAX;
   } else if (temp > HARF_OF_ENC_CNT_MAX) {
     temp -= ENC_CNT_MAX;
   }
 
-  ma702[enc].diff_enc = temp;
+  as5047p[enc].diff_enc = temp;
 
-  if (abs(ma702[enc].diff_max) < abs(temp)) {
-    ma702[enc].diff_max = temp;
-    ma702[enc].diff_max_cnt = ma702[enc].enc_raw;
+  if (abs(as5047p[enc].diff_max) < abs(temp)) {
+    as5047p[enc].diff_max = temp;
+    as5047p[enc].diff_max_cnt = as5047p[enc].enc_raw;
   }
-  if (abs(ma702[enc].diff_min) > abs(temp)) {
-    ma702[enc].diff_min = temp;
-    ma702[enc].diff_min_cnt = ma702[enc].enc_raw;
+  if (abs(as5047p[enc].diff_min) > abs(temp)) {
+    as5047p[enc].diff_min = temp;
+    as5047p[enc].diff_min_cnt = as5047p[enc].enc_raw;
   }
 }
 
-uint8_t readRegisterAS5047P(bool enc, uint8_t address) {}
+uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
+{
+  if (enc) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+  } else {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+  }
 
-inline void updateAS5047P_Common(ma702_t * enc)
+  hspi1.Instance->DR = reg_address | (1 << 14);
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
+  }
+
+  if (enc) {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+  } else {
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+  }
+  // 14 bit registor
+  return (hspi1.Instance->DR & 0x3FFF);
+}
+
+inline void updateAS5047P_Common(as5047p_t * enc)
 {
   enc->pre_enc_raw = enc->enc_raw;
 
@@ -164,14 +183,14 @@ void updateAS5047P(bool motor)
   if (motor == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
-    updateAS5047P_Common(&ma702[0]);
+    updateAS5047P_Common(&as5047p[0]);
     updateDiff(0);
 
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-    updateAS5047P_Common(&ma702[1]);
+    updateAS5047P_Common(&as5047p[1]);
     updateDiff(1);
 
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);

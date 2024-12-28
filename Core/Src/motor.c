@@ -59,7 +59,7 @@ void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset,
   }
 }
 
-void calcMotorSpeed(motor_real_t * real, ma702_t * enc, system_t * sys, enc_error_watcher_t * enc_error)
+void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_error_watcher_t * enc_error)
 {
   int temp = real->pre_enc_cnt_raw - enc->enc_raw;
   if (temp < -HARF_OF_ENC_CNT_MAX) {

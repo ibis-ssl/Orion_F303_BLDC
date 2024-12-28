@@ -45,7 +45,11 @@ typedef struct
   int enc_elec_raw;
   int pre_enc_raw;
   int diff_enc, diff_min, diff_max, diff_max_cnt, diff_min_cnt;
-} ma702_t;
+  struct
+  {
+    uint8_t error, prog, diagagc, mag, angleenc, anglecom;
+  } reg;
+} as5047p_t;
 
 /* USER CODE END Private defines */
 
@@ -53,9 +57,9 @@ void MX_SPI1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
-extern ma702_t ma702[2];
+extern as5047p_t as5047p[2];
 
-uint8_t readRegisterAS5047P(bool enc, uint8_t address);
+uint16_t readRegisterAS5047P(bool enc, uint16_t address);
 void updateAS5047P(bool motor);
 
 /* USER CODE END Prototypes */
