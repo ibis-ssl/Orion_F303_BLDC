@@ -54,7 +54,7 @@ typedef union {
     float value;
   } error;
 
-  float value;
+  float value[2];
 } can_msg_buf_t;
 
 /* USER CODE END Private defines */
@@ -65,10 +65,10 @@ void MX_CAN_Init(void);
 
 void CAN_Filter_Init(uint16_t board_addr);
 void updateCANRXBuffer(void);
-void sendFloat(uint32_t can_id, float data);
+void sendFloatDual(uint32_t can_id, float data1, float data2);
 void sendSpeed(int board_id, int motor, float speed, float angle);
 void sendVoltage(int board_id, int motor, float voltage);
-void sendTemperature(int board_id, int motor, float temp);
+void sendTemperature(int board_id, int motor, float motor_temp, float fet_temp);
 void sendCurrent(int board_id, int motor, float current);
 void sendError(uint16_t error_id, uint16_t error_info, float error_value);
 uint32_t getCanError(void);

@@ -119,23 +119,23 @@ void CAN_Filter_Init(uint16_t board_addr)
   sFilterConfig.FilterActivation = ENABLE;
 
   sFilterConfig.FilterBank = 0;
-  sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5;      //speed
-  sFilterConfig.FilterIdLow = (0x310) << 5;                        //motor calib
-  sFilterConfig.FilterMaskIdHigh = (0x000) << 5;                   // emg stop
-  sFilterConfig.FilterMaskIdLow = (0x001) << 5;                    // error report
+  sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5;  //speed
+  sFilterConfig.FilterIdLow = (0x310) << 5;                    //motor calib
+  sFilterConfig.FilterMaskIdHigh = (0x000) << 5;               // emg stop
+  sFilterConfig.FilterMaskIdLow = (0x001) << 5;                // error report
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
 
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
     Error_Handler();
   }
 
-  sFilterConfig.FilterIdHigh = (0x110) << 5;      // kick
-  sFilterConfig.FilterIdLow = (0x010) << 5;       // power enable
+  sFilterConfig.FilterIdHigh = (0x110) << 5;                       // kick
+  sFilterConfig.FilterIdLow = (0x010) << 5;                        // power enable
   sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;  //speed
   sFilterConfig.FilterMaskIdLow = (0x320) << 5;                    // notused
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
   sFilterConfig.FilterBank = 1;
-  
+
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
     Error_Handler();
   }
@@ -147,7 +147,7 @@ void CAN_Filter_Init(uint16_t board_addr)
   }
 }
 
-void sendFloat(uint32_t can_id, float data)
+void sendFloatDual(uint32_t can_id, float data1, float data2)
 {
   can_msg_buf_t msg;
   CAN_TxHeaderTypeDef can_header;
@@ -155,10 +155,11 @@ void sendFloat(uint32_t can_id, float data)
   can_header.StdId = can_id;
   can_header.ExtId = 0;
   can_header.RTR = CAN_RTR_DATA;
-  can_header.DLC = 4;
+  can_header.DLC = 8;
   can_header.IDE = CAN_ID_STD;
   can_header.TransmitGlobalTime = DISABLE;
-  msg.value = data;
+  msg.value[0] = data1;
+  msg.value[1] = data2;
   if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
     ex_can_send_fail_cnt++;
   }
@@ -184,11 +185,11 @@ void sendSpeedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
 
 void sendSpeed(int board_id, int motor, float speed, float angle) { sendSpeedInfo(0x200 + board_id * 2 + motor, speed, angle); }
 
-void sendVoltage(int board_id, int motor, float voltage) { sendFloat(0x210 + board_id * 2 + motor, voltage); }
+void sendVoltage(int board_id, int motor, float voltage) { sendFloatDual(0x210 + board_id * 2 + motor, voltage, 0); }
 
-void sendTemperature(int board_id, int motor, float temp) { sendFloat(0x220 + board_id * 2 + motor, temp); }
+void sendTemperature(int board_id, int motor, float motor_temp, float fet_temp) { sendFloatDual(0x220 + board_id * 2 + motor, motor_temp, fet_temp); }
 
-void sendCurrent(int board_id, int motor, float current) { sendFloat(0x230 + board_id * 2 + motor, current); }
+void sendCurrent(int board_id, int motor, float current) { sendFloatDual(0x230 + board_id * 2 + motor, current, 0); }
 
 // id : motor
 void sendError(uint16_t error_id, uint16_t error_info, float error_value)

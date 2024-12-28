@@ -234,7 +234,7 @@ void can_rx_callback(void)
     return;
   }
   can_rx_cnt++;
-  tmp_speed = can_rx_buf.value;
+  tmp_speed = can_rx_buf.value[0];
   if (tmp_speed > SPEED_CMD_LIMIT_RPS) {
     tmp_speed = SPEED_CMD_LIMIT_RPS;
   } else if (tmp_speed < -SPEED_CMD_LIMIT_RPS) {
@@ -799,18 +799,18 @@ void sendCanData(void)
       break;
     case 8:
       // 本当はFETとモーター温度をまとめてint x4で送ったほうがいいかもしれないが、実用上のメリットが少ないので後回し
-      sendTemperature(flash.board_id, 0, getTempMotor(0));
+      sendTemperature(flash.board_id, 0, getTempMotor(0), getTempFET(0));
       break;
     case 10:
-      sendTemperature(flash.board_id, 1, getTempMotor(1));
+      sendTemperature(flash.board_id, 1, getTempMotor(1), getTempFET(1));
       break;
     case 12:
       // 拡張
-      sendFloat(0x500 + flash.board_id * 2, flash.rps_per_v_cw[0]);
+      sendFloatDual(0x500 + flash.board_id * 2, flash.rps_per_v_cw[0], 0);
       break;
     case 14:
       // 拡張
-      sendFloat(0x501 + flash.board_id * 2, flash.rps_per_v_cw[1]);
+      sendFloatDual(0x501 + flash.board_id * 2, flash.rps_per_v_cw[1], 0);
       break;
     case 50:
       transfer_cnt = -1;
