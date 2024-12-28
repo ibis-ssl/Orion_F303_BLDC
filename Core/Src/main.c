@@ -996,7 +996,7 @@ int main(void)
     pid[i].pid_ki = 0.3;
     pid[i].pid_kd = 0.0;
     pid[i].error_integral_limit = 4.0;
-    pid[i].diff_voltage_limit = 6.0;  // 2.0 -> 4.0 -> 6.0
+    pid[i].diff_voltage_limit = DIFF_VOLTAGE_LIMIT;
 
     cmd[i].speed = 0;
     cmd[i].timeout_cnt = -1;
