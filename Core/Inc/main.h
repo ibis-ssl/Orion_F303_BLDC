@@ -61,7 +61,7 @@ enum {
 #define ENC_CNT_MAX (65536)
 #define HARF_OF_ENC_CNT_MAX (32768)
 
-#define DIFF_VOLTAGE_LIMIT (6.0)  // 2.0 -> 4.0 -> 6.0
+#define DIFF_VOLTAGE_LIMIT (4.0)  // 2.0 -> 4.0 -> 6.0
 #define SPEED_CMD_LIMIT_RPS (80)
 // 40で7m/sぴったりぐらい、加速にはDIFF_VOLTAGE_LIMITぶんも必要
 
