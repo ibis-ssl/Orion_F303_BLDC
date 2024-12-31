@@ -900,7 +900,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-  if (getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE || getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE) {
+/*   if (getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE || getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE) {
     forceStopAllPwmOutputAndTimer();
     p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET(0), getTempFET(1));
     setLedBlue(true);
@@ -916,7 +916,7 @@ void protect(void)
       error.value = (float)getTempFET(1);
     }
     waitPowerOnTimeout();
-  }
+  } */
 
   if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT) {
     forceStopAllPwmOutputAndTimer();
