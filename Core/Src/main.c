@@ -83,7 +83,10 @@ extern uint32_t ex_can_send_fail_cnt;
 uint8_t uart_rx_buf[10] = {0};
 bool uart_rx_flag = false;
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart) { uart_rx_flag = true; }
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
+{
+  uart_rx_flag = true;
+}
 
 // 0 ~ M_PI*2 * 4
 
@@ -110,7 +113,8 @@ calib_process_t calib_process;
 #define THR_MOTOR_OVER_CURRENT (10)
 #define THR_BATTERY_UNVER_VOLTAGE (18.0)
 #define THR_BATTERY_OVER_VOLTAGE (35.0)
-#define THR_MOTOR_OVER_TEMPERATURE (70)  // 80 -> 70 deg (実機テストによる)
+#define THR_MOTOR_OVER_TEMPERATURE (70)    // 80 -> 70 deg (実機テストによる)
+#define THR_NO_CONNECTED_TEPERATURE (120)  // V4.1用、無接続時130度程度になるので
 
 #define MOTOR_CALIB_INIT_CNT (2500)
 #define MOTOR_CALIB_READY_CNT (2000)
@@ -900,7 +904,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-/*   if (getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE || getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE) {
+  if ((getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE && getTempFET(0) < THR_NO_CONNECTED_TEPERATURE) || (getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE && getTempFET(1) < THR_NO_CONNECTED_TEPERATURE)) {
     forceStopAllPwmOutputAndTimer();
     p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET(0), getTempFET(1));
     setLedBlue(true);
@@ -916,7 +920,7 @@ void protect(void)
       error.value = (float)getTempFET(1);
     }
     waitPowerOnTimeout();
-  } */
+  }
 
   if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT) {
     forceStopAllPwmOutputAndTimer();
