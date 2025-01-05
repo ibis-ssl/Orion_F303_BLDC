@@ -167,7 +167,9 @@ inline void updateAS5047P_Common(as5047p_t * enc)
   enc->pre_enc_raw = enc->enc_raw;
 
   enc->enc_raw = hspi1.Instance->DR;
-  //hspi1.Instance->DR = 0x3FFF | (1 << 14);
+  // addr 0x3FFF & 1 << 14 (read) & parity
+  // 0x3FFE : without dynamic errro compensation
+  // 0x3FFF : with dynamic errro compensation
   hspi1.Instance->DR = 0xFFFF;
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
