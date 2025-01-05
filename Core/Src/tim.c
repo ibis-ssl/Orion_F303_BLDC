@@ -287,18 +287,21 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef * tim_pwmHandle)
 }
 
 /* USER CODE BEGIN 1 */
-float rad_to_sin_cnv_array[1024] = {0};
+float rad_to_sin_cnv_array[1024 * 4] = {0};
 inline void initFirstSin(void)
 {
-  for (int i = 0; i < 1024; i++) {
-    float temp_rad = (float)i / 256 * M_PI * 2;
+  for (int i = 0; i < 1024 * 4; i++) {
+    float temp_rad = (float)i / 1024 * M_PI * 2;
     rad_to_sin_cnv_array[i] = sin(temp_rad);
     // printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
     // HAL_Delay(1);
   }
 }
 
-inline float fast_sin(float rad) { return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 256)]; }
+inline float fast_sin(float rad)
+{
+  return rad_to_sin_cnv_array[(uint8_t)(rad / (M_PI * 2) * 1024)];
+}
 
 #define BATTERY_VOLTAGE_BOTTOM (18)
 #define X2_PER_R3 (1.154)
@@ -318,15 +321,15 @@ inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage
   }
   voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
 
-  uint16_t rad_to_cnt = (uint8_t)((float)(out_rad + M_PI * 4) / (M_PI * 2) * 255);
+  uint16_t rad_to_cnt = (uint16_t)(((float)(out_rad + M_PI * 4) / (M_PI * 2) * 1024)) & 0x3FF;
   if (motor == 0) {
     htim1.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-    htim1.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];   //+85 = 1/3
-    htim1.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[171 + rad_to_cnt];  //-85 = 2/4
+    htim1.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[341 + rad_to_cnt];  //+85 = 1/3 -> 1023x1/3
+    htim1.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[682 + rad_to_cnt];  //-85 = 2/4 -> 1023x2/3
   } else {
     htim8.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-    htim8.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-    htim8.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[171 + rad_to_cnt];
+    htim8.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[341 + rad_to_cnt];
+    htim8.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[682 + rad_to_cnt];
   }
 }
 
