@@ -191,6 +191,9 @@ inline void motorProcess_itr(bool motor)
 // 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
 #define INTERRUPT_KHZ_1MS (20)
 volatile uint32_t interrupt_timer_cnt = 0, main_loop_remain_counter = 0;
+volatile static float main_loop_remain_counter_ave = 0, task_complete_timer_cnt_ave = 0;
+volatile static uint32_t system_exec_time_stamp[10] = {0};
+volatile static float system_exec_time_stamp_ave[10] = {0};
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 {
   // TIM1 : M1
@@ -212,6 +215,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   }
 
   setLedBlue(true);
+  sys.task_complete_timer_cnt = htim->Instance->CNT;
 }
 
 void waitPowerOnTimeout()
@@ -322,6 +326,7 @@ void runMode(void)
       resumePwmOutput();
     }
   }
+  system_exec_time_stamp[1] = interrupt_timer_cnt;
 
   if (sys.manual_offset_radian > M_PI * 2) {
     sys.manual_offset_radian = 0;
@@ -329,7 +334,8 @@ void runMode(void)
 
   //- 0.5 max spd 0.75
   //+ 3.45 max spd 3.25
-
+  // ここが速度によって処理負荷変わってる？
+  // 負のほうが処理時間かかってる
   for (int i = 0; i < 2; i++) {
     if (isPushedSW1()) {
       cmd[i].speed = 40.0;
@@ -357,13 +363,18 @@ void runMode(void)
     if (sys.free_wheel_cnt > 0) {
       cmd[i].out_v = 0;
     }
+  }
 
+  system_exec_time_stamp[2] = interrupt_timer_cnt;
+  for (int i = 0; i < 2; i++) {
     setFinalOutputVoltage(&cmd[i], &enc_offset[i], sys.manual_offset_radian);  // select Vq-offset angle
   }
 
+  system_exec_time_stamp[3] = interrupt_timer_cnt;
   // ここは1KHzでまわっている
 
   // 1サイクルごとの負荷を減らすために分割して送信
+  // 1ms程度かかっている
   sys.print_cnt++;
 
   switch (sys.print_cnt) {
@@ -394,7 +405,10 @@ void runMode(void)
       }
       break;
     case 6:
-      p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, ex_can_send_fail_cnt);
+      task_complete_timer_cnt_ave = task_complete_timer_cnt_ave * 0.99 + (float)sys.task_complete_timer_cnt * 0.01;
+      main_loop_remain_counter_ave = main_loop_remain_counter_ave * 0.99 + (float)main_loop_remain_counter * 0.01;
+      p("CPUA %6.4f CNT %6.2f ", main_loop_remain_counter_ave, task_complete_timer_cnt_ave);
+      //p("LoadV %+5.2f %+5.2f CanFail %4d ", cmd[0].out_v - pid[0].eff_voltage, cmd[1].out_v - pid[1].eff_voltage, ex_can_send_fail_cnt);
       ex_can_send_fail_cnt = 0;
       break;
     case 7:
@@ -402,7 +416,11 @@ void runMode(void)
       //p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
-      p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
+      for (int i = 0; i < 4; i++) {
+        system_exec_time_stamp_ave[i] = system_exec_time_stamp_ave[i] * 0.99 + (float)system_exec_time_stamp[i] * 0.01;
+      }
+      p("Ave %6.4f %6.4f %6.4f %6.4f ", system_exec_time_stamp_ave[0], system_exec_time_stamp_ave[1], system_exec_time_stamp_ave[2], system_exec_time_stamp_ave[3]);
+      //p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
       // p("min %+6d cnt %6d / max %+6d cnt %6d ", as5047p[0].diff_min, as5047p[0].diff_min_cnt, as5047p[0].diff_max, as5047p[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
@@ -416,6 +434,7 @@ void runMode(void)
       sys.print_cnt = 0;
       break;
   }
+
   // ADC raw ALL
   //	p("M0raw %8d M1raw %8d offset %4.3f, voltageM0 %+6.3f M1 %6.3f rx %6ld speedM0 %+6.3f\n", as5047p[0].enc_raw, as5047p[1].enc_raw, sys.manual_offset_radian, cmd[0].out_v, cmd[1].out_v, can_rx_cnt, cmd[0].speed);
 }
@@ -508,7 +527,7 @@ void encoderCalibrationMode(void)
 
 bool checkMotorRpsError(float m0, float m1)
 {
-  if (fabs(m0 - m1) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
+  if (fabsf(m0 - m1) > MOTOR_CALIB_M0_M1_ERROR_TRERANCE) {
     p("\n\nCALIBRATION ERROR!!!\n\n");
     calib_process.motor_calib_cnt = 0;
     return true;
@@ -523,7 +542,7 @@ bool checkMotorRpsError(float m0, float m1)
 
 bool checkMotorRpsHighLowError(float m0_cw, float m1_cw, float m0_ccw, float m1_ccw)
 {
-  if (fabs(m0_cw - m0_ccw) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabs(m1_cw - m1_ccw) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
+  if (fabsf(m0_cw - m0_ccw) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE || fabsf(m1_cw - m1_ccw) > MOTOR_CALIB_CW_CCW_ERROR_TRERANCE) {
     p("\n\nCALIBRATION ERROR!!! CW-CCW PARAM UNMATCH\n\n");
     calib_process.motor_calib_cnt = 0;
     return true;
@@ -1029,7 +1048,7 @@ int main(void)
     cmd[i].out_v = 0;
     cmd[i].out_v_final = 0;
 
-    sys.manual_offset_radian = 0.02;
+    sys.manual_offset_radian = 0.00;
 
     // set calibration params
     enc_offset[i].zero_calib = flash.calib[i];
@@ -1100,7 +1119,7 @@ int main(void)
   HAL_ADC_Start(&hadc3);
 
   htim1.Instance->CNT = 0;
-  htim8.Instance->CNT = 10;
+  htim8.Instance->CNT = 0;
 
   HAL_TIM_Base_Start_IT(&htim1);
   HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
@@ -1213,11 +1232,13 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     receiveUserSerialCommand();
+
     for (int i = 0; i < 2; i++) {
       calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
     }
     sendCanData();
 
+    system_exec_time_stamp[0] = interrupt_timer_cnt;
     if (calib_process.enc_calib_cnt != 0) {
       encoderCalibrationMode();
     } else if (calib_process.motor_calib_cnt != 0) {
