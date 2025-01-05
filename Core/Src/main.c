@@ -114,6 +114,7 @@ calib_process_t calib_process;
 #define THR_BATTERY_UNVER_VOLTAGE (18.0)
 #define THR_BATTERY_OVER_VOLTAGE (35.0)
 #define THR_MOTOR_OVER_TEMPERATURE (70)    // 80 -> 70 deg (実機テストによる)
+#define THR_FET_OVER_TEMPERATURE (80)      // 70 -> 80 deg (実機テストによる)
 #define THR_NO_CONNECTED_TEPERATURE (120)  // V4.1用、無接続時130度程度になるので
 
 #define MOTOR_CALIB_INIT_CNT (2500)
@@ -906,7 +907,7 @@ void protect(void)
     }
     waitPowerOnTimeout();
   }
-  if ((getTempFET(0) > THR_MOTOR_OVER_TEMPERATURE && getTempFET(0) < THR_NO_CONNECTED_TEPERATURE) || (getTempFET(1) > THR_MOTOR_OVER_TEMPERATURE && getTempFET(1) < THR_NO_CONNECTED_TEPERATURE)) {
+  if ((getTempFET(0) > THR_FET_OVER_TEMPERATURE && getTempFET(0) < THR_NO_CONNECTED_TEPERATURE) || (getTempFET(1) > THR_FET_OVER_TEMPERATURE && getTempFET(1) < THR_NO_CONNECTED_TEPERATURE)) {
     forceStopAllPwmOutputAndTimer();
     p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET(0), getTempFET(1));
     setLedBlue(true);
@@ -997,10 +998,22 @@ int main(void)
   loadFlashData();
   p("\n\n** Orion VV driver V4 start! %s %s **\n", __DATE__, __TIME__);
 
-  /*    for (int i = 0; i < 1025; i++) {
-    p("idx:%4d sin_arr %+8.5f sin  %+8.5f\n", i, get_sin_table(i), sinf((float)i / 1024 * M_PI * 2));
+  /*   for (int i = 0; i < 1025; i++) {
+    float radian = (float)i / 0x400 * M_PI * 2;
+    uint16_t rad_to_cnt = (uint16_t)(((float)(radian + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF;
+
+    float output_sin[3];
+
+    output_sin[0] = get_sin_table(rad_to_cnt);
+    output_sin[1] = get_sin_table(rad_to_cnt + 341);
+    output_sin[2] = get_sin_table(rad_to_cnt + 683);
+    p("U-W %+8.5f U-V %+8.5f V-W %+8.5f\n", output_sin[0], output_sin[1], output_sin[2]);
+
+    //p("idx:%4d sin_arr %+8.5f rad %+8.5f fsin %+8.5f asin %+8.5f\n", i, get_sin_table(i), (float)i / 0x400 * M_PI * 2, fast_sin((float)i / 0x400 * M_PI * 2), asinf(get_sin_table(i)));
+
     HAL_Delay(1);
-  }  */
+  } */
+
   calib_process.force_rotation_speed = 0.005;
   sys.free_wheel_cnt = START_UP_FREE_WHEEL_CNT;
 
@@ -1015,6 +1028,8 @@ int main(void)
 
     cmd[i].out_v = 0;
     cmd[i].out_v_final = 0;
+
+    sys.manual_offset_radian = 0.02;
 
     // set calibration params
     enc_offset[i].zero_calib = flash.calib[i];
@@ -1036,6 +1051,7 @@ int main(void)
     // 2.0 -> 4.0 -> 6.0
     if (motor_param[i].voltage_per_rps < 0.25) {
       // 400kV
+      // 4.0でも問題なかったけど一応6.0にしておく
       pid[i].diff_voltage_limit = 4.0;
 
     } else {
