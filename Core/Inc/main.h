@@ -58,7 +58,9 @@ enum {
 
 // by manual tuned
 // +0.17 / -0.08で指示電圧からの想定回転数と同じになる
-#define ROTATION_OFFSET_RADIAN (2.09)
+//#define ROTATION_OFFSET_RADIAN (2.09)
+// 理論値は2/3 M_PIで2.09あたり、ただし、40rps以下で設定値どおりになるよう、手動調整で2.00を使用
+#define ROTATION_OFFSET_RADIAN (2.00)
 #define ENC_CNT_MAX (65536)
 #define HARF_OF_ENC_CNT_MAX (32768)
 

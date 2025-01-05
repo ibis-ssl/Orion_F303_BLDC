@@ -1048,7 +1048,9 @@ int main(void)
     cmd[i].out_v = 0;
     cmd[i].out_v_final = 0;
 
-    sys.manual_offset_radian = 0.00;
+    // 手動調整による
+    // 40rps/80rpsでも同等の効果のため、処理時間ではなく電気角度のオフセットと思われるので暫定的対処
+    sys.manual_offset_radian = 0.03;
 
     // set calibration params
     enc_offset[i].zero_calib = flash.calib[i];
