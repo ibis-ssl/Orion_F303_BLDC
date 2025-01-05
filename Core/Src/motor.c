@@ -87,7 +87,7 @@ void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_er
 
   // motor_real[motor].rps = ((float)temp / ENC_CNT_MAX * 1000) * motor_real[motor].k + (1-motor_real[motor].k) * motor_real[motor].pre_rps; // rps
   real->rps = (float)temp / ENC_CNT_MAX * 1000;
-  real->rps_ave = real->rps_ave * 0.999 + real->rps * 0.001;
+  real->rps_ave = real->rps_ave * 0.99 + real->rps * 0.01;
   real->pre_rps = real->rps;
   real->pre_enc_cnt_raw = enc->enc_raw;
 }
