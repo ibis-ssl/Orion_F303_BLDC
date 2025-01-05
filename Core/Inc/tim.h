@@ -51,6 +51,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef * htim);
 
 void initFirstSin(void);
 float fast_sin(float rad);
+float get_sin_table(uint16_t idx);
 
 void forceStopAllPwmOutputAndTimer(void);
 void setPwmOutPutFreeWheel(void);

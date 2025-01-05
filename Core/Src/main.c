@@ -331,14 +331,14 @@ void runMode(void)
 
   for (int i = 0; i < 2; i++) {
     if (isPushedSW1()) {
-      cmd[i].speed = 10.0;
+      cmd[i].speed = 40.0;
     } else if (isPushedSW2()) {
-      cmd[i].speed = -10.0;
+      cmd[i].speed = -40.0;
     } else if (isPushedSW3()) {
-      cmd[i].speed = 20.0;
+      cmd[i].speed = 80.0;
       //resumePwmOutput();
     } else if (isPushedSW4()) {
-      cmd[i].speed = -40.0;
+      cmd[i].speed = -80.0;
       //setPwmOutPutFreeWheel();
     }
 
@@ -397,7 +397,8 @@ void runMode(void)
       ex_can_send_fail_cnt = 0;
       break;
     case 7:
-      p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
+      p("Offset %+4.2f RPS %+6.1f %+6.1f ", sys.manual_offset_radian, motor_real[0].rps_ave, motor_real[1].rps_ave);
+      //p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
       p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
@@ -460,13 +461,13 @@ void encoderCalibrationMode(void)
       xy_field_offset_radian[i] = (2 * M_PI) - atan2(xy_field_ave_y[i], xy_field_ave_x[i]);
       p("CW+CCW X %+5.2f Y %+5.2f\n", xy_field_ave_x[i], xy_field_ave_y[i]);
 
-      xy_field_offset_radian[i] += ROTATION_OFFSET_RADIAN;
+      /*       xy_field_offset_radian[i] += ROTATION_OFFSET_RADIAN;
       if (xy_field_offset_radian[i] > M_PI * 2) {
         xy_field_offset_radian[i] -= M_PI * 2;
       }
       if (xy_field_offset_radian[i] < 0) {
         xy_field_offset_radian[i] += M_PI * 2;
-      }
+      } */
 
       p("Rad M0 %+5.2f\n\n", xy_field_offset_radian[i]);
 
@@ -641,7 +642,8 @@ void motorCalibrationMode(void)
         }
 
         p("save calib result...\n");
-        writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+        // 高回転時のパラメーターのみ使用(低回転から切り替え)
+        writeMotorCalibrationValue(rps_per_v_cw_h[0], rps_per_v_cw_h[1]);
 
         HAL_Delay(10);
         p("enc data : %4.2f %4.2f\n", flash.calib[0], flash.calib[1]);
@@ -983,6 +985,7 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
   initFirstSin();
+
   // LED
   setLedRed(true);
   setLedGreen(true);
@@ -994,6 +997,10 @@ int main(void)
   loadFlashData();
   p("\n\n** Orion VV driver V4 start! %s %s **\n", __DATE__, __TIME__);
 
+  /*    for (int i = 0; i < 1025; i++) {
+    p("idx:%4d sin_arr %+8.5f sin  %+8.5f\n", i, get_sin_table(i), sinf((float)i / 1024 * M_PI * 2));
+    HAL_Delay(1);
+  }  */
   calib_process.force_rotation_speed = 0.005;
   sys.free_wheel_cnt = START_UP_FREE_WHEEL_CNT;
 
@@ -1002,7 +1009,6 @@ int main(void)
     pid[i].pid_ki = 0.3;
     pid[i].pid_kd = 0.0;
     pid[i].error_integral_limit = 4.0;
-    pid[i].diff_voltage_limit = DIFF_VOLTAGE_LIMIT;
 
     cmd[i].speed = 0;
     cmd[i].timeout_cnt = -1;
@@ -1014,24 +1020,34 @@ int main(void)
     enc_offset[i].zero_calib = flash.calib[i];
 
     // rps/v
+    // 400kV : 6.66 rps/v
     // 200kV : 3.33 rps/v
-    // 100kV : 1.67 rps/v
-    // M0 5.7, M1 2.88 rps/v
 
     // v/rps
-    // 200kV : 0.3 rps/v
-    // 100kV : 0.6 rps/v
-    // M0 0.175, M1 0.347 v/rps
+    // 400kV : 0.15 rps/v
+    // 200kV : 0.3  rps/v
 
     if (1 < flash.rps_per_v_cw[i] && flash.rps_per_v_cw[i] < 10) {
       motor_param[i].voltage_per_rps = 1 / flash.rps_per_v_cw[i];
     } else {
       motor_param[i].voltage_per_rps = V_PER_RPS_DEFAULT;
     }
+
+    // 2.0 -> 4.0 -> 6.0
+    if (motor_param[i].voltage_per_rps < 0.25) {
+      // 400kV
+      pid[i].diff_voltage_limit = 4.0;
+
+    } else {
+      // 200kV
+      pid[i].diff_voltage_limit = 6.0;
+    }
   }
   p("CAN ADDR 0x%03x\nenc offset M0 %6.3f M1 %6.3f\nRPS/V M0 %6.3f M1 %6.3f\n", flash.board_id, flash.calib[0], flash.calib[1], flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
   HAL_Delay(1);
   p("Kv M0 %6.3f M1 %6.3f rpm/V\n", flash.rps_per_v_cw[0] * 60, flash.rps_per_v_cw[1] * 60);
+  HAL_Delay(1);
+  p("Diff voltage limit M0 %3.1fV M1 %3.1fV\n", pid[0].diff_voltage_limit, pid[1].diff_voltage_limit);
 
   __HAL_SPI_ENABLE(&hspi1);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);

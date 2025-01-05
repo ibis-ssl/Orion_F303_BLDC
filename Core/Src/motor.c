@@ -50,12 +50,15 @@ void speedToOutputVoltage(motor_pid_control_t * pid, motor_real_t * real, motor_
 
 void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset, float manual_offset)
 {
+  // +方向にしか増やしてはいけない(最終的には10bitマスクでカバーする)
+  const float minus_offset = 2 * M_PI - ROTATION_OFFSET_RADIAN;
+  const float plus_offset = ROTATION_OFFSET_RADIAN;
   cmd->out_v_final = cmd->out_v;
   if (cmd->out_v_final < 0) {
     // 2.4
-    enc_offset->final = -(ROTATION_OFFSET_RADIAN * 2) + enc_offset->zero_calib + manual_offset;
+    enc_offset->final = minus_offset + enc_offset->zero_calib + manual_offset;
   } else {
-    enc_offset->final = enc_offset->zero_calib + manual_offset;
+    enc_offset->final = plus_offset + enc_offset->zero_calib + manual_offset;
   }
 }
 
@@ -84,6 +87,7 @@ void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_er
 
   // motor_real[motor].rps = ((float)temp / ENC_CNT_MAX * 1000) * motor_real[motor].k + (1-motor_real[motor].k) * motor_real[motor].pre_rps; // rps
   real->rps = (float)temp / ENC_CNT_MAX * 1000;
+  real->rps_ave = real->rps_ave * 0.999 + real->rps * 0.001;
   real->pre_rps = real->rps;
   real->pre_enc_cnt_raw = enc->enc_raw;
 }
