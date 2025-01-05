@@ -287,11 +287,11 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef * tim_pwmHandle)
 }
 
 /* USER CODE BEGIN 1 */
-float rad_to_sin_cnv_array[1024 * 4] = {0};
+float rad_to_sin_cnv_array[0x400 * 4] = {0};
 inline void initFirstSin(void)
 {
-  for (int i = 0; i < 1024 * 4; i++) {
-    float temp_rad = (float)i / 1023 * M_PI * 2;
+  for (int i = 0; i < 0x400 * 4; i++) {
+    float temp_rad = (float)i / 0x400 * M_PI * 2;
     rad_to_sin_cnv_array[i] = sin(temp_rad);
     // printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
     // HAL_Delay(1);
@@ -305,7 +305,7 @@ float get_sin_table(uint16_t idx)
 
 inline float fast_sin(float rad)
 {
-  return rad_to_sin_cnv_array[(uint16_t)(((float)(rad + M_PI * 4) / (M_PI * 2) * 1024)) & 0x3FF];
+  return rad_to_sin_cnv_array[(uint16_t)(((float)(rad + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF];
 }
 
 #define BATTERY_VOLTAGE_BOTTOM (18)
@@ -326,7 +326,7 @@ inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage
   }
   voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
 
-  uint16_t rad_to_cnt = (uint16_t)(((float)(out_rad + M_PI * 4) / (M_PI * 2) * 0x3FF)) & 0x3FF;
+  uint16_t rad_to_cnt = (uint16_t)(((float)(out_rad + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF;
   if (motor == 0) {
     htim1.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
     htim1.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[341 + rad_to_cnt];  //+85 = 1/3 -> 1024x1/3
