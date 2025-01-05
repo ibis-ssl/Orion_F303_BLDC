@@ -48,17 +48,21 @@ void speedToOutputVoltage(motor_pid_control_t * pid, motor_real_t * real, motor_
   }
 }
 
+// const floatだと計算時間変わってしまったのでマクロ化
+#define MINUS_OFFSET (2 * M_PI - ROTATION_OFFSET_RADIAN)
+#define PLUS_OFFSET (ROTATION_OFFSET_RADIAN)
+
 void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset, float manual_offset)
 {
   // +方向にしか増やしてはいけない(最終的には10bitマスクでカバーする)
-  const float minus_offset = 2 * M_PI - ROTATION_OFFSET_RADIAN;
-  const float plus_offset = ROTATION_OFFSET_RADIAN;
+
   cmd->out_v_final = cmd->out_v;
+  enc_offset->final = enc_offset->zero_calib + manual_offset;
+  // const floatだとここの分岐で計算時間に差が生まれているらしい
   if (cmd->out_v_final < 0) {
-    // 2.4
-    enc_offset->final = minus_offset + enc_offset->zero_calib + manual_offset;
+    enc_offset->final += MINUS_OFFSET;
   } else {
-    enc_offset->final = plus_offset + enc_offset->zero_calib + manual_offset;
+    enc_offset->final += PLUS_OFFSET;
   }
 }
 
@@ -71,12 +75,12 @@ void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_er
     temp -= ENC_CNT_MAX;
   }
 
-  if (fabs(real->diff_cnt_max) < fabs(temp)) {
+  if (fabsf(real->diff_cnt_max) < fabsf(temp)) {
     real->diff_cnt_max = temp;
   }
 
   // 異常な回転数の場合に無視
-  if (fabs((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 1.5 && sys->free_wheel_cnt == 0) {
+  if (fabsf((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 1.5 && sys->free_wheel_cnt == 0) {
     setPwmOutPutFreeWheel();
     sys->free_wheel_cnt += 10;
     enc_error->detect_flag = true;
