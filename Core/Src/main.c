@@ -933,12 +933,12 @@ void protect(void)
     setLedGreen(true);
     setLedRed(true);
 
-    error.id = BLDC_MOTOR_OVER_HEAT;
+    error.info = BLDC_FET_OVER_HEAT;
     if (getTempFET(0) > getTempFET(1)) {
-      error.info = 0;
+      error.id = flash.board_id * 2 + 0;
       error.value = (float)getTempFET(0);
     } else {
-      error.info = 1;
+      error.id = flash.board_id * 2 + 1;
       error.value = (float)getTempFET(1);
     }
     waitPowerOnTimeout();
