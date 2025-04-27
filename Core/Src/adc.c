@@ -435,9 +435,15 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef * adcHandle)
 
 /* USER CODE BEGIN 1 */
 
-inline float getBatteryVoltage(void) { return adc_raw.batt_v * 3.3 * 11 / 4096; }
+inline float getBatteryVoltage(void)
+{
+  return adc_raw.batt_v * 3.3 * 11 / 4096;
+}
 
-inline float getGateDriverDCDCVoltage(void) { return (adc_raw.gd_dcdc_v) * 3.3 * 11 / 4096; }
+inline float getGateDriverDCDCVoltage(void)
+{
+  return (adc_raw.gd_dcdc_v) * 3.3 * 11 / 4096;
+}
 
 // timer割り込みの中で更新する
 inline void updateADC_M1(void)
@@ -463,16 +469,28 @@ inline void updateADC_M0(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
-bool isNotZeroCurrent() { return getCurrentMotor(0) > 0.5 || getCurrentMotor(0) > 0.5; }
+bool isNotZeroCurrent()
+{
+  return getCurrentMotor(0) > 0.5 || getCurrentMotor(0) > 0.5;
+}
 
 // legacy version
 // INA199   50V/V *  5m = 250mV/A : 1/4
 // ZXCT1084 25V/V * 10m = 250mV/A : 1/4
 
 // ZXCT1084 25V/V *  5m = 125mV/A : 1/8
-inline float getCurrentMotor(bool motor) { return (adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * 3.3 / 4096 * 8; }
-inline int getTempFET(bool motor) { return (-((float)adc_raw.temp_fet[motor] * 3.3 / 4096) + 1.5) * 70 + 25; }
-inline int getTempMotor(bool motor) { return (-((float)adc_raw.temp_motor[motor] * 3.3 / 4096) + 1.5) * 70 + 25; }
+inline float getCurrentMotor(bool motor)
+{
+  return (adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * 3.3 / 4096 * 8;
+}
+inline int getTempFET(bool motor)
+{
+  return (-((float)adc_raw.temp_fet[motor] * 3.3 / 4096) + 1.5) * 70 + 25;
+}
+inline int getTempMotor(bool motor)
+{
+  return (-((float)adc_raw.temp_motor[motor] * 3.3 / 4096) + 1.5) * 70 + 25;
+}
 
 inline void updateADC(bool motor)
 {

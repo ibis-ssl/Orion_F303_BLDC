@@ -183,13 +183,25 @@ void sendSpeedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
   }
 }
 
-void sendSpeed(int board_id, int motor, float speed, float angle) { sendSpeedInfo(0x200 + board_id * 2 + motor, speed, angle); }
+void sendSpeed(int board_id, int motor, float speed, float angle)
+{
+  sendSpeedInfo(0x200 + board_id * 2 + motor, speed, angle);
+}
 
-void sendVoltage(int board_id, int motor, float voltage) { sendFloatDual(0x210 + board_id * 2 + motor, voltage, 0); }
+void sendVoltage(int board_id, int motor, float voltage)
+{
+  sendFloatDual(0x210 + board_id * 2 + motor, voltage, 0);
+}
 
-void sendTemperature(int board_id, int motor, float motor_temp, float fet_temp) { sendFloatDual(0x220 + board_id * 2 + motor, motor_temp, fet_temp); }
+void sendTemperature(int board_id, int motor, float motor_temp, float fet_temp)
+{
+  sendFloatDual(0x220 + board_id * 2 + motor, motor_temp, fet_temp);
+}
 
-void sendCurrent(int board_id, int motor, float current) { sendFloatDual(0x230 + board_id * 2 + motor, current, 0); }
+void sendCurrent(int board_id, int motor, float current)
+{
+  sendFloatDual(0x230 + board_id * 2 + motor, current, 0);
+}
 
 // id : motor
 void sendError(uint16_t error_id, uint16_t error_info, float error_value)
