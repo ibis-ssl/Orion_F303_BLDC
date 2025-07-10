@@ -6,52 +6,6 @@
 
 #include "tim.h"
 
-void speedToOutputVoltage(motor_pid_control_t * pid, motor_real_t * real, motor_param_t * param, motor_control_cmd_t * cmd)
-{
-  pid->eff_voltage = real->rps * param->voltage_per_rps;
-  /*pid[motor].error = cmd[motor].speed - motor_real[motor].rps;
-
-  pid[motor].error_integral += pid[motor].error;
-  if (pid[motor].error_integral > pid[motor].error_integral_limit) {
-    pid[motor].error_integral = pid[motor].error_integral_limit;
-  } else if (pid[motor].error_integral < -pid[motor].error_integral_limit) {
-    pid[motor].error_integral = -pid[motor].error_integral_limit;
-  }
-
-  pid[motor].error_diff = motor_real[motor].rps - pid[motor].pre_real_rps;
-  pid[motor].pre_real_rps = motor_real[motor].rps;*/
-
-  cmd->out_v = cmd->speed * param->voltage_per_rps;
-
-  // ローカルでの速度制御はしない(上位からトルクで制御したいため)
-  //        +pid[motor].error_diff * pid[motor].pid_kp + pid[motor].error_integral * pid[motor].pid_ki + pid[motor].error_diff * pid[motor].pid_kd; // PID
-
-  // 出力電圧リミット
-
-  float output_voltage_diff = cmd->out_v - pid->eff_voltage;
-  if (output_voltage_diff > +pid->diff_voltage_limit) {
-    cmd->out_v = pid->eff_voltage + pid->diff_voltage_limit;
-    pid->output_voltage_limitting = true;
-
-  } else if (output_voltage_diff < -pid->diff_voltage_limit) {
-    cmd->out_v = pid->eff_voltage - pid->diff_voltage_limit;
-    pid->output_voltage_limitting = true;
-
-  } else {
-    pid->output_voltage_limitting = false;
-  }
-
-  if (pid->output_voltage_limitting) {
-    pid->load_limit_cnt++;
-  } else if (pid->load_limit_cnt > 0) {
-    pid->load_limit_cnt--;
-  }
-}
-
-// const floatだと計算時間変わってしまったのでマクロ化
-#define MINUS_OFFSET (2 * M_PI - ROTATION_OFFSET_RADIAN)
-#define PLUS_OFFSET (ROTATION_OFFSET_RADIAN)
-
 void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset, float manual_offset)
 {
   // +方向にしか増やしてはいけない(最終的には10bitマスクでカバーする)
