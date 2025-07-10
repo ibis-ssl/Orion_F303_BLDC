@@ -40,11 +40,8 @@ extern SPI_HandleTypeDef hspi1;
 
 typedef struct
 {
-  float output_radian;
   int enc_raw;
-  int enc_elec_raw;
-  int pre_enc_raw;
-  int diff_enc, diff_min, diff_max, diff_max_cnt, diff_min_cnt;
+  int diff_enc,pre_enc_raw;
   struct
   {
     uint8_t error, prog, diagagc, mag, angleenc, anglecom;

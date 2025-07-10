@@ -38,7 +38,6 @@
 #include <string.h>
 
 #include "flash.h"
-#include "motor.h"
 #include "stm32f3xx_hal.h"
 /* USER CODE END Includes */
 
@@ -78,7 +77,6 @@ void startCalibrationMode();
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-extern uint32_t ex_can_send_fail_cnt;
 
 uint8_t uart_rx_buf[10] = {0};
 bool uart_rx_flag = false;
@@ -88,23 +86,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
   uart_rx_flag = true;
 }
 
-// 0 ~ M_PI*2 * 4
-
-motor_control_cmd_t cmd[2];
-calib_point_t calib[2];
-enc_offset_t enc_offset[2];
-motor_real_t motor_real[2];
-motor_param_t motor_param[2];
-motor_pid_control_t pid[2];
-
-error_t error;
-system_t sys;
-enc_error_watcher_t enc_error_watcher;
-calib_process_t calib_process;
-
-
-// 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
-#define INTERRUPT_KHZ_1MS (20)
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 {
@@ -116,18 +97,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   updateADC(motor_select_toggle);
 }
 
-void waitPowerOnTimeout()
-{
-  p("reset!!!");
-  while (sys.power_enable_cnt > 0) {
-    sys.power_enable_cnt--;
-    sendCanData();
-    sendError(error.id, error.info, error.value);
-    HAL_Delay(2);
-  }
-  HAL_Delay(2);
-  HAL_NVIC_SystemReset();
-}
+
 
 uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
@@ -272,6 +242,14 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1) {
     /* USER CODE END WHILE */
+
+    HAL_Delay(100);
+
+    updateAS5047P(1);
+    updateAS5047P(0);
+
+    p(">ENC1:%d\n",as5047p[0].enc_raw, as5047p[1].enc_raw);
+
 
     /* USER CODE BEGIN 3 */
   }

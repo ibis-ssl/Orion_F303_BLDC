@@ -130,15 +130,6 @@ inline void updateDiff(bool enc)
   }
 
   as5047p[enc].diff_enc = temp;
-
-  if (abs(as5047p[enc].diff_max) < abs(temp)) {
-    as5047p[enc].diff_max = temp;
-    as5047p[enc].diff_max_cnt = as5047p[enc].enc_raw;
-  }
-  if (abs(as5047p[enc].diff_min) > abs(temp)) {
-    as5047p[enc].diff_min = temp;
-    as5047p[enc].diff_min_cnt = as5047p[enc].enc_raw;
-  }
 }
 
 uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
@@ -174,10 +165,7 @@ inline void updateAS5047P_Common(as5047p_t * enc)
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
   }
   // 分解能は14bitだが、後段であまり算をするため、16bitに変換
-  enc->enc_raw = (hspi1.Instance->DR & 0x3FFF) << 2;
-
-  enc->enc_elec_raw = 5461 - (enc->enc_raw % 5461);
-  enc->output_radian = (float)enc->enc_elec_raw / 5461 * 2 * M_PI;
+  enc->enc_raw = (hspi1.Instance->DR & 0x3FFF);
 }
 
 void updateAS5047P(bool motor)
