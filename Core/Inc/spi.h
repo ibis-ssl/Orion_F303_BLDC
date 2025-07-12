@@ -41,12 +41,15 @@ extern SPI_HandleTypeDef hspi1;
 typedef struct
 {
   int enc_raw;
-  int diff_enc,pre_enc_raw;
+  int diff_enc, pre_enc_raw;
   struct
   {
     uint8_t error, prog, diagagc, mag, angleenc, anglecom;
   } reg;
 } as5047p_t;
+
+#define ENC_CNT_MAX (16384)
+#define HARF_OF_ENC_CNT_MAX (ENC_CNT_MAX / 2)
 
 /* USER CODE END Private defines */
 

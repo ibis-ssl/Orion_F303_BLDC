@@ -287,103 +287,51 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef * tim_pwmHandle)
 }
 
 /* USER CODE BEGIN 1 */
-float rad_to_sin_cnv_array[0x400 * 4] = {0};
-inline void initFirstSin(void)
-{
-  for (int i = 0; i < 0x400 * 4; i++) {
-    float temp_rad = (float)i / 0x400 * M_PI * 2;
-    rad_to_sin_cnv_array[i] = sin(temp_rad);
-    // printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
-    // HAL_Delay(1);
-  }
-}
 
-float get_sin_table(uint16_t idx)
+void set_pwm_init()
 {
-  return rad_to_sin_cnv_array[idx];
-}
-
-inline float fast_sin(float rad)
-{
-  return rad_to_sin_cnv_array[(uint16_t)(((float)(rad + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF];
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);     // M0 low
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);     // M1 low
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_1);  // M1 high & low
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_1);  // M0 high & low
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_2);     // M0 low
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);     // M1 low
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_2);  // M1 high & low
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_2);  // M0 high & low
+  HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_3);     // M0 low
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);     // M1 low
+  HAL_TIMEx_PWMN_Start(&htim8, TIM_CHANNEL_3);  // M1 high & low
+  HAL_TIMEx_PWMN_Start(&htim1, TIM_CHANNEL_3);  // M0 high & low
 }
 
 #define BATTERY_VOLTAGE_BOTTOM (18)
-#define X2_PER_R3 (1.154)
 
-inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
+// TIM1でDCモーターを回す関数
+inline void pwm_set_dc_motor_voltage0(float out_voltage, float battery_voltage)
 {
-  int voltage_propotional_cnt;
-
   if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
     battery_voltage = BATTERY_VOLTAGE_BOTTOM;
   }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
+  int voltage_propotional_cnt = out_voltage / battery_voltage * TIM_PWM_CENTER;
 
-  uint16_t rad_to_cnt = (uint16_t)(((float)(out_rad + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF;
-  uint16_t output_ccr_cnt[3];
-  output_ccr_cnt[0] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  output_ccr_cnt[1] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[341 + rad_to_cnt];  //+85 = 1/3 -> 1024x1/3
-  output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[683 + rad_to_cnt];  //-85 = 2/4 -> 1024x2/3
-  if (motor == 0) {
-    htim1.Instance->CCR1 = output_ccr_cnt[0];
-    htim1.Instance->CCR2 = output_ccr_cnt[1];  //+85 = 1/3 -> 1024x1/3
-    htim1.Instance->CCR3 = output_ccr_cnt[2];  //-85 = 2/4 -> 1024x2/3
-  } else {
-    htim8.Instance->CCR1 = output_ccr_cnt[0];
-    htim8.Instance->CCR2 = output_ccr_cnt[1];
-    htim8.Instance->CCR3 = output_ccr_cnt[2];
-  }
+  htim1.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt;
+  htim1.Instance->CCR2 = TIM_PWM_CENTER - voltage_propotional_cnt;
+  htim1.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt;
 }
 
-inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
+inline void pwm_set_dc_motor_voltage1(float out_voltage, float battery_voltage)
 {
-  int voltage_propotional_cnt;
-
   if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
     battery_voltage = BATTERY_VOLTAGE_BOTTOM;
   }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
+  int voltage_propotional_cnt = out_voltage / battery_voltage * TIM_PWM_CENTER;
 
-  uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-  htim1.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  htim1.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-  htim1.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
+  htim8.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt;
+  htim8.Instance->CCR2 = TIM_PWM_CENTER - voltage_propotional_cnt;
+  htim8.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt;
 }
 
-inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
-{
-  int voltage_propotional_cnt;
-  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
-    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
-  }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
-
-  uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-  htim8.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  htim8.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-  htim8.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
-}
-
-void setPwmAll(uint32_t pwm_cnt)
+void pwm_set_all(uint32_t pwm_cnt)
 {
   htim8.Instance->CCR1 = pwm_cnt;
   htim8.Instance->CCR2 = pwm_cnt;
@@ -393,9 +341,9 @@ void setPwmAll(uint32_t pwm_cnt)
   htim1.Instance->CCR3 = pwm_cnt;
 }
 
-void forceStopAllPwmOutputAndTimer(void)
+void pwm_set_stop_all_output_and_timer(void)
 {
-  setPwmAll(TIM_PWM_CENTER);
+  pwm_set_all(TIM_PWM_CENTER);
 
   HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);

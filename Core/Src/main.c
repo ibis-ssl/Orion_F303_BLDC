@@ -38,6 +38,7 @@
 #include <string.h>
 
 #include "flash.h"
+#include "motor_control.h"
 #include "stm32f3xx_hal.h"
 /* USER CODE END Includes */
 
@@ -86,7 +87,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
   uart_rx_flag = true;
 }
 
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 {
   // TIM1 : M1
@@ -96,8 +96,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 
   updateADC(motor_select_toggle);
 }
-
-
 
 uint32_t can_rx_cnt = 0;
 can_msg_buf_t can_rx_buf;
@@ -115,7 +113,6 @@ static inline float clampSize(float in, float max)
   return in;
 }
 
-
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
 {
   if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &can_rx_header, can_rx_buf.data) != HAL_OK) {
@@ -131,7 +128,6 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef * hcan)
     return;
   }
 }
-
 
 /* USER CODE END 0 */
 
@@ -173,14 +169,12 @@ int main(void)
   MX_TIM8_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  initFirstSin();
 
   // LED
   setLedRed(true);
   setLedGreen(true);
   setLedBlue(true);
 
-  
   __HAL_SPI_ENABLE(&hspi1);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
@@ -203,7 +197,6 @@ int main(void)
     HAL_Delay(1);
   }
 
-
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
   HAL_ADCEx_Calibration_Start(&hadc3, ADC_SINGLE_ENDED);
@@ -217,14 +210,13 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim1);
   HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
 
-
   // M0 : tim1
   // M1 : tim8
 
   HAL_TIM_PWM_Init(&htim8);
   HAL_TIM_PWM_Init(&htim1);
-  setPwmAll(TIM_PWM_CENTER);
-
+  pwm_set_all(TIM_PWM_CENTER);
+  set_pwm_init();
 
   CAN_Filter_Init(flash.board_id);
 
@@ -235,6 +227,7 @@ int main(void)
   setLedGreen(false);
   setLedBlue(false);
 
+  motor_control_init();
 
   /* USER CODE END 2 */
 
@@ -243,13 +236,8 @@ int main(void)
   while (1) {
     /* USER CODE END WHILE */
 
-    HAL_Delay(100);
-
-    updateAS5047P(1);
-    updateAS5047P(0);
-
-    p(">ENC1:%d\n",as5047p[0].enc_raw, as5047p[1].enc_raw);
-
+    HAL_Delay(10);
+    motor_control_cycle();
 
     /* USER CODE BEGIN 3 */
   }
@@ -314,7 +302,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  forceStopAllPwmOutputAndTimer();
+  pwm_set_stop_all_output_and_timer();
   while (1) {
   }
   /* USER CODE END Error_Handler_Debug */

@@ -49,16 +49,12 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef * htim);
 
 /* USER CODE BEGIN Prototypes */
 
-void initFirstSin(void);
-float fast_sin(float rad);
-float get_sin_table(uint16_t idx);
+void set_pwm_init();
 
-void forceStopAllPwmOutputAndTimer(void);
-void setPwmOutPutFreeWheel(void);
-void resumePwmOutput(void);
-void stopTimerInterrupt(void);
-void setPwmAll(uint32_t pwm_cnt);
-void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
+void pwm_set_dc_motor_voltage0(float out_voltage, float battery_voltage);
+void pwm_set_dc_motor_voltage1(float out_voltage, float battery_voltage);
+void pwm_set_all(uint32_t pwm_cnt);
+void pwm_set_stop_all_output_and_timer(void);
 
 /* USER CODE END Prototypes */
 
