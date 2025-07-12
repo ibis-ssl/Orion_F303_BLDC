@@ -22,30 +22,33 @@
 #include "gpio.h"
 
 /* USER CODE BEGIN 0 */
-inline bool isPushedSW1(void)
+inline bool sw_is_pushed_1(void)
 {
   return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0);
 }
-inline bool isPushedSW2(void)
+inline bool sw_is_pushed_2(void)
 {
   return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1);
 }
-inline bool isPushedSW3(void)
+inline bool sw_is_pushed_3(void)
 {
   return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_2);
 }
-inline bool isPushedSW4(void)
+inline bool sw_is_pushed_4(void)
 {
   return !HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_3);
 }
 
-inline void setLedRed(bool on){
+inline void led_set_red(bool on)
+{
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, on);
 }
-inline void setLedBlue(bool on){
+inline void led_set_blue(bool on)
+{
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, on);
 }
-inline void setLedGreen(bool on){
+inline void led_set_green(bool on)
+{
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, on);
 }
 /* USER CODE END 0 */
@@ -66,7 +69,6 @@ inline void setLedGreen(bool on){
 */
 void MX_GPIO_Init(void)
 {
-
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
@@ -76,31 +78,30 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6 | GPIO_PIN_7, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : PC13 PC14 PC15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+  GPIO_InitStruct.Pin = GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC0 PC1 PC2 PC3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3;
+  GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB6 PB7 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
 }
 
 /* USER CODE BEGIN 2 */

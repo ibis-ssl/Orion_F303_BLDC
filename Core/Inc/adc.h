@@ -57,14 +57,14 @@ void MX_ADC2_Init(void);
 void MX_ADC3_Init(void);
 
 /* USER CODE BEGIN Prototypes */
-float getBatteryVoltage(void);
-float getGateDriverDCDCVoltage(void);
-bool isNotZeroCurrent();
+float adc_get_battery_voltage(void);
+float adc_get_gate_drive_dcdc_voltage(void);
+bool adc_current_is_not_zero();
 
-float getCurrentMotor(bool motor);
-int getTempFET(bool motor);
-int getTempMotor(bool motor);
-void updateADC(bool motor);
+float adc_get_motor_current(bool motor);
+int adc_get_fet_temp(bool motor);
+int adc_get_motor_temp(bool motor);
+void adc_update(bool motor);
 
 /* USER CODE END Prototypes */
 

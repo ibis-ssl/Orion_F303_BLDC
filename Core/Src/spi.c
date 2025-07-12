@@ -132,7 +132,7 @@ inline void updateDiff(bool enc)
   as5047p[enc].diff_enc = temp;
 }
 
-uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
+uint16_t as5047p_read_register(bool enc, uint16_t reg_address)
 {
   if (enc) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
@@ -153,7 +153,7 @@ uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
   return (hspi1.Instance->DR & 0x3FFF);
 }
 
-inline void updateAS5047P_Common(as5047p_t * enc)
+inline void as5047p_update_Common(as5047p_t * enc)
 {
   enc->pre_enc_raw = enc->enc_raw;
 
@@ -168,19 +168,19 @@ inline void updateAS5047P_Common(as5047p_t * enc)
   enc->enc_raw = (hspi1.Instance->DR & 0x3FFF);
 }
 
-void updateAS5047P(bool motor)
+void as5047p_update(bool motor)
 {
   if (motor == 0) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 
-    updateAS5047P_Common(&as5047p[0]);
+    as5047p_update_Common(&as5047p[0]);
     updateDiff(0);
 
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   } else {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 
-    updateAS5047P_Common(&as5047p[1]);
+    as5047p_update_Common(&as5047p[1]);
     updateDiff(1);
 
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);

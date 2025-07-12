@@ -30,14 +30,14 @@ extern "C" {
 
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
-bool isPushedSW1(void);
-bool isPushedSW2(void);
-bool isPushedSW3(void);
-bool isPushedSW4(void);
+bool sw_is_pushed_1(void);
+bool sw_is_pushed_2(void);
+bool sw_is_pushed_3(void);
+bool sw_is_pushed_4(void);
 
-void setLedRed(bool on);
-void setLedBlue(bool on);
-void setLedGreen(bool on);
+void led_set_red(bool on);
+void led_set_blue(bool on);
+void led_set_green(bool on);
 /* USER CODE END Includes */
 
 /* USER CODE BEGIN Private defines */
@@ -54,4 +54,3 @@ void MX_GPIO_Init(void);
 }
 #endif
 #endif /*__ GPIO_H__ */
-

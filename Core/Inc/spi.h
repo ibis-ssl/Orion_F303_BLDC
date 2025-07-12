@@ -59,8 +59,8 @@ void MX_SPI1_Init(void);
 
 extern as5047p_t as5047p[2];
 
-uint16_t readRegisterAS5047P(bool enc, uint16_t address);
-void updateAS5047P(bool motor);
+uint16_t as5047p_read_register(bool enc, uint16_t address);
+void as5047p_update(bool motor);
 
 /* USER CODE END Prototypes */
 

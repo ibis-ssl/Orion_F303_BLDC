@@ -111,7 +111,7 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef * canHandle)
 }
 
 /* USER CODE BEGIN 1 */
-void CAN_Filter_Init(uint16_t board_addr)
+void can_filter_init(uint16_t board_addr)
 {
   CAN_FilterTypeDef sFilterConfig;
   sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
@@ -147,7 +147,7 @@ void CAN_Filter_Init(uint16_t board_addr)
   }
 }
 
-void sendFloatDual(uint32_t can_id, float data1, float data2)
+void can_send_float_dual(uint32_t can_id, float data1, float data2)
 {
   can_msg_buf_t msg;
   CAN_TxHeaderTypeDef can_header;
@@ -165,7 +165,7 @@ void sendFloatDual(uint32_t can_id, float data1, float data2)
   }
 }
 
-void sendSpeedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
+void can_send_speedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
 {
   can_msg_buf_t msg;
   CAN_TxHeaderTypeDef can_header;
@@ -183,28 +183,28 @@ void sendSpeedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
   }
 }
 
-void sendSpeed(int board_id, int motor, float speed, float angle)
+void can_send_speed(int board_id, int motor, float speed, float angle)
 {
-  sendSpeedInfo(0x200 + board_id * 2 + motor, speed, angle);
+  can_send_speedInfo(0x200 + board_id * 2 + motor, speed, angle);
 }
 
-void sendVoltage(int board_id, int motor, float voltage)
+void can_send_voltage(int board_id, int motor, float voltage)
 {
-  sendFloatDual(0x210 + board_id * 2 + motor, voltage, 0);
+  can_send_float_dual(0x210 + board_id * 2 + motor, voltage, 0);
 }
 
-void sendTemperature(int board_id, int motor, float motor_temp, float fet_temp)
+void can_send_temp(int board_id, int motor, float motor_temp, float fet_temp)
 {
-  sendFloatDual(0x220 + board_id * 2 + motor, motor_temp, fet_temp);
+  can_send_float_dual(0x220 + board_id * 2 + motor, motor_temp, fet_temp);
 }
 
-void sendCurrent(int board_id, int motor, float current)
+void can_send_current(int board_id, int motor, float current)
 {
-  sendFloatDual(0x230 + board_id * 2 + motor, current, 0);
+  can_send_float_dual(0x230 + board_id * 2 + motor, current, 0);
 }
 
 // id : motor
-void sendError(uint16_t error_id, uint16_t error_info, float error_value)
+void can_send_error(uint16_t error_id, uint16_t error_info, float error_value)
 {
   can_msg_buf_t msg;
   CAN_TxHeaderTypeDef can_header;
@@ -223,7 +223,7 @@ void sendError(uint16_t error_id, uint16_t error_info, float error_value)
   }
 }
 
-uint32_t getCanError(void)
+uint32_t can_get_canif_error(void)
 {
   uint32_t err = HAL_CAN_GetError(&hcan);
   HAL_CAN_ResetError(&hcan);

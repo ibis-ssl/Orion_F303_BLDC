@@ -12,12 +12,12 @@ void motor_control_init()
 
 void motor_control_cycle()
 {
-  updateAS5047P(1);
-  updateAS5047P(0);
+  as5047p_update(1);
+  as5047p_update(0);
 
   float motor_duty[2] = {0}, motor_voltage[2] = {0};
   static float battery_voltage = 24;
-  battery_voltage = battery_voltage * 0.99 + (adc_raw.batt_v * 3.3 * 11 / 4096) * 0.01;
+  battery_voltage = battery_voltage * 0.99 + adc_get_battery_voltage() * 0.01;
 
   for (int i = 0; i < 2; i++) {
     motor_duty[i] = (((float)(as5047p[i].enc_raw) / ENC_CNT_MAX) - 0.5) * 2.0;

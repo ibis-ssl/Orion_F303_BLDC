@@ -94,7 +94,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   static bool motor_select_toggle = false;
   motor_select_toggle = !motor_select_toggle;
 
-  updateADC(motor_select_toggle);
+  adc_update(motor_select_toggle);
 }
 
 uint32_t can_rx_cnt = 0;
@@ -171,9 +171,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   // LED
-  setLedRed(true);
-  setLedGreen(true);
-  setLedBlue(true);
+  led_set_red(true);
+  led_set_green(true);
+  led_set_blue(true);
 
   __HAL_SPI_ENABLE(&hspi1);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
@@ -185,13 +185,13 @@ int main(void)
   p("AS5047P registors\n");
   HAL_Delay(1);
   for (int i = 0; i < 2; i++) {
-    as5047p[i].reg.error = readRegisterAS5047P(i, 0x0001) & 0x07;       // 0-2 bit, clear error
-    as5047p[i].reg.error = readRegisterAS5047P(i, 0x0001) & 0x07;       // 0-2 bit
-    as5047p[i].reg.prog = readRegisterAS5047P(i, 0x0003) & 0x7F;        // 0-6bit
-    as5047p[i].reg.diagagc = readRegisterAS5047P(i, 0x3FFC) & 0xFFF;    //0-11bit
-    as5047p[i].reg.mag = readRegisterAS5047P(i, 0x3FFD) & 0x3FFF;       //0-13bit
-    as5047p[i].reg.angleenc = readRegisterAS5047P(i, 0x3FFE) & 0x3FFF;  //0-13bit
-    as5047p[i].reg.anglecom = readRegisterAS5047P(i, 0x3FFF) & 0x3FFF;  //0-13bit
+    as5047p[i].reg.error = as5047p_read_register(i, 0x0001) & 0x07;       // 0-2 bit, clear error
+    as5047p[i].reg.error = as5047p_read_register(i, 0x0001) & 0x07;       // 0-2 bit
+    as5047p[i].reg.prog = as5047p_read_register(i, 0x0003) & 0x7F;        // 0-6bit
+    as5047p[i].reg.diagagc = as5047p_read_register(i, 0x3FFC) & 0xFFF;    //0-11bit
+    as5047p[i].reg.mag = as5047p_read_register(i, 0x3FFD) & 0x3FFF;       //0-13bit
+    as5047p[i].reg.angleenc = as5047p_read_register(i, 0x3FFE) & 0x3FFF;  //0-13bit
+    as5047p[i].reg.anglecom = as5047p_read_register(i, 0x3FFF) & 0x3FFF;  //0-13bit
     p("err 0x%02x prg 0x%02x diagagc 0x%03x ", as5047p[i].reg.error, as5047p[i].reg.prog, as5047p[i].reg.diagagc);
     p("mag 0x%03x angle : enc 0x%03x com 0x%03x\n", as5047p[i].reg.mag, as5047p[i].reg.angleenc, as5047p[i].reg.anglecom);
     HAL_Delay(1);
@@ -218,14 +218,14 @@ int main(void)
   pwm_set_all(TIM_PWM_CENTER);
   set_pwm_init();
 
-  CAN_Filter_Init(flash.board_id);
+  can_filter_init(flash.board_id);
 
   HAL_CAN_Start(&hcan);
   p("start main loop!\n");
 
-  setLedRed(false);
-  setLedGreen(false);
-  setLedBlue(false);
+  led_set_red(false);
+  led_set_green(false);
+  led_set_blue(false);
 
   motor_control_init();
 
