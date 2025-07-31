@@ -5,4 +5,4 @@
 
 void motor_control_init();
 
-void motor_control_cycle();
+void motor_control_cycle(bool enable);

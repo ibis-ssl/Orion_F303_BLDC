@@ -236,8 +236,8 @@ int main(void)
   while (1) {
     /* USER CODE END WHILE */
 
-    HAL_Delay(10);
-    motor_control_cycle();
+    HAL_Delay(1);
+    motor_control_cycle(sw_is_pushed_1());
 
     /* USER CODE BEGIN 3 */
   }
