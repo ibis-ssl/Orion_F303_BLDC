@@ -64,13 +64,7 @@ void MX_CAN_Init(void);
 /* USER CODE BEGIN Prototypes */
 
 void can_filter_init(uint16_t board_addr);
-void can_update_rx_buffer(void);
-void can_send_float_dual(uint32_t can_id, float data1, float data2);
-void can_send_speed(int board_id, int motor, float speed, float angle);
-void can_send_voltage(int board_id, int motor, float voltage);
-void can_send_temp(int board_id, int motor, float motor_temp, float fet_temp);
-void can_send_current(int board_id, int motor, float current);
-void can_send_error(uint16_t error_id, uint16_t error_info, float error_value);
+void can_send_motor_current(int16_t m0_current, int16_t m1_current);
 uint32_t can_get_canif_error(void);
 /* USER CODE END Prototypes */
 

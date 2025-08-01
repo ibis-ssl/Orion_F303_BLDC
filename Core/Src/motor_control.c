@@ -1,6 +1,7 @@
 #include "motor_control.h"
 
 #include "adc.h"
+#include "can.h"
 #include "gpio.h"
 #include "spi.h"
 #include "tim.h"
@@ -70,12 +71,22 @@ void motor_control_cycle(bool enable)
     swerve_angle_raw_cnt = 0;
   }
 
+  int motor_current = 0;
   if (sw_is_pushed_2()) {
     target.angle = 0.125;
+    motor_current = 500;
   }
   if (sw_is_pushed_3()) {
     target.angle = -0.125;
+    motor_current = -500;
   }
+  static int send_cnt = 0;
+  send_cnt++;
+  if (send_cnt > 10) {
+    send_cnt = 0;
+    can_send_motor_current(motor_current, motor_current);
+  }
+
   float motor_base_swerve_angle = target.angle * 36 / 16;
 
   enc.motor_angle = ((float)(motor_angle_raw_cnt) / ENC_CNT_MAX) - 0.5;

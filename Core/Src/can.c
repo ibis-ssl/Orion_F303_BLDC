@@ -147,78 +147,24 @@ void can_filter_init(uint16_t board_addr)
   }
 }
 
-void can_send_float_dual(uint32_t can_id, float data1, float data2)
+void can_send_motor_current(int16_t m0_current, int16_t m1_current)
 {
-  can_msg_buf_t msg;
   CAN_TxHeaderTypeDef can_header;
   uint32_t can_mailbox;
-  can_header.StdId = can_id;
+  can_header.StdId = 0x200;
   can_header.ExtId = 0;
   can_header.RTR = CAN_RTR_DATA;
   can_header.DLC = 8;
   can_header.IDE = CAN_ID_STD;
   can_header.TransmitGlobalTime = DISABLE;
-  msg.value[0] = data1;
-  msg.value[1] = data2;
-  if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
-    ex_can_send_fail_cnt++;
-  }
-}
 
-void can_send_speedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)
-{
-  can_msg_buf_t msg;
-  CAN_TxHeaderTypeDef can_header;
-  uint32_t can_mailbox;
-  can_header.StdId = can_id;
-  can_header.ExtId = 0;
-  can_header.RTR = CAN_RTR_DATA;
-  can_header.DLC = 8;
-  can_header.IDE = CAN_ID_STD;
-  can_header.TransmitGlobalTime = DISABLE;
-  msg.speed.rev_p_sec = rev_per_sec_;
-  msg.speed.omni_angle = omni_angle_;
-  if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
-    ex_can_send_fail_cnt++;
-  }
-}
+  uint8_t data[8] = {0};
+  data[0] = (m0_current >> 8) & 0xFF;
+  data[1] = m0_current & 0xFF;
+  data[2] = (m1_current >> 8) & 0xFF;
+  data[3] = m1_current & 0xFF;
 
-void can_send_speed(int board_id, int motor, float speed, float angle)
-{
-  can_send_speedInfo(0x200 + board_id * 2 + motor, speed, angle);
-}
-
-void can_send_voltage(int board_id, int motor, float voltage)
-{
-  can_send_float_dual(0x210 + board_id * 2 + motor, voltage, 0);
-}
-
-void can_send_temp(int board_id, int motor, float motor_temp, float fet_temp)
-{
-  can_send_float_dual(0x220 + board_id * 2 + motor, motor_temp, fet_temp);
-}
-
-void can_send_current(int board_id, int motor, float current)
-{
-  can_send_float_dual(0x230 + board_id * 2 + motor, current, 0);
-}
-
-// id : motor
-void can_send_error(uint16_t error_id, uint16_t error_info, float error_value)
-{
-  can_msg_buf_t msg;
-  CAN_TxHeaderTypeDef can_header;
-  uint32_t can_mailbox;
-  can_header.StdId = 0;
-  can_header.ExtId = 0;
-  can_header.RTR = CAN_RTR_DATA;
-  can_header.DLC = 8;
-  can_header.IDE = CAN_ID_STD;
-  can_header.TransmitGlobalTime = DISABLE;
-  msg.error.id = error_id;
-  msg.error.info = error_info;
-  msg.error.value = error_value;
-  if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
+  if (HAL_CAN_AddTxMessage(&hcan, &can_header, data, &can_mailbox) != 0) {
     ex_can_send_fail_cnt++;
   }
 }
