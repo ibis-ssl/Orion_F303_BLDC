@@ -528,7 +528,7 @@ void encoderCalibrationMode(void)
   print_cnt++;
   if (print_cnt > 1000) {
     print_cnt = 0;
-    p("%4.1f %4.1f %4d %4.1f\n", cmd[0].out_v_final, cmd[1].out_v_final, calib_process.enc_calib_cnt, getBatteryVoltage());
+    p("%4.1f CNT %4d %4d %4d / %4d %4.1f\n", cmd[0].out_v_final, htim1.Instance->CCR1, htim1.Instance->CCR2, htim1.Instance->CCR3, calib_process.enc_calib_cnt, getBatteryVoltage());
   }
 }
 
@@ -659,7 +659,9 @@ void motorCalibrationMode(void)
         rps_per_v_ccw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
-        p("\n\nMotor Calib rps/v \n M0 %6.2f\n M1 %6.2f\n\n", rps_per_v_ccw_h[0], rps_per_v_ccw_h[1]);
+        p("\n\nMotor Calib rps/v \n ");
+        p("M0 -%6.2f +%6.2f Diff %+6.2f\n ", rps_per_v_ccw_h[0], rps_per_v_cw_h[0], rps_per_v_ccw_h[0] - rps_per_v_cw_h[0]);
+        p("M0 -%6.2f +%6.2f Diff %+6.2f \n", rps_per_v_ccw_h[1], rps_per_v_cw_h[1], rps_per_v_ccw_h[1] - rps_per_v_cw_h[1]);
         p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
 
         if (checkMotorRpsError(rps_per_v_ccw_h[0], rps_per_v_ccw_h[1])) {
