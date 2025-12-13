@@ -48,7 +48,7 @@ MEMORY
   CCMRAM    (xrw)  : ORIGIN = 0x10000000,   LENGTH = 8K
   RAM     (xrw)    : ORIGIN = 0x20000000,   LENGTH = 32K
   FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 124K
-  DATA     (rx)    : ORIGIN = 0x801F000,   LENGTH = 4K
+  SETTINGS     (rx)    : ORIGIN = 0x801F000,   LENGTH = 4K
 }
 
 /* Sections */
@@ -202,6 +202,18 @@ SECTIONS
     libm.a ( * )
     libgcc.a ( * )
   }
+
+  
+  /* Persistent settings area in reserved Flash pages */
+  .settings (NOLOAD) :
+  {
+    /* Force section to cover entire SETTINGS memory whether or not input exists */
+    . = ORIGIN(SETTINGS);
+    __settings_start__ = .;
+    . = ORIGIN(SETTINGS) + LENGTH(SETTINGS);
+    __settings_end__ = .;
+  } >SETTINGS
+  __settings_size__ = LENGTH(SETTINGS);
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 }
