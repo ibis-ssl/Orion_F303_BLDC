@@ -80,7 +80,7 @@ int calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_err
   }
 
   // 異常な回転数の場合に無視
-  if (fabsf((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 1.5 && sys->free_wheel_cnt == 0) {
+  if (fabsf((float)temp / ENC_CNT_MAX * 1000) > SPEED_CMD_LIMIT_RPS * 2.0 && sys->free_wheel_cnt == 0) {
     setPwmOutPutFreeWheel();
     sys->free_wheel_cnt += 10;
     enc_error->detect_flag = true;
