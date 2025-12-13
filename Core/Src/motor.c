@@ -66,7 +66,7 @@ void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset,
   }
 }
 
-void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_error_watcher_t * enc_error)
+int calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_error_watcher_t * enc_error)
 {
   int temp = real->pre_enc_cnt_raw - enc->enc_raw;
   if (temp < -HARF_OF_ENC_CNT_MAX) {
@@ -86,7 +86,7 @@ void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_er
     enc_error->detect_flag = true;
     enc_error->idx = 0;
     enc_error->cnt = temp;
-    return;
+    return -1;
   }
 
   // motor_real[motor].rps = ((float)temp / ENC_CNT_MAX * 1000) * motor_real[motor].k + (1-motor_real[motor].k) * motor_real[motor].pre_rps; // rps
@@ -94,4 +94,5 @@ void calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_er
   real->rps_ave = real->rps_ave * 0.99 + real->rps * 0.01;
   real->pre_rps = real->rps;
   real->pre_enc_cnt_raw = enc->enc_raw;
+  return 0;
 }

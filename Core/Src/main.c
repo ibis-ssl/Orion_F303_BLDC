@@ -288,6 +288,7 @@ void can_rx_callback(void)
     case 0x110:
       if (can_rx_buf.data[0] == 3) {
         setPwmOutPutFreeWheel();
+        p("stop!!!");
         sys.free_wheel_cnt = can_rx_buf.data[2];
       }
       break;
@@ -1252,7 +1253,10 @@ int main(void)
     receiveUserSerialCommand();
 
     for (int i = 0; i < 2; i++) {
-      calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
+      int ret = calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
+      if (ret < 0) {
+        p("stop!!");
+      }
     }
     sendCanData();
 
