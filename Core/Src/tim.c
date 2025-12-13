@@ -21,6 +21,12 @@
 #include "tim.h"
 
 /* USER CODE BEGIN 0 */
+#define SIN_TABLE_BITS (10)                    // 1024 points, power of two for bitmasking
+#define SIN_TABLE_SIZE (1U << SIN_TABLE_BITS)  // 1024
+#define SIN_TABLE_MASK (SIN_TABLE_SIZE - 1U)   // 0x3FF
+#define SIN_OFFSET_120 (SIN_TABLE_SIZE / 3U)   // ~120 deg shift
+#define SIN_OFFSET_240 (SIN_OFFSET_120 * 2U)   // ~240 deg shift
+
 #include <math.h>
 
 #include "stm32f3xx_hal_tim_ex.h"
@@ -287,12 +293,13 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef * tim_pwmHandle)
 }
 
 /* USER CODE BEGIN 1 */
-float rad_to_sin_cnv_array[0x400 * 4] = {0};
+float rad_to_sin_cnv_array[SIN_TABLE_SIZE * 6] = {0};
 inline void initFirstSin(void)
 {
-  for (int i = 0; i < 0x400 * 4; i++) {
-    float temp_rad = (float)i / 0x400 * M_PI * 2;
-    rad_to_sin_cnv_array[i] = sin(temp_rad);
+  const float inv_table_size = 1.0f / (float)SIN_TABLE_SIZE;
+  for (int i = 0; i < (SIN_TABLE_SIZE * 6); i++) {
+    float temp_rad = (float)i * inv_table_size * (float)M_PI * 2.0f;
+    rad_to_sin_cnv_array[i] = sinf(temp_rad);
     // printf("rad %4.3f sin %4.3f\n",temp_rad,rad_to_sin_cnv_array[i]);
     // HAL_Delay(1);
   }
@@ -305,7 +312,8 @@ float get_sin_table(uint16_t idx)
 
 inline float fast_sin(float rad)
 {
-  return rad_to_sin_cnv_array[(uint16_t)(((float)(rad + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF];
+  // keep bitmask-based wrap but align scale to table size to avoid index shift
+  return rad_to_sin_cnv_array[(uint16_t)(((rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f))) & SIN_TABLE_MASK];
 }
 
 #define BATTERY_VOLTAGE_BOTTOM (18)
@@ -326,15 +334,15 @@ inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage
   }
   voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
 
-  uint16_t rad_to_cnt = (uint16_t)(((float)(out_rad + M_PI * 4) / (M_PI * 2) * 0x400)) & 0x3FF;
+  uint16_t rad_to_cnt = (uint16_t)(((out_rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f)) + 1023) & SIN_TABLE_MASK;
   uint16_t output_ccr_cnt[3];
   output_ccr_cnt[0] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  output_ccr_cnt[1] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[341 + rad_to_cnt];  //+85 = 1/3 -> 1024x1/3
-  output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[684 + rad_to_cnt];  //-85 = 2/4 -> 1024x2/3
+  output_ccr_cnt[1] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[SIN_OFFSET_120 + rad_to_cnt];  // +1/3 rev
+  output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[SIN_OFFSET_240 + rad_to_cnt];  // -1/3 rev
   if (motor == 0) {
     htim1.Instance->CCR1 = output_ccr_cnt[0];
-    htim1.Instance->CCR2 = output_ccr_cnt[1];  //+85 = 1/3 -> 1024x1/3
-    htim1.Instance->CCR3 = output_ccr_cnt[2];  //-85 = 2/4 -> 1024x2/3
+    htim1.Instance->CCR2 = output_ccr_cnt[1];
+    htim1.Instance->CCR3 = output_ccr_cnt[2];
   } else {
     htim8.Instance->CCR1 = output_ccr_cnt[0];
     htim8.Instance->CCR2 = output_ccr_cnt[1];
