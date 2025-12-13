@@ -330,7 +330,7 @@ inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage
   uint16_t output_ccr_cnt[3];
   output_ccr_cnt[0] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
   output_ccr_cnt[1] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[341 + rad_to_cnt];  //+85 = 1/3 -> 1024x1/3
-  output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[683 + rad_to_cnt];  //-85 = 2/4 -> 1024x2/3
+  output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[684 + rad_to_cnt];  //-85 = 2/4 -> 1024x2/3
   if (motor == 0) {
     htim1.Instance->CCR1 = output_ccr_cnt[0];
     htim1.Instance->CCR2 = output_ccr_cnt[1];  //+85 = 1/3 -> 1024x1/3
@@ -340,47 +340,6 @@ inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage
     htim8.Instance->CCR2 = output_ccr_cnt[1];
     htim8.Instance->CCR3 = output_ccr_cnt[2];
   }
-}
-
-inline void setOutputRadianM0(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
-{
-  int voltage_propotional_cnt;
-
-  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
-    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
-  }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
-
-  uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-  htim1.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  htim1.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-  htim1.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
-}
-
-inline void setOutputRadianM1(float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
-{
-  int voltage_propotional_cnt;
-  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
-    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
-  }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
-
-  uint16_t rad_to_cnt = (uint8_t)((out_rad + M_PI * 4) / (M_PI * 2) * 255);
-  htim8.Instance->CCR1 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  htim8.Instance->CCR2 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[85 + rad_to_cnt];
-  htim8.Instance->CCR3 = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[170 + rad_to_cnt];
 }
 
 void setPwmAll(uint32_t pwm_cnt)

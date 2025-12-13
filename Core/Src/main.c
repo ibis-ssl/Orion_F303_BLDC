@@ -175,7 +175,6 @@ inline void calibrationProcess_itr(bool motor)
   }
 
   updateADC(motor);
-  //updateMA702(motor);
   updateAS5047P(motor);
   setOutputRadianMotor(motor, sys.manual_offset_radian, cmd[motor].out_v_final, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
 }
@@ -183,7 +182,6 @@ inline void calibrationProcess_itr(bool motor)
 inline void motorProcess_itr(bool motor)
 {
   updateADC(motor);
-  //updateMA702(motor);
   updateAS5047P(motor);
   setOutputRadianMotor(motor, as5047p[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
 }
@@ -457,7 +455,8 @@ void encoderCalibrationMode(void)
   // END of 1st-calibration cycle (CCW)
   if (calib[0].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib_process.force_rotation_speed > 0) {
     calib_process.force_rotation_speed = -calib_process.force_rotation_speed;  //CCW方向終わったので、回転方向反転
-    HAL_Delay(1);                                                              // write out uart buffer
+    p("END of 1st-calibration cycle (CCW)\n");
+    HAL_Delay(1);  // write out uart buffer
   }
 
   // END of 2nd-calibration cycle (CW)
@@ -465,6 +464,7 @@ void encoderCalibrationMode(void)
     // 強制転流モード完了
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
+    p("END of 2nd-calibration cycle (CW)\n");
     HAL_Delay(1);  // write out uart buffer
 
     float xy_field_ave_x[2] = {0}, xy_field_ave_y[2] = {0}, xy_field_offset_radian[2] = {0, 0};
@@ -522,6 +522,13 @@ void encoderCalibrationMode(void)
 
     p("calib %+5.2f %+5.2f", enc_offset[0].zero_calib, enc_offset[1].zero_calib);
     HAL_Delay(900);
+  }
+
+  static int print_cnt = 0;
+  print_cnt++;
+  if (print_cnt > 1000) {
+    print_cnt = 0;
+    p("%4.1f %4.1f %4d %4.1f\n", cmd[0].out_v_final, cmd[1].out_v_final, calib_process.enc_calib_cnt, getBatteryVoltage());
   }
 }
 
@@ -675,6 +682,13 @@ void motorCalibrationMode(void)
 
         break;
     }
+  }
+
+  static int print_cnt = 0;
+  print_cnt++;
+  if (print_cnt > 100) {
+    print_cnt = 0;
+    p("%4.1f %4.1f\n", cmd[0].out_v, cmd[1].out_v);
   }
 }
 
