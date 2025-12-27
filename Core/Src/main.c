@@ -661,8 +661,11 @@ void motorCalibrationMode(void)
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
         p("\n\nMotor Calib rps/v \n ");
-        p("M0 -%6.2f +%6.2f Diff %+6.2f\n ", rps_per_v_ccw_h[0], rps_per_v_cw_h[0], rps_per_v_ccw_h[0] - rps_per_v_cw_h[0]);
-        p("M0 -%6.2f +%6.2f Diff %+6.2f \n", rps_per_v_ccw_h[1], rps_per_v_cw_h[1], rps_per_v_ccw_h[1] - rps_per_v_cw_h[1]);
+        float spd_diff[2] = {0};
+        spd_diff[0] = rps_per_v_ccw_h[0] - rps_per_v_cw_h[0];
+        spd_diff[1] = rps_per_v_ccw_h[1] - rps_per_v_cw_h[1];
+        p("M0 -%6.2f +%6.2f Diff %+6.2f\n ", rps_per_v_ccw_h[0], rps_per_v_cw_h[0], spd_diff[0]);
+        p("M0 -%6.2f +%6.2f Diff %+6.2f \n", rps_per_v_ccw_h[1], rps_per_v_cw_h[1], spd_diff[1]);
         p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
 
         if (checkMotorRpsError(rps_per_v_ccw_h[0], rps_per_v_ccw_h[1])) {
@@ -673,6 +676,16 @@ void motorCalibrationMode(void)
 
         p("save calib result...\n");
         // 高回転時のパラメーターのみ使用(低回転から切り替え)
+        float adj_calib[2] = {0};
+        for (int i = 0; i < 2; i++) {
+          adj_calib[i] = enc_offset[i].zero_calib + (spd_diff[i] / 10);
+          if (adj_calib[i] < 0) {
+            adj_calib[i] += 2 * M_PI;
+          } else if (adj_calib[i] >= 2 * M_PI) {
+            adj_calib[i] -= 2 * M_PI;
+          }
+        }
+        writeEncCalibrationValue(adj_calib[0], adj_calib[1]);
         writeMotorCalibrationValue(rps_per_v_cw_h[0], rps_per_v_cw_h[1]);
 
         HAL_Delay(10);
