@@ -3,6 +3,8 @@
  ******************************************************************************
  * @file           : main.c
  * @brief          : Main program body
+ * @note           : Dual BLDC control application. This file owns mode control,
+ *                   safety management, and high-level scheduling.
  ******************************************************************************
  * @attention
  *
@@ -101,6 +103,34 @@ error_t error;
 system_t sys;
 enc_error_watcher_t enc_error_watcher;
 calib_process_t calib_process;
+
+typedef enum
+{
+  CONTROL_MODE_RUN = 0,
+  CONTROL_MODE_ENCODER_CALIB,
+  CONTROL_MODE_MOTOR_CALIB
+} control_mode_t;
+
+static inline bool isEncoderCalibrationActive(void)
+{
+  return calib_process.enc_calib_cnt != 0U;
+}
+
+static inline bool isAnyCalibrationActive(void)
+{
+  return (calib_process.enc_calib_cnt != 0U) || (calib_process.motor_calib_cnt != 0U);
+}
+
+static inline control_mode_t getControlMode(void)
+{
+  if (isEncoderCalibrationActive()) {
+    return CONTROL_MODE_ENCODER_CALIB;
+  }
+  if (calib_process.motor_calib_cnt != 0U) {
+    return CONTROL_MODE_MOTOR_CALIB;
+  }
+  return CONTROL_MODE_RUN;
+}
 
 // 200kV -> 3.33rps/V -> 0.3 V/rps
 //#define RPS_TO_MOTOR_EFF_VOLTAGE (0.15)
@@ -206,7 +236,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   }
 
   setLedBlue(false);
-  if (calib_process.enc_calib_cnt != 0) {
+  if (isEncoderCalibrationActive()) {
     calibrationProcess_itr(motor_select_toggle);
   } else {
     motorProcess_itr(motor_select_toggle);
@@ -248,7 +278,7 @@ static inline float clampSize(float in, float max)
 void can_rx_callback(void)
 {
   // モーターキャリブレーション中は無視
-  if (calib_process.enc_calib_cnt != 0 || calib_process.motor_calib_cnt != 0) {
+  if (isAnyCalibrationActive()) {
     return;
   }
 
@@ -1274,12 +1304,17 @@ int main(void)
     sendCanData();
 
     system_exec_time_stamp[0] = interrupt_timer_cnt;
-    if (calib_process.enc_calib_cnt != 0) {
-      encoderCalibrationMode();
-    } else if (calib_process.motor_calib_cnt != 0) {
-      motorCalibrationMode();
-    } else {
-      runMode();
+    switch (getControlMode()) {
+      case CONTROL_MODE_ENCODER_CALIB:
+        encoderCalibrationMode();
+        break;
+      case CONTROL_MODE_MOTOR_CALIB:
+        motorCalibrationMode();
+        break;
+      case CONTROL_MODE_RUN:
+      default:
+        runMode();
+        break;
     }
     protect();
 
