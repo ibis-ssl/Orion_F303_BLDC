@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file protect.c
  * @brief Protection logic and fault shutdown handling.
  */
@@ -6,18 +6,13 @@
 #include "protect.h"
 
 #include "adc.h"
+#include "app_context.h"
 #include "control_limits.h"
+#include "control_mode.h"
 #include "flash.h"
 #include "gpio.h"
-#include "main.h"
 #include "tim.h"
 #include "usart.h"
-
-extern motor_control_cmd_t cmd[2];
-extern motor_pid_control_t pid[2];
-extern error_t error;
-extern enc_error_watcher_t enc_error_watcher;
-extern motor_real_t motor_real[2];
 
 void waitPowerOnTimeout(void);
 
@@ -35,6 +30,7 @@ static inline void protectOverCurrent(void)
       error.id = flash.board_id * 2 + i;
       error.info = BLDC_OVER_CURRENT;
       error.value = getCurrentMotor(i);
+      setFaultMode();
       waitPowerOnTimeout();
     }
   }
@@ -52,6 +48,7 @@ static inline void protectBatteryVoltage(void)
     error.id = flash.board_id * 2;
     error.info = BLDC_UNDER_VOLTAGE;
     error.value = getBatteryVoltage();
+    setFaultMode();
     waitPowerOnTimeout();
   }
 
@@ -66,6 +63,7 @@ static inline void protectBatteryVoltage(void)
     error.id = flash.board_id * 2;
     error.info = BLDC_OVER_VOLTAGE;
     error.value = getBatteryVoltage();
+    setFaultMode();
     waitPowerOnTimeout();
   }
 }
@@ -87,6 +85,7 @@ static inline void protectMotorTemperature(void)
       error.id = flash.board_id * 2 + 1;
       error.value = (float)getTempMotor(1);
     }
+    setFaultMode();
     waitPowerOnTimeout();
   }
 }
@@ -108,6 +107,7 @@ static inline void protectFetTemperature(void)
       error.id = flash.board_id * 2 + 1;
       error.value = (float)getTempFET(1);
     }
+    setFaultMode();
     waitPowerOnTimeout();
   }
 }
@@ -130,6 +130,7 @@ static inline void protectOverLoad(void)
       error.value = pid[1].load_limit_cnt;
     }
 
+    setFaultMode();
     waitPowerOnTimeout();
   }
 }
@@ -138,8 +139,7 @@ void protect(void)
 {
   protectOverCurrent();
 
-  // エンコーダエラー監視は現状運用で無効化
-  // if (enc_error_watcher.detect_flag) { ... }
+  // Encoder error hook is disabled for now.
   (void)enc_error_watcher;
   (void)motor_real;
 

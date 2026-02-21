@@ -1,95 +1,68 @@
-# Orion_F303_BLDC 改善方針（性能重視）
+﻿# Orion_F303_BLDC 改善方針
 
 ## 目的
-- 可読性・保守性を上げる。
+- 可読性と保守性を上げる。
 - リアルタイム制御性能を維持する。
-- 明らかな実行時間増加を避ける。
+- 挙動を変えないリファクタリングを優先する。
 
-## 前提
-- 対象は STM32F303（Cortex-M4F）専用実装。
-- 制御周期は 1kHz 系のタイミング制約がある。
-- 可搬性より実行性能を優先する。
+## 全体構成（現在）
+- `Core/Src/main.c`: 制御ループ本体、周期同期、共通コンテキスト定義。
+- `Core/Src/control_mode.c`: 実行モード判定とモードディスパッチ。
+- `Core/Src/calibration.c`: エンコーダ校正・モータ校正。
+- `Core/Src/protect.c`: 保護処理と異常停止。
+- `Core/Src/comms.c`: CAN/UART 受信、テレメトリ送信。
+- `Core/Src/startup_sequence.c`: 起動シーケンスと自己チェック。
+- `Core/Src/diagnostics.c`: 周期ログ出力。
+- `Core/Inc/app_context.h`: 共有状態（グローバル）の参照定義。
 
-## 基本方針
-- 「挙動を変えない整理」と「挙動を変える改善」を分離する。
-- 1回の変更量を小さくし、毎回計測で性能退行を確認する。
-- 速度クリティカル区間（ISR周辺）は最小限の処理に限定する。
+## 設計ルール
+- ISR と 1kHz ループの fast path では分岐/処理を増やしすぎない。
+- ロジック変更を伴う最適化は、必ず計測値（周期余裕・CPU負荷）で確認する。
+- 共有状態は `app_context.h` 経由で参照し、`extern` の散在を防ぐ。
+- モードや校正段階は `enum` で明示する。
 
-## 性能ガードレール
-- 変更前に以下を計測し、基準値を保存する。
-  - `interrupt_timer_cnt`
-  - `task_complete_timer_cnt`
-  - `main_loop_remain_counter`
-- 変更後は同条件で再計測し、以下を満たすこと。
-  - 最悪値が悪化しない（許容しても微小差のみ）
-  - 平均値が実用上同等
-  - 制御周期逸脱（デッドライン超過）が発生しない
+## 改善項目（完了）
+1. ファイル分割（通信・起動・診断）
+- `comms.c`, `startup_sequence.c`, `diagnostics.c` を追加。
+- `main.c` から該当ロジックを移設。
 
-## 段階的リファクタ手順
-1. 計測基準の固定  
-現状コードで性能ログを取得し、比較用ベースラインを確定する。
+2. 状態管理の明示化
+- `control_mode_t` を拡張（`startup/run/enc_calib/motor_calib/freewheel/fault`）。
+- Fault 状態を `setFaultMode()` で明示的に遷移。
 
-2. ファイル分割（ロジック変更なし）  
-役割を分離する。
-  - `fast path`: 割り込み内のセンサ更新・角度更新・PWM反映
-  - `slow path`: CAN/UART/保護/キャリブレーション制御  
-まずは移動のみ。式や条件は変えない。
+3. キャリブレーション段階の明示化
+- `motor_calib_stage_t` を導入。
+- `motor_calib_mode` のマジックナンバーを段階 enum に置換。
 
-3. 状態管理の明示化  
-`run / enc_calib / motor_calib / fault` を状態として定義し、遷移を一元化する。  
-散在したフラグ判定を削減し、見通しを改善する。
+4. 共有依存の整理
+- `Core/Inc/app_context.h` へ共有変数宣言を集約。
+- `calibration/protect/control_mode/comms/startup/diagnostics` で利用。
 
-4. データ構造の整理  
-関連するグローバル変数をコンテキスト構造体へ集約する。  
-依存関係を関数引数で明示し、影響範囲を小さくする。
+5. 文字化けコメント修正
+- `main.c`, `calibration.c`, `doc/overview.md` の文字化けを解消。
 
-5. 必要な範囲だけ最適化  
-ISR内の重い処理（可変長処理、不要分岐、ログ出力）を排除する。  
-LUT・`inline`・定数化など既存の高速化方針を維持する。
+## ビルド手順（CLI）
+### 前提
+- STM32CubeIDE 1.17.0 がインストール済み。
+- GNU Tools for STM32 が利用可能。
 
-## 実装ルール
-- 速度クリティカル区間での `printf` 相当処理は禁止。
-- マジックナンバーは用途名付き定数へ置換する。
-- 1変更 = 1意図にし、レビュー可能な差分に分割する。
-- 各 `.c` ファイル先頭に責務コメントを記載し、役割境界を明確化する。
-
-## CLIビルド手順
-### 前提ツール
-- `arm-none-eabi-gcc`（GNU Tools for STM32）
-- STM32CubeIDE 同梱 `make.exe`
-
-### ビルド方法（Debug）
-1. 作業ディレクトリを `Debug` に移動する。
-2. 次のコマンドを実行する。
-
+### Debug
 ```powershell
+cd Debug
 & "C:\ST\STM32CubeIDE_1.17.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.make.win32_2.2.0.202409170845\tools\bin\make.exe" -B -j4 all
 ```
 
-### ビルド方法（Release）
-1. 作業ディレクトリを `Release` に移動する。
-2. 次のコマンドを実行する。
-
+### Release
 ```powershell
+cd Release
 & "C:\ST\STM32CubeIDE_1.17.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.make.win32_2.2.0.202409170845\tools\bin\make.exe" -B -j4 all
 ```
 
-### 生成物
+## 出力成果物
 - `Orion_F303_BLDC.elf`
 - `Orion_F303_BLDC.map`
 - `Orion_F303_BLDC.list`
 
-### 注意点
-- `make` がPATHに無い環境では、上記のように `make.exe` のフルパス指定で実行する。
-- `cmake --preset ...` は本リポジトリに `CMakeLists.txt` が無いため現状では使用しない。
-- `ld` の RWX 警告は出るが、ビルド自体は成功する。
-
-## 受け入れ条件
-- 既存機能（通常運転、CAN制御、保護、校正）が維持される。
-- ベースライン比較で性能退行がない。
-- 新規追加の構造（状態・責務分離）を他開発者が追える。
-
-## 非目標（この段階では実施しない）
-- 全面的なアルゴリズム変更（制御理論の刷新）
-- 大規模な固定小数点化
-- 移植性向上を目的とした抽象化の過剰導入
+## 注意点
+- リンカの RWX 警告は現行リンカ設定由来で、今回のリファクタリング由来ではない。
+- 実機評価では、起動シーケンス・校正シーケンス・保護動作・通信周期を必ず回帰確認する。

@@ -150,11 +150,20 @@ typedef struct
   int cnt;
 } enc_error_watcher_t;
 
+typedef enum
+{
+  MOTOR_CALIB_STAGE_INIT = 0,
+  MOTOR_CALIB_STAGE_LOW_CW,
+  MOTOR_CALIB_STAGE_LOW_CCW,
+  MOTOR_CALIB_STAGE_HIGH_CW,
+  MOTOR_CALIB_STAGE_HIGH_CCW
+} motor_calib_stage_t;
+
 typedef struct
 {
   uint32_t enc_calib_cnt;
   uint32_t motor_calib_cnt;  // disable : 0, init : 5000, start : 3500~ , end : 1
-  uint32_t motor_calib_mode;
+  motor_calib_stage_t motor_calib_mode;
   float motor_calib_voltage;
   float force_rotation_speed;
 
