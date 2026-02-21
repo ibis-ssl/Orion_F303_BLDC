@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+﻿/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
  * @file           : main.c
@@ -23,8 +23,11 @@
 
 #include "adc.h"
 #include "can.h"
+#include "control_limits.h"
+#include "control_mode.h"
 #include "dma.h"
 #include "gpio.h"
+#include "protect.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -75,6 +78,9 @@ void SystemClock_Config(void);
 
 void sendCanData(void);
 void startCalibrationMode();
+void runMode(void);
+void encoderCalibrationMode(void);
+void motorCalibrationMode(void);
 
 /* USER CODE END PFP */
 
@@ -104,32 +110,14 @@ system_t sys;
 enc_error_watcher_t enc_error_watcher;
 calib_process_t calib_process;
 
-typedef enum
+static inline void updateMotorSpeedEstimate(void)
 {
-  CONTROL_MODE_RUN = 0,
-  CONTROL_MODE_ENCODER_CALIB,
-  CONTROL_MODE_MOTOR_CALIB
-} control_mode_t;
-
-static inline bool isEncoderCalibrationActive(void)
-{
-  return calib_process.enc_calib_cnt != 0U;
-}
-
-static inline bool isAnyCalibrationActive(void)
-{
-  return (calib_process.enc_calib_cnt != 0U) || (calib_process.motor_calib_cnt != 0U);
-}
-
-static inline control_mode_t getControlMode(void)
-{
-  if (isEncoderCalibrationActive()) {
-    return CONTROL_MODE_ENCODER_CALIB;
+  for (int i = 0; i < 2; i++) {
+    int ret = calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
+    if (ret < 0) {
+      p("stop!! speed error");
+    }
   }
-  if (calib_process.motor_calib_cnt != 0U) {
-    return CONTROL_MODE_MOTOR_CALIB;
-  }
-  return CONTROL_MODE_RUN;
 }
 
 // 200kV -> 3.33rps/V -> 0.3 V/rps
@@ -137,16 +125,6 @@ static inline control_mode_t getControlMode(void)
 // 13rps : 2.4V
 
 #define V_PER_RPS_DEFAULT (0.15)
-
-#define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
-
-#define THR_MOTOR_OVER_CURRENT (10)
-#define THR_BATTERY_UNVER_VOLTAGE (18.0)
-#define THR_BATTERY_OVER_VOLTAGE (35.0)
-#define THR_MOTOR_OVER_TEMPERATURE (70)    // 80 -> 70 deg (実機テストによる)
-#define THR_FET_OVER_TEMPERATURE (80)      // 70 -> 80 deg (実機テストによる)
-#define THR_NO_CONNECTED_TEPERATURE (120)  // V4.1用、無接続時130度程度になるので
-
 #define MOTOR_CALIB_INIT_CNT (2500)
 #define MOTOR_CALIB_READY_CNT (2000)
 #define MOTOR_CALIB_START_CNT (1500)
@@ -158,9 +136,9 @@ static inline control_mode_t getControlMode(void)
 #define MOTOR_CALIB_CW_CCW_ERROR_TRERANCE (1.0)
 #define MOTOR_CALIB_UNDER_LIMIT (1.0)
 
-// ヤバい速度指令を無視するしきい値
+// 繝､繝舌＞騾溷ｺｦ謖・ｻ､繧堤┌隕悶☆繧九＠縺阪＞蛟､
 #define SPEED_REAL_LIMIT_GAIN (float)(1.5)
-// エンコーダー飛んだ時に異常な速度を検出するしきい値
+// 繧ｨ繝ｳ繧ｳ繝ｼ繝繝ｼ鬟帙ｓ縺譎ゅ↓逡ｰ蟶ｸ縺ｪ騾溷ｺｦ繧呈､懷・縺吶ｋ縺励″縺・､
 
 void checkAngleCalibMode(bool motor)
 {
@@ -194,7 +172,7 @@ inline void calibrationProcess_itr(bool motor)
 {
   sys.manual_offset_radian += calib_process.force_rotation_speed;
 
-  // 出力電気角度 = 0 のときに、エンコーダー角度を計測
+  // 蜃ｺ蜉幃崕豌苓ｧ貞ｺｦ = 0 縺ｮ縺ｨ縺阪↓縲√お繝ｳ繧ｳ繝ｼ繝繝ｼ隗貞ｺｦ繧定ｨ域ｸｬ
   if (sys.manual_offset_radian > M_PI * 2) {
     sys.manual_offset_radian -= M_PI * 2;
     checkAngleCalibMode(!motor);
@@ -222,6 +200,14 @@ volatile uint32_t interrupt_timer_cnt = 0, main_loop_remain_counter = 0;
 volatile static float main_loop_remain_counter_ave = 0, task_complete_timer_cnt_ave = 0;
 volatile static uint32_t system_exec_time_stamp[10] = {0};
 volatile static float system_exec_time_stamp_ave[10] = {0};
+
+static inline void waitForNextMainCycle(void)
+{
+  main_loop_remain_counter = INTERRUPT_KHZ_1MS - interrupt_timer_cnt;
+  while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS);
+  interrupt_timer_cnt = 0;
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 {
   // TIM1 : M1
@@ -277,7 +263,7 @@ static inline float clampSize(float in, float max)
 
 void can_rx_callback(void)
 {
-  // モーターキャリブレーション中は無視
+  // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ荳ｭ縺ｯ辟｡隕・
   if (isAnyCalibrationActive()) {
     return;
   }
@@ -294,7 +280,7 @@ void can_rx_callback(void)
       }
       break;
 
-      // IDによる振り分け
+      // ID縺ｫ繧医ｋ謖ｯ繧雁・縺・
     case 0x100:
     case 0x102:
       cmd[0].speed = clampSize(can_rx_buf.value[0], SPEED_CMD_LIMIT_RPS);
@@ -363,8 +349,8 @@ void runMode(void)
 
   //- 0.5 max spd 0.75
   //+ 3.45 max spd 3.25
-  // ここが速度によって処理負荷変わってる？
-  // 負のほうが処理時間かかってる
+  // 縺薙％縺碁溷ｺｦ縺ｫ繧医▲縺ｦ蜃ｦ逅・ｲ闕ｷ螟峨ｏ縺｣縺ｦ繧具ｼ・
+  // 雋縺ｮ縺ｻ縺・′蜃ｦ逅・凾髢薙°縺九▲縺ｦ繧・
   for (int i = 0; i < 2; i++) {
     if (isPushedSW1()) {
       cmd[i].speed = 40.0;
@@ -400,10 +386,10 @@ void runMode(void)
   }
 
   system_exec_time_stamp[3] = interrupt_timer_cnt;
-  // ここは1KHzでまわっている
+  // 縺薙％縺ｯ1KHz縺ｧ縺ｾ繧上▲縺ｦ縺・ｋ
 
-  // 1サイクルごとの負荷を減らすために分割して送信
-  // 1ms程度かかっている
+  // 1繧ｵ繧､繧ｯ繝ｫ縺斐→縺ｮ雋闕ｷ繧呈ｸ帙ｉ縺吶◆繧√↓蛻・牡縺励※騾∽ｿ｡
+  // 1ms遞句ｺｦ縺九°縺｣縺ｦ縺・ｋ
   sys.print_cnt++;
 
   switch (sys.print_cnt) {
@@ -427,7 +413,7 @@ void runMode(void)
       if (sys.print_idx == 0) {
         p("Eff %+6.2f %+6.2f %d %d ", pid[0].eff_voltage, pid[1].eff_voltage, pid[0].output_voltage_limitting, pid[1].output_voltage_limitting);
       } else if (sys.print_idx == 1) {
-        // FET温度はv4.2で取得できない
+        // FET貂ｩ蠎ｦ縺ｯv4.2縺ｧ蜿門ｾ励〒縺阪↑縺・
         p("FET-T %+4d %+4d Motor-T %+4d %+4d", getTempFET(0), getTempFET(1), getTempMotor(0), getTempMotor(1));
       } else {
         p("SPD %+6.1f %+6.1f canErr 0x%04x ", cmd[0].speed, cmd[1].speed, getCanError());
@@ -471,7 +457,7 @@ void runMode(void)
 /* Can't running 1kHz */
 void encoderCalibrationMode(void)
 {
-  // 角度0のときにprint
+  // 隗貞ｺｦ0縺ｮ縺ｨ縺阪↓print
   if (calib_process.print_flag) {
     calib_process.print_flag = false;
     p("enc = %+5.2f %+5.2f  / M0 X %+5.2f Y %+5.2f / M1 X %+5.2f Y %+5.2f / Rad %+5.2f %+5.2f\n", as5047p[0].output_radian, as5047p[1].output_radian, cos(as5047p[0].output_radian),
@@ -479,20 +465,20 @@ void encoderCalibrationMode(void)
       atan2(sin(as5047p[1].output_radian), cos(as5047p[1].output_radian)));
   }
 
-  // calib_process.force_rotation_speedが+でCCW
-  // calib_process.force_rotation_speedが-でCW回転する。
-  // 初期値はcalib_process.force_rotation_speedが+でCCWからキャリブレーション。
+  // calib_process.force_rotation_speed縺・縺ｧCCW
+  // calib_process.force_rotation_speed縺・縺ｧCW蝗櫁ｻ｢縺吶ｋ縲・
+  // 蛻晄悄蛟､縺ｯcalib_process.force_rotation_speed縺・縺ｧCCW縺九ｉ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ縲・
 
   // END of 1st-calibration cycle (CCW)
   if (calib[0].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_ccw_cnt > MOTOR_CALIB_CYCLE && calib_process.force_rotation_speed > 0) {
-    calib_process.force_rotation_speed = -calib_process.force_rotation_speed;  //CCW方向終わったので、回転方向反転
+    calib_process.force_rotation_speed = -calib_process.force_rotation_speed;  //CCW譁ｹ蜷醍ｵゅｏ縺｣縺溘・縺ｧ縲∝屓霆｢譁ｹ蜷大渚霆｢
     p("END of 1st-calibration cycle (CCW)\n");
     HAL_Delay(1);  // write out uart buffer
   }
 
   // END of 2nd-calibration cycle (CW)
   if (calib[0].result_cw_cnt > MOTOR_CALIB_CYCLE && calib[1].result_cw_cnt > MOTOR_CALIB_CYCLE) {
-    // 強制転流モード完了
+    // 蠑ｷ蛻ｶ霆｢豬√Δ繝ｼ繝牙ｮ御ｺ・
     cmd[0].out_v_final = 0;
     cmd[1].out_v_final = 0;
     p("END of 2nd-calibration cycle (CW)\n");
@@ -522,10 +508,10 @@ void encoderCalibrationMode(void)
 
       p("Rad M0 %+5.2f\n\n", xy_field_offset_radian[i]);
 
-      // モーターキャリブレーション前に更新
+      // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ蜑阪↓譖ｴ譁ｰ
       enc_offset[i].zero_calib = xy_field_offset_radian[i];
 
-      // モーターキャリブレーション結果を書き込むときに、メモリ上のエンコーダーキャリブレーション値も更新しないと戻ってしまう??
+      // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ邨先棡繧呈嶌縺崎ｾｼ繧縺ｨ縺阪↓縲√Γ繝｢繝ｪ荳翫・繧ｨ繝ｳ繧ｳ繝ｼ繝繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ蛟､繧よ峩譁ｰ縺励↑縺・→謌ｻ縺｣縺ｦ縺励∪縺・?
       flash.calib[i] = enc_offset[i].zero_calib;
 
       calib[i].result_cw_cnt = 0;
@@ -536,18 +522,18 @@ void encoderCalibrationMode(void)
     writeEncCalibrationValue(enc_offset[0].zero_calib, enc_offset[1].zero_calib);
 
     for (int i = 0; i < 2; i++) {
-      // モーターキャリブレーション前に更新
+      // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ蜑阪↓譖ｴ譁ｰ
       enc_offset[i].zero_calib = xy_field_offset_radian[i];
 
-      // モーターキャリブレーション結果を書き込むときに、メモリ上のエンコーダーキャリブレーション値も更新しないと戻ってしまう??
+      // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ邨先棡繧呈嶌縺崎ｾｼ繧縺ｨ縺阪↓縲√Γ繝｢繝ｪ荳翫・繧ｨ繝ｳ繧ｳ繝ｼ繝繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ蛟､繧よ峩譁ｰ縺励↑縺・→謌ｻ縺｣縺ｦ縺励∪縺・?
       flash.calib[i] = xy_field_offset_radian[i];
     }
 
-    // エンコーダキャリブレーション完了
+    // 繧ｨ繝ｳ繧ｳ繝ｼ繝繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ螳御ｺ・
     calib_process.enc_calib_cnt = 0;
-    sys.manual_offset_radian = 0;  // 割り込みの中で加算してしまうので,enc_calib_cnt = 0にしてからでないといけない
+    sys.manual_offset_radian = 0;  // 蜑ｲ繧願ｾｼ縺ｿ縺ｮ荳ｭ縺ｧ蜉邂励＠縺ｦ縺励∪縺・・縺ｧ,enc_calib_cnt = 0縺ｫ縺励※縺九ｉ縺ｧ縺ｪ縺・→縺・￠縺ｪ縺・
 
-    // モーターキャリブレーションに切り替え
+    // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ縺ｫ蛻・ｊ譖ｿ縺・
     calib_process.motor_calib_mode = 0;
     calib_process.motor_calib_cnt = 1;
 
@@ -601,7 +587,7 @@ void motorCalibrationMode(void)
         calib[i].rps_integral += motor_real[i].rps;
       }
 
-      // そのまま逆転させるとエラいことになるので一度電圧0にする
+      // 縺昴・縺ｾ縺ｾ騾・ｻ｢縺輔○繧九→繧ｨ繝ｩ縺・％縺ｨ縺ｫ縺ｪ繧九・縺ｧ荳蠎ｦ髮ｻ蝨ｧ0縺ｫ縺吶ｋ
       if (calib_process.motor_calib_cnt < MOTOR_CALIB_READY_CNT) {
         cmd[i].out_v = calib_process.motor_calib_voltage;
       } else {
@@ -705,7 +691,7 @@ void motorCalibrationMode(void)
         }
 
         p("save calib result...\n");
-        // 高回転時のパラメーターのみ使用(低回転から切り替え)
+        // 鬮伜屓霆｢譎ゅ・繝代Λ繝｡繝ｼ繧ｿ繝ｼ縺ｮ縺ｿ菴ｿ逕ｨ(菴主屓霆｢縺九ｉ蛻・ｊ譖ｿ縺・
         float adj_calib[2] = {0};
         for (int i = 0; i < 2; i++) {
           adj_calib[i] = enc_offset[i].zero_calib + (spd_diff[i] / 10);
@@ -752,20 +738,20 @@ void startCalibrationMode(void)
   cmd[0].out_v_final = 2.0;
   cmd[1].out_v_final = 2.0;
 
-  // キャリブレーションモード中の動作
+  // 繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ繝｢繝ｼ繝我ｸｭ縺ｮ蜍穂ｽ・
 
-  // エンコーダーキャリブレーション
-  // エンコーダー : 通常動作と同じ
-  // 出力角度 : 低速で強制転流
-  // CAN受信 : 早期returnで全部無視
-  // 出力電圧 : 固定
+  // 繧ｨ繝ｳ繧ｳ繝ｼ繝繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ
+  // 繧ｨ繝ｳ繧ｳ繝ｼ繝繝ｼ : 騾壼ｸｸ蜍穂ｽ懊→蜷後§
+  // 蜃ｺ蜉幄ｧ貞ｺｦ : 菴朱溘〒蠑ｷ蛻ｶ霆｢豬・
+  // CAN蜿嶺ｿ｡ : 譌ｩ譛殲eturn縺ｧ蜈ｨ驛ｨ辟｡隕・
+  // 蜃ｺ蜉幃崕蝨ｧ : 蝗ｺ螳・
   // main : encoderCalibrationMode()
 
-  // モーターキャリブレーション
-  // エンコーダー : 通常動作と同じ
-  // 出力角度 : 通常動作と同じ
-  // CAN受信 : 早期returnで全部無視
-  // 出力電圧 : CW,CCWで各2数段階,2段階めは1段階めの回転数に応じて変更
+  // 繝｢繝ｼ繧ｿ繝ｼ繧ｭ繝｣繝ｪ繝悶Ξ繝ｼ繧ｷ繝ｧ繝ｳ
+  // 繧ｨ繝ｳ繧ｳ繝ｼ繝繝ｼ : 騾壼ｸｸ蜍穂ｽ懊→蜷後§
+  // 蜃ｺ蜉幄ｧ貞ｺｦ : 騾壼ｸｸ蜍穂ｽ懊→蜷後§
+  // CAN蜿嶺ｿ｡ : 譌ｩ譛殲eturn縺ｧ蜈ｨ驛ｨ辟｡隕・
+  // 蜃ｺ蜉幃崕蝨ｧ : CW,CCW縺ｧ蜷・謨ｰ谿ｵ髫・2谿ｵ髫弱ａ縺ｯ1谿ｵ髫弱ａ縺ｮ蝗櫁ｻ｢謨ｰ縺ｫ蠢懊§縺ｦ螟画峩
   // main : runMode()
 }
 
@@ -885,18 +871,18 @@ void sendCanData(void)
       sendCurrent(flash.board_id, 1, getCurrentMotor(1));
       break;
     case 8:
-      // 本当はFETとモーター温度をまとめてint x4で送ったほうがいいかもしれないが、実用上のメリットが少ないので後回し
+      // 譛ｬ蠖薙・FET縺ｨ繝｢繝ｼ繧ｿ繝ｼ貂ｩ蠎ｦ繧偵∪縺ｨ繧√※int x4縺ｧ騾√▲縺溘⊇縺・′縺・＞縺九ｂ縺励ｌ縺ｪ縺・′縲∝ｮ溽畑荳翫・繝｡繝ｪ繝・ヨ縺悟ｰ代↑縺・・縺ｧ蠕悟屓縺・
       sendTemperature(flash.board_id, 0, getTempMotor(0), getTempFET(0));
       break;
     case 10:
       sendTemperature(flash.board_id, 1, getTempMotor(1), getTempFET(1));
       break;
     case 12:
-      // 拡張
+      // 諡｡蠑ｵ
       sendFloatDual(0x500 + flash.board_id * 2, flash.rps_per_v_cw[0], 0);
       break;
     case 14:
-      // 拡張
+      // 諡｡蠑ｵ
       sendFloatDual(0x501 + flash.board_id * 2, flash.rps_per_v_cw[1], 0);
       break;
     case 50:
@@ -908,121 +894,6 @@ void sendCanData(void)
   transfer_cnt++;
 }
 
-void protect(void)
-{
-  for (int i = 0; i < 2; i++) {
-    if (getCurrentMotor(i) > THR_MOTOR_OVER_CURRENT) {
-      forceStopAllPwmOutputAndTimer();
-
-      p("M%d over current!! : %+6.2f / out_v %+6.2f\n", i, getCurrentMotor(i), cmd[i].out_v_final, pid[i].output_voltage_limitting);
-      setLedBlue(false);
-      setLedGreen(true);
-      setLedRed(true);
-
-      error.id = flash.board_id * 2 + i;
-      error.info = BLDC_OVER_CURRENT;
-      error.value = getCurrentMotor(i);
-      waitPowerOnTimeout();
-    }
-  }
-
-  // エンコーダー値飛んだときにエラーにする
-  // 処理的には対策を入れているが、canの受信タイミングの影響で、キッカーの影響でエラーになってしまうかもしれないので今はエラーにしない。
-  /* if (enc_error_watcher.detect_flag) {
-    forceStopAllPwmOutputAndTimer();
-    p("encoder error!!! ENC M%d diff %5d", enc_error_watcher.idx, enc_error_watcher.cnt);
-    setLedBlue(true);
-    setLedGreen(false);
-    setLedRed(true);
-    
-    error.id = flash.board_id * 2 + enc_error_watcher.idx;
-    error.info = BLDC_ENC_ERROR;
-    error.value = motor_real[enc_error_watcher.idx].diff_cnt_max;
-    waitPowerOnTimeout();
-  }
-  */
-
-  if (getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
-    forceStopAllPwmOutputAndTimer();
-    p("UNDER voltage!! %6.3f", getBatteryVoltage());
-    setLedBlue(true);
-    setLedGreen(false);
-    setLedRed(true);
-
-    error.id = flash.board_id * 2;
-    error.info = BLDC_UNDER_VOLTAGE;
-    error.value = getBatteryVoltage();
-    waitPowerOnTimeout();
-  }
-
-  if (getBatteryVoltage() > THR_BATTERY_OVER_VOLTAGE) {
-    setPwmAll(0);
-    //stopTimerInterrupt();
-    p("OVER voltage!! %6.3f", getBatteryVoltage());
-    setLedBlue(true);
-    setLedGreen(false);
-    setLedRed(true);
-
-    error.id = flash.board_id * 2;
-    error.info = BLDC_OVER_VOLTAGE;
-    error.value = getBatteryVoltage();
-    waitPowerOnTimeout();
-  }
-
-  if (getTempMotor(0) > THR_MOTOR_OVER_TEMPERATURE || getTempMotor(1) > THR_MOTOR_OVER_TEMPERATURE) {
-    forceStopAllPwmOutputAndTimer();
-    p("OVER Motor temperature!! M0 : %3d M1 : %3d", getTempMotor(0), getTempMotor(1));
-    setLedBlue(true);
-    setLedGreen(true);
-    setLedRed(true);
-
-    error.info = BLDC_MOTOR_OVER_HEAT;
-    if (getTempMotor(0) > getTempMotor(1)) {
-      error.id = flash.board_id * 2;
-      error.value = (float)getTempMotor(0);
-    } else {
-      error.id = flash.board_id * 2 + 1;
-      error.value = (float)getTempMotor(1);
-    }
-    waitPowerOnTimeout();
-  }
-  if ((getTempFET(0) > THR_FET_OVER_TEMPERATURE && getTempFET(0) < THR_NO_CONNECTED_TEPERATURE) || (getTempFET(1) > THR_FET_OVER_TEMPERATURE && getTempFET(1) < THR_NO_CONNECTED_TEPERATURE)) {
-    forceStopAllPwmOutputAndTimer();
-    p("OVER FET temperature!! M0 : %3df M1 : %3d", getTempFET(0), getTempFET(1));
-    setLedBlue(true);
-    setLedGreen(true);
-    setLedRed(true);
-
-    error.info = BLDC_FET_OVER_HEAT;
-    if (getTempFET(0) > getTempFET(1)) {
-      error.id = flash.board_id * 2 + 0;
-      error.value = (float)getTempFET(0);
-    } else {
-      error.id = flash.board_id * 2 + 1;
-      error.value = (float)getTempFET(1);
-    }
-    waitPowerOnTimeout();
-  }
-
-  if (pid[0].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT || pid[1].load_limit_cnt > MOTOR_OVER_LOAD_CNT_LIMIT) {
-    forceStopAllPwmOutputAndTimer();
-    p("over load!! %d %d", pid[0].load_limit_cnt, pid[1].load_limit_cnt);
-    setLedBlue(false);
-    setLedGreen(false);
-    setLedRed(true);
-
-    error.info = BLDC_OVER_LOAD;
-    if (pid[0].load_limit_cnt > pid[1].load_limit_cnt) {
-      error.id = flash.board_id * 2 + 0;
-      error.value = pid[0].load_limit_cnt;
-    } else {
-      error.id = flash.board_id * 2 + 1;
-      error.value = pid[1].load_limit_cnt;
-    }
-
-    waitPowerOnTimeout();
-  }
-}
 
 /* USER CODE END 0 */
 
@@ -1108,8 +979,8 @@ int main(void)
     cmd[i].out_v = 0;
     cmd[i].out_v_final = 0;
 
-    // 手動調整による
-    // 40rps/80rpsでも同等の効果のため、処理時間ではなく電気角度のオフセットと思われるので暫定的対処
+    // 謇句虚隱ｿ謨ｴ縺ｫ繧医ｋ
+    // 40rps/80rps縺ｧ繧ょ酔遲峨・蜉ｹ譫懊・縺溘ａ縲∝・逅・凾髢薙〒縺ｯ縺ｪ縺城崕豌苓ｧ貞ｺｦ縺ｮ繧ｪ繝輔そ繝・ヨ縺ｨ諤昴ｏ繧後ｋ縺ｮ縺ｧ證ｫ螳夂噪蟇ｾ蜃ｦ
     sys.manual_offset_radian = 0.00;
 
     // set calibration params
@@ -1132,7 +1003,7 @@ int main(void)
     // 2.0 -> 4.0 -> 6.0
     if (motor_param[i].voltage_per_rps < 0.25) {
       // 400kV
-      // 4.0でも問題なかったけど一応6.0にしておく
+      // 4.0縺ｧ繧ょ撫鬘後↑縺九▲縺溘￠縺ｩ荳蠢・.0縺ｫ縺励※縺翫￥
       pid[i].diff_voltage_limit = 4.0;
 
     } else {
@@ -1149,7 +1020,7 @@ int main(void)
   __HAL_SPI_ENABLE(&hspi1);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-  // 50 / 5 : 10ぐらい
+  // 50 / 5 : 10縺舌ｉ縺・
   //
   HAL_Delay(1);
 
@@ -1199,11 +1070,11 @@ int main(void)
 
   p("ADC : %5d %5d GD %4.2f Batt %4.2f\n", adc_raw.cs_motor[0], adc_raw.cs_motor[1], getGateDriverDCDCVoltage(), getBatteryVoltage());
   if (adc_raw.cs_motor[0] < 100 && adc_raw.cs_motor[1] < 100) {
-    // 正方向電流のみモデル
+    // 豁｣譁ｹ蜷鷹崕豬√・縺ｿ繝｢繝・Ν
     // ZXCT1084
     adc_raw.cs_adc_offset = 0;
   } else {
-    // 正負電流
+    // 豁｣雋髮ｻ豬・
     // INA199
     adc_raw.cs_adc_offset = 2048;
   }
@@ -1215,8 +1086,8 @@ int main(void)
   HAL_TIM_PWM_Init(&htim1);
   setPwmAll(TIM_PWM_CENTER);
 
-  // PWM出力をHIGH/LOW順番に1chずつONにして短絡チェック
-  // なぜか LOW→LOW→LOW→HIGH→HIGH→HIGHとやると止まるのでHIGH&LOWでやっている
+  // PWM蜃ｺ蜉帙ｒHIGH/LOW鬆・分縺ｫ1ch縺壹▽ON縺ｫ縺励※遏ｭ邨｡繝√ぉ繝・け
+  // 縺ｪ縺懊° LOW竊鱈OW竊鱈OW竊辿IGH竊辿IGH竊辿IGH縺ｨ繧・ｋ縺ｨ豁｢縺ｾ繧九・縺ｧHIGH&LOW縺ｧ繧・▲縺ｦ縺・ｋ
   int turn_on_channel = 0;
   while (turn_on_channel < 3) {
     switch (turn_on_channel) {
@@ -1295,36 +1166,18 @@ int main(void)
     /* USER CODE BEGIN 3 */
     receiveUserSerialCommand();
 
-    for (int i = 0; i < 2; i++) {
-      int ret = calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
-      if (ret < 0) {
-        p("stop!! speed error");
-      }
-    }
+    updateMotorSpeedEstimate();
     sendCanData();
 
     system_exec_time_stamp[0] = interrupt_timer_cnt;
-    switch (getControlMode()) {
-      case CONTROL_MODE_ENCODER_CALIB:
-        encoderCalibrationMode();
-        break;
-      case CONTROL_MODE_MOTOR_CALIB:
-        motorCalibrationMode();
-        break;
-      case CONTROL_MODE_RUN:
-      default:
-        runMode();
-        break;
-    }
+    runControlMode();
     protect();
 
     setLedRed(true);
 
-    // 周期固定するために待つ
-    // 無回転時50%、回転時80%
-    main_loop_remain_counter = INTERRUPT_KHZ_1MS - interrupt_timer_cnt;
-    while (interrupt_timer_cnt <= INTERRUPT_KHZ_1MS);
-    interrupt_timer_cnt = 0;
+    // 蜻ｨ譛溷崋螳壹☆繧九◆繧√↓蠕・▽
+    // 辟｡蝗櫁ｻ｢譎・0%縲∝屓霆｢譎・0%
+    waitForNextMainCycle();
 
     setLedRed(false);
   }
