@@ -10,5 +10,5 @@
 4. Describe the function and responsibility of the code file in a comment at the beginning of the file.
 
 # Document
-1. Write important points in overview.md to leave information for other developers.
+1. Write important points in doc/overview.md to leave information for other developers.
 2. Documents should be written in Japanese
