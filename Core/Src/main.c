@@ -185,10 +185,10 @@ void runMode(void)
     } else if (isPushedSW2()) {
       cmd[i].speed = -40.0;
     } else if (isPushedSW3()) {
-      cmd[i].speed = 80.0;
+      cmd[i].speed = 60.0;
       //resumePwmOutput();
     } else if (isPushedSW4()) {
-      cmd[i].speed = -80.0;
+      cmd[i].speed = -60.0;
       //setPwmOutPutFreeWheel();
     }
 
