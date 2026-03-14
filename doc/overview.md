@@ -122,6 +122,33 @@ cd Release
 - `-v` は書き込み後ベリファイ。
 - `-rst` は書き込み後にリセットを実行。
 
+## スクリプト
+`Script` 配下に、ビルドと書き込みをまとめた PowerShell スクリプトを配置している。
+
+### ビルド
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\build.ps1 -Configuration Debug
+powershell -ExecutionPolicy Bypass -File .\Script\build.ps1 -Configuration Release -Rebuild
+```
+
+### 接続確認
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -List
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -ConnectOnly
+```
+
+### 書き込み
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -Configuration Debug
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -Configuration Release
+```
+
+### ビルドしてから書き込み
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Debug
+powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Release -Rebuild
+```
+
 ## 出力成果物
 - `Orion_F303_BLDC.elf`
 - `Orion_F303_BLDC.map`
