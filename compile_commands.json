@@ -1,0 +1,222 @@
+﻿[
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\adc.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/adc.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\adc.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\calibration.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/calibration.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\calibration.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\can.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/can.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\can.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\comms.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/comms.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\comms.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\control_mode.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/control_mode.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\control_mode.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\diagnostics.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/diagnostics.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\diagnostics.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\dma.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/dma.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\dma.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\flash.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/flash.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\flash.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\gpio.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/gpio.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\gpio.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\main.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/main.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\main.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\motor.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/motor.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\motor.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\protect.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/protect.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\protect.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\spi.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/spi.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\spi.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\startup_sequence.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/startup_sequence.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\startup_sequence.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\stm32f3xx_hal_msp.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/stm32f3xx_hal_msp.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\stm32f3xx_hal_msp.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\stm32f3xx_it.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/stm32f3xx_it.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\stm32f3xx_it.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\syscalls.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/syscalls.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\syscalls.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\sysmem.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/sysmem.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\sysmem.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\system_stm32f3xx.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/system_stm32f3xx.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\system_stm32f3xx.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\tim.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/tim.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\tim.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\usart.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Src/usart.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Src\\usart.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_adc.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_adc.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_adc.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_adc_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_adc_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_adc_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_can.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_can.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_can.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_cortex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_cortex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_cortex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_dma.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_dma.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_dma.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_exti.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_exti.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_exti.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_flash.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_flash.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_flash.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_flash_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_flash_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_flash_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_gpio.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_gpio.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_gpio.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_i2c.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_i2c.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_i2c.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_i2c_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_i2c_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_i2c_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_pwr.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_pwr.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_pwr.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_pwr_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_pwr_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_pwr_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_rcc.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_rcc.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_rcc.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_rcc_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_rcc_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_rcc_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_spi.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_spi.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_spi.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_spi_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_spi_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_spi_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_tim.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_tim.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_tim.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_tim_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_tim_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_tim_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_uart.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_uart.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_uart.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_uart_ex.c\" -mcpu=cortex-m4 -std=gnu11 -g -DDEBUG -DUSE_HAL_DRIVER -DSTM32F303xC -c -I../Core/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc -I../Drivers/STM32F3xx_HAL_Driver/Inc/Legacy -I../Drivers/CMSIS/Device/ST/STM32F3xx/Include -I../Drivers/CMSIS/Include -Ofast -ffunction-sections -fdata-sections -Wall -fstack-usage -fcyclomatic-complexity -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Drivers/STM32F3xx_HAL_Driver/Src/stm32f3xx_hal_uart_ex.o\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Drivers\\STM32F3xx_HAL_Driver\\Src\\stm32f3xx_hal_uart_ex.c"
+    },
+    {
+        "directory":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Debug",
+        "command":  "arm-none-eabi-gcc -mcpu=cortex-m4 -g -DDEBUG -c -Wa,-W -x assembler-with-cpp -MMD -MP --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -o \"./Core/Startup/startup_stm32f303rbtx.o\" \"C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Startup\\startup_stm32f303rbtx.s\"",
+        "file":  "C:\\Users\\hiroyuki\\STM32CubeIDE\\workspace_1.17.0\\Orion_F303_BLDC\\Core\\Startup\\startup_stm32f303rbtx.s"
+    }
+]
