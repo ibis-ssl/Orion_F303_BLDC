@@ -98,6 +98,55 @@ cd Release
 & "C:\ST\STM32CubeIDE_1.17.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.make.win32_2.2.0.202409170845\tools\bin\make.exe" -B -j4 all
 ```
 
+## 書き込み手順（CLI）
+### 接続確認
+```powershell
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -l stlink
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -rst
+```
+
+### Debugを書き込み
+```powershell
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -w "Debug\Orion_F303_BLDC.elf" -v -rst
+```
+
+### Releaseを書き込み
+```powershell
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -w "Release\Orion_F303_BLDC.elf" -v -rst
+```
+
+### 補足
+- `mode=UR` は Under Reset 接続。起動直後にSWDが不安定な場合に有効。
+- `-v` は書き込み後ベリファイ。
+- `-rst` は書き込み後にリセットを実行。
+
+## スクリプト
+`Script` 配下に、ビルドと書き込みをまとめた PowerShell スクリプトを配置している。
+
+### ビルド
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\build.ps1 -Configuration Debug
+powershell -ExecutionPolicy Bypass -File .\Script\build.ps1 -Configuration Release -Rebuild
+```
+
+### 接続確認
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -List
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -ConnectOnly
+```
+
+### 書き込み
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -Configuration Debug
+powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -Configuration Release
+```
+
+### ビルドしてから書き込み
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Debug
+powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Release -Rebuild
+```
+
 ## 出力成果物
 - `Orion_F303_BLDC.elf`
 - `Orion_F303_BLDC.map`
