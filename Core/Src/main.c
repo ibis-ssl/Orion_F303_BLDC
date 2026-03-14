@@ -1,4 +1,4 @@
-/* USER CODE BEGIN Header */
+﻿/* USER CODE BEGIN Header */
 /**
  ******************************************************************************
  * @file           : main.c
@@ -22,8 +22,8 @@
 #include "main.h"
 
 #include "adc.h"
-#include "can.h"
 #include "calibration.h"
+#include "can.h"
 #include "comms.h"
 #include "control_limits.h"
 #include "control_mode.h"
@@ -215,8 +215,19 @@ void runMode(void)
 
   system_exec_time_stamp[3] = interrupt_timer_cnt;
   printRuntimeDiagnostics();
-}
 
+  if (cmd[0].speed == 0 && cmd[1].speed == 0) {
+    sys.zero_output_sleep_cnt++;
+    if (sys.zero_output_sleep_cnt > 5000) {
+      setPwmOutPutFreeWheel();
+    }
+  } else {
+    if (sys.zero_output_sleep_cnt != 0) {
+      resumePwmOutput();
+    }
+    sys.zero_output_sleep_cnt = 0;
+  }
+}
 
 /* USER CODE END 0 */
 

@@ -135,6 +135,7 @@ typedef struct
   uint32_t print_cnt, print_idx;
   bool is_starting_mode;
   uint32_t task_complete_timer_cnt;
+  uint32_t zero_output_sleep_cnt;
 } system_t;
 
 typedef struct
