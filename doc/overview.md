@@ -147,6 +147,13 @@ powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configura
 powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Release -Rebuild
 ```
 
+### UARTログ受信
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1
+powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM60 -BaudRate 2000000 -DurationSec 5
+powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM60 -BaudRate 2000000 -MaxLines 100 -LogPath .\uart_log.txt
+```
+
 ## 出力成果物
 - `Orion_F303_BLDC.elf`
 - `Orion_F303_BLDC.map`
