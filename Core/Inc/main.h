@@ -170,6 +170,14 @@ typedef struct
   bool print_flag;
 } calib_process_t;
 
+typedef struct
+{
+  uint32_t sum_cycles_cw;
+  uint32_t sum_cycles_ccw;
+  uint32_t cnt_cw;
+  uint32_t cnt_ccw;
+} encoder_pwm_timing_t;
+
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/

@@ -93,6 +93,7 @@ error_t error;
 system_t sys;
 enc_error_watcher_t enc_error_watcher;
 calib_process_t calib_process;
+encoder_pwm_timing_t encoder_pwm_timing[2];
 
 static inline void updateMotorSpeedEstimate(void)
 {
@@ -106,9 +107,23 @@ static inline void updateMotorSpeedEstimate(void)
 
 inline void motorProcess_itr(bool motor)
 {
+  uint32_t start_cycle;
+  uint32_t elapsed_cycle;
+
   updateADC(motor);
+
+  start_cycle = DWT->CYCCNT;
   updateAS5047P(motor);
   setOutputRadianMotor(motor, as5047p[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
+  elapsed_cycle = DWT->CYCCNT - start_cycle;
+
+  if (motor_real[motor].rps > 1.0f) {
+    encoder_pwm_timing[motor].sum_cycles_cw += elapsed_cycle;
+    encoder_pwm_timing[motor].cnt_cw++;
+  } else if (motor_real[motor].rps < -1.0f) {
+    encoder_pwm_timing[motor].sum_cycles_ccw += elapsed_cycle;
+    encoder_pwm_timing[motor].cnt_ccw++;
+  }
 }
 
 // 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
@@ -234,6 +249,10 @@ int main(void)
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
   /* USER CODE BEGIN Init */
 

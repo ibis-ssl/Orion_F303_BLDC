@@ -21,6 +21,14 @@ void printRuntimeDiagnostics(void)
   static float main_loop_remain_counter_ave = 0.0f;
   static float task_complete_timer_cnt_ave = 0.0f;
   static float system_exec_time_stamp_ave[10] = {0};
+  float m0_cw_us;
+  float m0_ccw_us;
+  float m1_cw_us;
+  float m1_ccw_us;
+  uint32_t m0_cw_cnt;
+  uint32_t m0_ccw_cnt;
+  uint32_t m1_cw_cnt;
+  uint32_t m1_ccw_cnt;
 
   // Spread debug output over multiple cycles.
   // Full set is printed over several control ticks.
@@ -77,6 +85,18 @@ void printRuntimeDiagnostics(void)
       as5047p[0].diff_min = 65535;
       as5047p[1].diff_max = 0;
       as5047p[1].diff_min = 65535;
+      break;
+    case 9:
+      m0_cw_cnt = encoder_pwm_timing[0].cnt_cw;
+      m0_ccw_cnt = encoder_pwm_timing[0].cnt_ccw;
+      m1_cw_cnt = encoder_pwm_timing[1].cnt_cw;
+      m1_ccw_cnt = encoder_pwm_timing[1].cnt_ccw;
+
+      m0_cw_us = (m0_cw_cnt > 0) ? ((float)encoder_pwm_timing[0].sum_cycles_cw / (float)m0_cw_cnt) * 1000000.0f / (float)SystemCoreClock : 0.0f;
+      m0_ccw_us = (m0_ccw_cnt > 0) ? ((float)encoder_pwm_timing[0].sum_cycles_ccw / (float)m0_ccw_cnt) * 1000000.0f / (float)SystemCoreClock : 0.0f;
+      m1_cw_us = (m1_cw_cnt > 0) ? ((float)encoder_pwm_timing[1].sum_cycles_cw / (float)m1_cw_cnt) * 1000000.0f / (float)SystemCoreClock : 0.0f;
+      m1_ccw_us = (m1_ccw_cnt > 0) ? ((float)encoder_pwm_timing[1].sum_cycles_ccw / (float)m1_ccw_cnt) * 1000000.0f / (float)SystemCoreClock : 0.0f;
+      p("ENC->PWM us M0 +%5.2f(%5lu) -%5.2f(%5lu) M1 +%5.2f(%5lu) -%5.2f(%5lu) ", m0_cw_us, m0_cw_cnt, m0_ccw_us, m0_ccw_cnt, m1_cw_us, m1_cw_cnt, m1_ccw_us, m1_ccw_cnt);
       break;
     default:
       p("\n");

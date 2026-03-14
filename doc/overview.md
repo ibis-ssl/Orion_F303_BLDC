@@ -85,6 +85,8 @@
 ### 前提
 - STM32CubeIDE 1.17.0 がインストール済み。
 - GNU Tools for STM32 が利用可能。
+- STM32CubeProgrammer CLI が利用可能。
+- ST-Link がPCへ接続済みで、ターゲット基板へSWD接続済み。
 
 ### Debug
 ```powershell
@@ -98,6 +100,28 @@ cd Release
 & "C:\ST\STM32CubeIDE_1.17.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.make.win32_2.2.0.202409170845\tools\bin\make.exe" -B -j4 all
 ```
 
+## 書き込み手順（CLI）
+### 接続確認
+```powershell
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -l stlink
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -rst
+```
+
+### Debugを書き込み
+```powershell
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -w "Debug\Orion_F303_BLDC.elf" -v -rst
+```
+
+### Releaseを書き込み
+```powershell
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -w "Release\Orion_F303_BLDC.elf" -v -rst
+```
+
+### 補足
+- `mode=UR` は Under Reset 接続。起動直後にSWDが不安定な場合に有効。
+- `-v` は書き込み後ベリファイ。
+- `-rst` は書き込み後にリセットを実行。
+
 ## 出力成果物
 - `Orion_F303_BLDC.elf`
 - `Orion_F303_BLDC.map`
@@ -106,6 +130,19 @@ cd Release
 ## 注意点
 - リンカの RWX 警告は現行リンカ設定由来で、今回のリファクタリング由来ではない。
 - 実機評価では、起動シーケンス・校正シーケンス・保護動作・通信周期を必ず回帰確認する。
+
+## エンコーダ読み出しからPWM出力までの時間計測
+- 目的: 正回転/逆回転で `updateAS5047P()` 開始から `setOutputRadianMotor()` 完了までの平均時間差を確認する。
+- 実装箇所: `Core/Src/main.c` の `motorProcess_itr()`。
+- 計測方法:
+1. `DWT->CYCCNT` を使用して処理区間のサイクル数を取得。
+2. `motor_real[motor].rps` が `> +1.0f` を正回転、`< -1.0f` を逆回転として別々に積算。
+3. `Core/Src/diagnostics.c` で平均サイクルを `us` に換算して周期表示。
+- 表示項目: `ENC->PWM us M0 +xx.xx(cnt) -xx.xx(cnt) M1 +xx.xx(cnt) -xx.xx(cnt)`。
+- 注意:
+1. `|rps| <= 1.0f` は方向判定のデッドバンドとして集計対象外。
+2. ISR内の整数加算のみで、リアルタイム性能への影響は最小化している。
+3. `HAL_TIM_PeriodElapsedCallback()` 内の `motorProcess_itr()` 経路のみの計測で、校正経路は対象外。
 
 ## 参考ドキュメント
 - ハードウェア仕様（コード推定）: `doc/hardware_spec.md`

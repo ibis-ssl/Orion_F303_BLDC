@@ -14,6 +14,7 @@ extern error_t error;
 extern system_t sys;
 extern enc_error_watcher_t enc_error_watcher;
 extern calib_process_t calib_process;
+extern encoder_pwm_timing_t encoder_pwm_timing[2];
 
 extern volatile uint32_t interrupt_timer_cnt;
 extern volatile uint32_t main_loop_remain_counter;
