@@ -86,7 +86,7 @@ void runIoCheckOnce(void)
   cmd[1].out_v = 0.0f;
   cmd[0].out_v_final = 0.0f;
   cmd[1].out_v_final = 0.0f;
-  sys.free_wheel_cnt = 100U;
+  sys.free_wheel_cnt = 60000U;
 
   updateADC(0);
   updateADC(1);
@@ -110,5 +110,5 @@ void runIoCheckOnce(void)
   setLedRed(false);
   setLedGreen(false);
   setLedBlue(false);
-  p("[IO CHECK] done, PWM remains freewheel\n\n");
+  p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
 }
