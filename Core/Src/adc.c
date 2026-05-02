@@ -471,7 +471,7 @@ inline void updateADC_M0(void)
 
 bool isNotZeroCurrent()
 {
-  return getCurrentMotor(0) > 0.5 || getCurrentMotor(0) > 0.5;
+  return getCurrentMotor(0) > 0.5f || getCurrentMotor(1) > 0.5f;
 }
 
 // legacy version

@@ -117,8 +117,8 @@ void runStartupSequence(void)
     HAL_Delay(1);
   }
 
-  motor_param[0].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[0] * SPEED_REAL_LIMIT_GAIN;
-  motor_param[1].output_voltage_limit = SPEED_CMD_LIMIT_RPS / flash.rps_per_v_cw[1] * SPEED_REAL_LIMIT_GAIN;
+  motor_param[0].output_voltage_limit = SPEED_CMD_LIMIT_RPS * motor_param[0].voltage_per_rps * SPEED_REAL_LIMIT_GAIN;
+  motor_param[1].output_voltage_limit = SPEED_CMD_LIMIT_RPS * motor_param[1].voltage_per_rps * SPEED_REAL_LIMIT_GAIN;
   p("output voltage limit : %5.2f %5.2f\n", motor_param[0].output_voltage_limit, motor_param[1].output_voltage_limit);
   HAL_Delay(1);
 

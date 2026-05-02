@@ -14,6 +14,7 @@
 #include "can.h"
 #include "control_mode.h"
 #include "flash.h"
+#include "io_check.h"
 #include "motor.h"
 #include "tim.h"
 #include "usart.h"
@@ -24,6 +25,7 @@ static bool uart_rx_flag = false;
 static uint32_t can_rx_cnt = 0;
 static can_msg_buf_t can_rx_buf;
 static CAN_RxHeaderTypeDef can_rx_header;
+static bool io_check_request = false;
 
 static inline float clampSize(float in, float max)
 {
@@ -94,7 +96,7 @@ static void can_rx_callback(void)
       break;
 
     case 0x320:
-      // not used
+      io_check_request = true;
       break;
 
     case 0x110:
@@ -130,6 +132,11 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef * hcan)
 
 void receiveUserSerialCommand(void)
 {
+  if (io_check_request) {
+    io_check_request = false;
+    runIoCheckOnce();
+  }
+
   if (uart_rx_flag) {
     uart_rx_flag = false;
     HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
@@ -137,6 +144,12 @@ void receiveUserSerialCommand(void)
       case 'c':
         p("\n\nstart calib mode!\n\n");
         startCalibrationMode();
+        break;
+      case 'i':
+        runIoCheckOnce();
+        break;
+      case 'm':
+        runFocMathCheckOnce();
         break;
       case 'n':
         p("run mode!\n");
@@ -216,7 +229,7 @@ void receiveUserSerialCommand(void)
         if (sys.print_idx > 2) {
           sys.print_idx = 0;
         }
-        p("\nprint idx : %d\n");
+        p("\nprint idx : %d\n", sys.print_idx);
         break;
     }
   }

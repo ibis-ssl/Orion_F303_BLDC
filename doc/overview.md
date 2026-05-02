@@ -165,3 +165,75 @@ powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM60 -
 
 ## 参考ドキュメント
 - ハードウェア仕様（コード推定）: `doc/hardware_spec.md`
+
+## SimpleFOC流用方針
+CubeMX/HAL環境は維持し、SimpleFOCライブラリ本体はリンクしない。
+C++/Arduino依存を避けるため、SimpleFOCの考え方のうち以下だけをC実装として段階的に取り込む。
+
+- `setPhaseVoltage()` 相当の電圧FOC計算
+- SinePWM の Inverse Park + Clarke 変換
+- 角度正規化と電気角変換
+- HAL TIM1/TIM8 へCCRを書き込む薄いドライバ層
+
+追加済みファイル:
+- `Core/Inc/foc_math.h`, `Core/Src/foc_math.c`
+  - SimpleFOC風の角度正規化、電気角変換、SinePWM相電圧生成、CCR変換、オフラインセルフテスト。
+- `Core/Inc/foc_driver_hal.h`, `Core/Src/foc_driver_hal.c`
+  - TIM1/TIM8のCCRへSimpleFOC風の相電圧計算結果を書き込むHALブリッジ。
+- `Core/Inc/io_check.h`, `Core/Src/io_check.c`
+  - 実機でモータを回す前の非回転I/Oチェック。
+
+現時点では通常制御パスの `setOutputRadianMotor()` は差し替えていない。
+SimpleFOC風SinePWMは、UARTコマンドでの計算確認と将来の段階移行用として追加している。
+
+参考:
+- SimpleFOC FOC workflow: https://docs.simplefoc.com/foc_implementation
+- SimpleFOC source structure: https://docs.simplefoc.com/source_code
+
+## 実機回転前I/Oチェック
+モータを実際に回す前に、UARTまたはCANから非回転チェックを行う。
+
+### UART
+```text
+i
+```
+
+実行内容:
+- PWM CCRをセンター値へ戻す。
+- PWM出力をフリーウィール状態へ落とす。
+- 速度指令と出力電圧指令を0にする。
+- ADC値、換算電圧/電流/温度を表示する。
+- AS5047Pのraw値、電気角、差分、起動時取得レジスタを表示する。
+- スイッチ入力状態を表示する。
+- TIM1/TIM8のCCR/CCER/BDTRを表示する。
+- CAN受信数、CANエラー、Flash校正値を表示する。
+- SimpleFOC風SinePWM計算のオフラインセルフテストを実行する。
+
+### UART FOC計算チェックのみ
+```text
+m
+```
+
+SimpleFOC風SinePWMの計算だけを行い、代表CCR値を表示する。PWM出力は変更しない。
+
+### CAN
+標準ID `0x320` を受信すると、次回メインループ側で `i` と同じ非回転I/Oチェックを実行する。
+CAN割り込み内では実行せず、要求フラグだけを立てる。
+
+## 実機確認の順序
+1. 電源投入後、通常ログで起動シーケンスが完了することを確認する。
+2. UART `i` を実行し、PWMがフリーウィール状態のまま、ADC/SPI/GPIO/CAN/Flash値を確認する。
+3. UART `m` を実行し、FOC計算セルフテストが `OK` になることを確認する。
+4. PWM出力を有効にする変更を入れる前に、TIM1/TIM8とM0/M1の対応を再確認する。
+5. 最初にSimpleFOC風SinePWMを接続する場合は片モータ、低電圧、無負荷で確認する。
+
+## 実装上の注意
+- 現状の通常制御は従来の `setOutputRadianMotor()` のまま。
+- SimpleFOC風SinePWMは `voltage_power_supply/2` を中心に相電圧を作るため、従来の `TIM_PWM_CENTER + sin * scale` 方式と振幅スケールが異なる。
+- 本番経路へ接続する前に、同一入力で旧CCRと新CCRを比較する検証ステップを追加する。
+- 電流FOCは今回の対象外。F303のADC注入変換、2モータ、保護監視と強く結合しているため、別フェーズで扱う。
+
+## 追加修正
+- `isNotZeroCurrent()` がM0を2回見ていたため、M0/M1の両方を見るよう修正。
+- 起動時の `output_voltage_limit` 計算をFlash生値の直接割り算から、検証済みの `motor_param[].voltage_per_rps` ベースへ変更。
+- UART改行コマンドの `print idx` 表示で不足していた引数を追加。
