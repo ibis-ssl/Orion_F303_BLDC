@@ -29,6 +29,7 @@
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
 #define APP_DEFAULT_VOLTAGE_PER_RPS (0.08f)
 #define APP_OUTPUT_VOLTAGE_LIMIT (6.0f)
+#define APP_RPS_SLEW_PER_MS (0.01f)
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
 #define APP_CAN_TIMEOUT_MS (100U)
@@ -191,6 +192,7 @@ static void initMotorParameters(void)
     }
 
     app.motor[m].target_rps = 0.0f;
+    app.motor[m].command_rps = 0.0f;
     app.motor[m].measured_rps = 0.0f;
     app.motor[m].measured_rps_ave = 0.0f;
     app.motor[m].voltage_q = 0.0f;
@@ -231,10 +233,22 @@ static void updateOutputVoltage(void)
   }
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
-    if (app.motor[m].command_timeout_ms > 0U) {
+    if (app.motor[m].command_timeout_ms == 0xFFFFU) {
+      /* UART manual command is held until another UART command changes it. */
+    } else if (app.motor[m].command_timeout_ms > 0U) {
       app.motor[m].command_timeout_ms--;
     } else {
+      app.motor[m].command_rps = 0.0f;
       app.motor[m].target_rps = 0.0f;
+    }
+
+    const float error = app.motor[m].command_rps - app.motor[m].target_rps;
+    if (error > APP_RPS_SLEW_PER_MS) {
+      app.motor[m].target_rps += APP_RPS_SLEW_PER_MS;
+    } else if (error < -APP_RPS_SLEW_PER_MS) {
+      app.motor[m].target_rps -= APP_RPS_SLEW_PER_MS;
+    } else {
+      app.motor[m].target_rps = app.motor[m].command_rps;
     }
 
     float command_v = app.motor[m].target_rps * app.motor[m].voltage_per_rps;
@@ -372,7 +386,8 @@ static void printDiagnostics(void)
         app.can_rx_count);
       break;
     case 1:
-      p("M0 tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
+      p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
+        app.motor[0].command_rps,
         app.motor[0].target_rps,
         app.motor[0].measured_rps_ave,
         app.motor[0].voltage_q,
@@ -382,7 +397,8 @@ static void printDiagnostics(void)
         getTempFET(0));
       break;
     default:
-      p("M1 tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
+      p("M1 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
+        app.motor[1].command_rps,
         app.motor[1].target_rps,
         app.motor[1].measured_rps_ave,
         app.motor[1].voltage_q,
@@ -445,8 +461,12 @@ static void setTarget(uint8_t motor, float rps, uint16_t timeout_ms)
   if (motor >= APP_MOTOR_COUNT) {
     return;
   }
-  app.motor[motor].target_rps = clampFloat(rps, APP_RPS_LIMIT);
+  app.motor[motor].command_rps = clampFloat(rps, APP_RPS_LIMIT);
   app.motor[motor].command_timeout_ms = timeout_ms;
+  if (timeout_ms == 0U) {
+    app.motor[motor].command_rps = 0.0f;
+    app.motor[motor].target_rps = 0.0f;
+  }
   if (app.mode == BLDC_APP_MODE_READY || (app.mode == BLDC_APP_MODE_FREEWHEEL && app.freewheel_ms == 0U)) {
     bldcAppEnableRun();
   }
@@ -460,6 +480,8 @@ static void startSensorAlignment(uint8_t motor)
 
   app.motor[0].target_rps = 0.0f;
   app.motor[1].target_rps = 0.0f;
+  app.motor[0].command_rps = 0.0f;
+  app.motor[1].command_rps = 0.0f;
   app.motor[0].command_timeout_ms = 0U;
   app.motor[1].command_timeout_ms = 0U;
   app.motor[0].voltage_q = 0.0f;
@@ -534,24 +556,24 @@ static void handleUartCommand(uint8_t cmd)
       p("print page %u\n", app.print_page);
       break;
     case 'w':
-      setTarget(0, app.motor[0].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
-      setTarget(1, app.motor[1].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(0, app.motor[0].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(1, app.motor[1].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       break;
     case 's':
-      setTarget(0, app.motor[0].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
-      setTarget(1, app.motor[1].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(0, app.motor[0].command_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(1, app.motor[1].command_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       break;
     case 'q':
-      setTarget(0, app.motor[0].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(0, app.motor[0].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       break;
     case 'a':
-      setTarget(0, app.motor[0].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(0, app.motor[0].command_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       break;
     case 'e':
-      setTarget(1, app.motor[1].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(1, app.motor[1].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       break;
     case 'd':
-      setTarget(1, app.motor[1].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      setTarget(1, app.motor[1].command_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       break;
     case 'y':
       startSensorAlignment(0);
@@ -566,7 +588,7 @@ static void handleUartCommand(uint8_t cmd)
       break;
     case 'c':
       app.open_loop_velocity = false;
-      p("closed-loop sensor angle enabled\n");
+      p("sensor-angle voltage diagnostic enabled\n");
       break;
     case ' ':
       setTarget(0, 0.0f, 0U);
@@ -649,6 +671,7 @@ void bldcAppInit(void)
   startAdcInjected();
   primeSensors();
   initMotorParameters();
+  app.open_loop_velocity = true;
   startPwmOutputsFreewheel();
 
   CAN_Filter_Init((uint16_t)flash.board_id);
@@ -664,8 +687,10 @@ void bldcAppInit(void)
 
   app.mode = BLDC_APP_MODE_READY;
   bldcAppSetFreewheelMs(60000U);
-  p("\n[BLDC_APP] boot board 0x%03lx offset %+6.3f %+6.3f v/rps %+6.3f %+6.3f\n",
+  p("\n[BLDC_APP] boot board 0x%03lx pp %d ol %u offset %+6.3f %+6.3f v/rps %+6.3f %+6.3f\n",
     flash.board_id,
+    APP_POLE_PAIRS,
+    app.open_loop_velocity ? 1U : 0U,
     app.motor[0].zero_electric_angle,
     app.motor[1].zero_electric_angle,
     app.motor[0].voltage_per_rps,
@@ -718,6 +743,8 @@ void bldcAppSetFreewheelMs(uint32_t ms)
   app.freewheel_ms = ms;
   app.motor[0].target_rps = 0.0f;
   app.motor[1].target_rps = 0.0f;
+  app.motor[0].command_rps = 0.0f;
+  app.motor[1].command_rps = 0.0f;
   app.motor[0].command_timeout_ms = 0U;
   app.motor[1].command_timeout_ms = 0U;
   app.motor[0].voltage_q = 0.0f;

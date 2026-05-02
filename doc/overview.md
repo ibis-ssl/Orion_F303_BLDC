@@ -4,6 +4,47 @@
 古いアプリケーション実装はビルド対象から外し、CubeMX生成コードとHAL周辺操作だけを流用する構成へ切り替えた。
 制御状態、1kHz処理、TIM割り込み、UART/CANコマンド、保護処理は `bldc_app.c` に集約する。
 
+## 最終的な完成形
+現時点の完成形は、SimpleFOCのC++/Arduino依存を持ち込まず、CubeMX/HAL環境のままSimpleFOC相当のSinePWMと `velocity_openloop` をC実装として取り込む構成とする。
+
+- 通常RUN経路は `velocity_openloop` を標準とし、CAN/UARTの速度指令から回転磁界を生成する。
+- 電圧指令は `target_rps * voltage_per_rps` で作り、Flashに保存済みの `rps_per_v_cw` が妥当な場合はその逆数を使う。
+- 外部から受けた速度指令は `command_rps` として保持し、1kHz周期で `target_rps` を `0.01 rps/ms` 以下の変化量に制限して追従させる。
+- 極対数は12、センサ符号は既存速度推定と整合する `APP_SENSOR_DIRECTION = -1` とする。
+- センサ角を使う電圧FOCは通常経路ではなく、zero angle、相順、センサ方向を詰めるための診断モードとして残す。
+- 起動直後は60秒フリーウィール、`n` だけでは目標速度0、`space`/`x`/`0` で即フリーウィールへ戻る。
+- 電流FOCと速度PI閉ループは今回の完成範囲外。ADC注入変換、2モータ、保護監視、電流センス相順を別フェーズで確認してから扱う。
+
+## 実装・デバッグ手順
+1. 非回転I/O確認: UART `i` でADC、AS5047P、PWM CCER/BDTR、Flash校正値、FOC計算を確認する。
+2. ゼロ出力RUN確認: UART `n` でRUNへ入り、目標速度0、Faultなし、電源電圧正常を確認する。
+3. 回転磁界確認: `o` を有効にして、M0は `q/a`、M1は `e/d` で片軸ずつ低速から確認する。
+4. 極対数・符号確認: 目標 `+2.5 rps` に対して推定速度が `+2.5 rps` 付近になることを確認する。
+5. 両軸確認: `w/s` で両軸同時に低速確認し、電流、温度、Faultを監視する。
+6. 通常経路化: `velocity_openloop` を起動時標準にし、CAN速度指令でも同じ経路を通す。
+7. 回帰確認: Debug/Releaseビルド、Debug書き込み、起動ログ、I/Oチェック、片軸、両軸、停止を確認する。
+8. スルーレート制限確認: UARTログの `cmd` と `tgt` を見て、急な指令に対して `target_rps` が段階的に追従することを確認する。
+
+## 実機確認結果（2026-05-02）
+- Debug/Releaseビルド成功。既存の linker RWX 警告のみ残る。
+- Debug書き込みとVerify成功。
+- 起動後ログは `Mode 1 OL 1`、Fault `0x0000`、バッテリ約24V、ゲートドライバDCDC約8.3V。
+- UART `i` はADC、AS5047P、PWM CCER/BDTR、Flash校正値、FOC計算セルフテストを正常に表示した。
+- UART `m` のFOC計算セルフテストは `OK`。
+- UART `n` のゼロ出力RUNでは `Mode 3 OL 1`、Faultなし、目標速度0。
+- 標準RUN経路のまま、M0単独 `+2.5 rps` は推定 `+2.48〜+2.52 rps` で安定。
+- 標準RUN経路のまま、M1単独 `+2.5 rps` は推定 `+2.48〜+2.52 rps` で安定。
+- 標準RUN経路のまま、M0/M1同時 `+2.5 rps` は両軸とも推定 `+2.48〜+2.52 rps` で安定。
+- 各回とも `space` でフリーウィールへ戻し、最終状態は `Mode 1 OL 1`、Fault `0x0000`。
+
+## 実機確認結果（2026-05-02 追加）
+- 12極対設定でSimpleFOC風センサアラインを再実行し、RAM上のzero angleを更新できた。
+- センサ角を使う電圧FOC診断は、再アライン後も `+2.5 rps` 相当の電圧指令で持続回転しなかった。通常経路には採用しない。
+- 速度指令スルーレート制限を追加し、UARTログに `cmd` と `tgt` を分けて表示するようにした。
+- M0単独 `cmd +2.5 rps` では `tgt` が段階的に上がり、最終的に推定速度 `+2.48〜+2.52 rps` で安定した。
+- M1単独 `cmd +2.5 rps` でも同様に推定速度 `+2.48〜+2.52 rps` で安定した。
+- M0/M1同時 `cmd +2.5 rps` でも両軸が推定速度 `+2.48〜+2.52 rps` で安定し、停止後Faultなし。
+
 現行のビルド対象:
 - `Core/Src/main.c`: MCU初期化と `bldc_app` への委譲。
 - `Core/Src/bldc_app.c`: 新アプリ層。状態管理、起動、1kHz周期処理、TIM割り込み処理、UART/CAN受信、保護、テレメトリを担当。
@@ -69,8 +110,8 @@ e  M1のみ目標速度を +0.5 rps。
 d  M1のみ目標速度を -0.5 rps。
 y  M0のSimpleFOC風センサアラインをRAM上で実行し、zero_electric_angleを更新して60秒フリーウィールへ戻す。
 h  M1のSimpleFOC風センサアラインをRAM上で実行し、zero_electric_angleを更新して60秒フリーウィールへ戻す。
-o  SimpleFOC velocity_openloop 相当の回転磁界診断を有効化する。
-c  センサ角を使う通常の電圧FOC診断へ戻す。
+o  通常RUN経路の velocity_openloop を有効化する。
+c  センサ角を使う電圧FOC診断へ切り替える。通常運用では使わない。
 space  目標速度0、60秒フリーウィール。
 1  診断ログを状態ページへ固定。
 2  診断ログをM0ページへ固定。

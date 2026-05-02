@@ -23,6 +23,7 @@ typedef enum
 typedef struct
 {
   float target_rps;
+  float command_rps;
   float measured_rps;
   float measured_rps_ave;
   float voltage_q;
