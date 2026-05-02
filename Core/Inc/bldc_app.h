@@ -29,6 +29,7 @@ typedef struct
   float voltage_limit;
   float voltage_per_rps;
   float zero_electric_angle;
+  float open_loop_electrical_angle;
   int pre_raw;
   uint16_t command_timeout_ms;
   bool output_limited;

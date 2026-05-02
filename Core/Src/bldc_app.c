@@ -23,7 +23,7 @@
 
 #define APP_MOTOR_COUNT (2U)
 #define APP_PWM_ISR_PER_1MS (20U)
-#define APP_POLE_PAIRS (6)
+#define APP_POLE_PAIRS (12)
 #define APP_SENSOR_DIRECTION (-1)
 #define APP_RPS_LIMIT (80.0f)
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
@@ -32,6 +32,9 @@
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
 #define APP_CAN_TIMEOUT_MS (100U)
+#define APP_ALIGN_VOLTAGE (2.0f)
+#define APP_ALIGN_MS (1000U)
+#define APP_ALIGN_ELECTRICAL_ANGLE (4.71238898038f)
 
 typedef struct
 {
@@ -46,6 +49,10 @@ typedef struct
   uint16_t fault_info;
   float fault_value;
   uint32_t can_rx_count;
+  uint16_t align_ms;
+  uint8_t align_motor;
+  volatile bool align_active;
+  bool open_loop_velocity;
   bool io_check_request;
   bool can_started;
   uint8_t uart_rx_byte;
@@ -190,6 +197,7 @@ static void initMotorParameters(void)
     app.motor[m].voltage_per_rps = voltage_per_rps;
     app.motor[m].voltage_limit = APP_OUTPUT_VOLTAGE_LIMIT;
     app.motor[m].zero_electric_angle = validCalibFloat(flash.calib[m]) ? flash.calib[m] : 0.0f;
+    app.motor[m].open_loop_electrical_angle = 0.0f;
     app.motor[m].command_timeout_ms = 0;
     app.motor[m].output_limited = false;
   }
@@ -235,6 +243,19 @@ static void updateOutputVoltage(void)
   }
 }
 
+static void updateOpenLoopVelocity(void)
+{
+  if (app.mode != BLDC_APP_MODE_RUN || !app.open_loop_velocity) {
+    return;
+  }
+
+  for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
+    const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+    const float delta = direction * app.motor[m].target_rps * (2.0f * (float)M_PI) * (float)APP_POLE_PAIRS * 0.001f;
+    app.motor[m].open_loop_electrical_angle = focNormalizeAngle(app.motor[m].open_loop_electrical_angle + delta);
+  }
+}
+
 static void applyProtection(void)
 {
   const float batt = getBatteryVoltage();
@@ -271,6 +292,16 @@ static void applyPwmInIsr(uint8_t motor)
   updateADC(motor);
   updateAS5047P(motor);
 
+  if (app.align_active) {
+    if (motor == app.align_motor) {
+      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, APP_ALIGN_ELECTRICAL_ANGLE, getBatteryVoltage());
+    } else {
+      foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
+      focDriverSetPwmCompare(motor, center);
+    }
+    return;
+  }
+
   if (app.mode != BLDC_APP_MODE_RUN || app.freewheel_ms > 0U) {
     foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
     focDriverSetPwmCompare(motor, center);
@@ -278,8 +309,11 @@ static void applyPwmInIsr(uint8_t motor)
   }
 
   const float batt = getBatteryVoltage();
-  const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
-  const float electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
+  float electrical = app.motor[motor].open_loop_electrical_angle;
+  if (!app.open_loop_velocity) {
+    const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
+    electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
+  }
   focDriverApplySineVoltage(motor, app.motor[motor].voltage_q, 0.0f, electrical, batt);
 }
 
@@ -297,6 +331,9 @@ static void handleFreewheelTimer(void)
 
 static void updateZeroOutputSleep(void)
 {
+  if (app.align_active) {
+    return;
+  }
   if (app.mode != BLDC_APP_MODE_RUN) {
     return;
   }
@@ -323,8 +360,9 @@ static void printDiagnostics(void)
 
   switch (app.print_page) {
     case 0:
-      p("Mode %d Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu\n",
+      p("Mode %d OL %u Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu\n",
         app.mode,
+        app.open_loop_velocity ? 1U : 0U,
         getBatteryVoltage(),
         getGateDriverDCDCVoltage(),
         app.freewheel_ms,
@@ -414,6 +452,57 @@ static void setTarget(uint8_t motor, float rps, uint16_t timeout_ms)
   }
 }
 
+static void startSensorAlignment(uint8_t motor)
+{
+  if (motor >= APP_MOTOR_COUNT || app.mode == BLDC_APP_MODE_FAULT) {
+    return;
+  }
+
+  app.motor[0].target_rps = 0.0f;
+  app.motor[1].target_rps = 0.0f;
+  app.motor[0].command_timeout_ms = 0U;
+  app.motor[1].command_timeout_ms = 0U;
+  app.motor[0].voltage_q = 0.0f;
+  app.motor[1].voltage_q = 0.0f;
+  app.align_motor = motor;
+  app.align_ms = APP_ALIGN_MS;
+  app.freewheel_ms = 0U;
+  app.zero_output_ms = 0U;
+  setPwmAll(TIM_PWM_CENTER);
+  resumePwmOutput();
+  app.mode = BLDC_APP_MODE_RUN;
+  app.align_active = true;
+  p("align M%u start: uq %+4.1f angle %+4.2f\n", motor, APP_ALIGN_VOLTAGE, APP_ALIGN_ELECTRICAL_ANGLE);
+}
+
+static void updateSensorAlignment(void)
+{
+  if (!app.align_active) {
+    return;
+  }
+
+  if (app.align_ms > 0U) {
+    app.align_ms--;
+    return;
+  }
+
+  const uint8_t motor = app.align_motor;
+  const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
+  const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+  app.motor[motor].zero_electric_angle = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft);
+  app.align_active = false;
+  bldcAppSetFreewheelMs(60000U);
+  p("align M%u done: raw %5d zero %+6.3f\n", motor, as5047p[motor].enc_raw, app.motor[motor].zero_electric_angle);
+}
+
+static void initOpenLoopAnglesFromSensor(void)
+{
+  for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
+    const float mech = encoderRawToMechanicalRad(as5047p[m].enc_raw);
+    app.motor[m].open_loop_electrical_angle = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[m].zero_electric_angle, APP_SENSOR_DIRECTION);
+  }
+}
+
 static void handleUartCommand(uint8_t cmd)
 {
   switch (cmd) {
@@ -432,6 +521,18 @@ static void handleUartCommand(uint8_t cmd)
       bldcAppSetFreewheelMs(60000U);
       p("freewheel 60s\n");
       break;
+    case '1':
+      app.print_page = 0U;
+      p("print page %u\n", app.print_page);
+      break;
+    case '2':
+      app.print_page = 1U;
+      p("print page %u\n", app.print_page);
+      break;
+    case '3':
+      app.print_page = 2U;
+      p("print page %u\n", app.print_page);
+      break;
     case 'w':
       setTarget(0, app.motor[0].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       setTarget(1, app.motor[1].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
@@ -439,6 +540,33 @@ static void handleUartCommand(uint8_t cmd)
     case 's':
       setTarget(0, app.motor[0].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       setTarget(1, app.motor[1].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      break;
+    case 'q':
+      setTarget(0, app.motor[0].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      break;
+    case 'a':
+      setTarget(0, app.motor[0].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      break;
+    case 'e':
+      setTarget(1, app.motor[1].target_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      break;
+    case 'd':
+      setTarget(1, app.motor[1].target_rps - APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
+      break;
+    case 'y':
+      startSensorAlignment(0);
+      break;
+    case 'h':
+      startSensorAlignment(1);
+      break;
+    case 'o':
+      app.open_loop_velocity = true;
+      initOpenLoopAnglesFromSensor();
+      p("open-loop velocity enabled\n");
+      break;
+    case 'c':
+      app.open_loop_velocity = false;
+      p("closed-loop sensor angle enabled\n");
       break;
     case ' ':
       setTarget(0, 0.0f, 0U);
@@ -556,7 +684,9 @@ void bldcAppTick1kHz(void)
   updateSpeed(0);
   updateSpeed(1);
   handleFreewheelTimer();
+  updateSensorAlignment();
   updateOutputVoltage();
+  updateOpenLoopVelocity();
   applyProtection();
   updateZeroOutputSleep();
   sendTelemetry();
@@ -584,6 +714,7 @@ void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
 
 void bldcAppSetFreewheelMs(uint32_t ms)
 {
+  app.align_active = false;
   app.freewheel_ms = ms;
   app.motor[0].target_rps = 0.0f;
   app.motor[1].target_rps = 0.0f;
@@ -606,6 +737,7 @@ void bldcAppEnableRun(void)
   }
   app.freewheel_ms = 0U;
   app.zero_output_ms = 0U;
+  initOpenLoopAnglesFromSensor();
   setPwmAll(TIM_PWM_CENTER);
   resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
@@ -620,6 +752,7 @@ void bldcAppForceFault(uint16_t id, uint16_t info, float value)
   app.fault_info = info;
   app.fault_value = value;
   app.mode = BLDC_APP_MODE_FAULT;
+  app.align_active = false;
   setTarget(0, 0.0f, 0U);
   setTarget(1, 0.0f, 0U);
   setPwmAll(TIM_PWM_CENTER);
