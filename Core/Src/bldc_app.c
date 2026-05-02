@@ -122,9 +122,42 @@ typedef struct
   volatile uint8_t uart_rx_head;
   volatile uint8_t uart_rx_tail;
   volatile uint32_t uart_rx_overrun;
+  uint32_t loop_busy_cycles;
+  uint32_t loop_busy_cycles_max;
+  uint32_t isr_cycles;
+  uint32_t isr_cycles_max;
+  uint32_t open_loop_cycle[APP_MOTOR_COUNT];
+  uint32_t speed_cycle[APP_MOTOR_COUNT];
+  float cycle_to_s;
 } app_state_t;
 
 static app_state_t app;
+
+static uint32_t cycleNow(void)
+{
+  return DWT->CYCCNT;
+}
+
+static uint32_t cycleDelta(uint32_t start, uint32_t end)
+{
+  return end - start;
+}
+
+static uint32_t cyclesToUs(uint32_t cycles)
+{
+  const uint32_t cycles_per_us = SystemCoreClock / 1000000U;
+  if (cycles_per_us == 0U) {
+    return 0U;
+  }
+  return cycles / cycles_per_us;
+}
+
+static void enableCycleCounter(void)
+{
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+  DWT->CYCCNT = 0U;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
 
 static float clampFloat(float value, float limit)
 {
@@ -259,6 +292,7 @@ static void primeSensors(void)
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     app.motor[m].pre_raw = as5047p[m].enc_raw;
+    app.speed_cycle[m] = cycleNow();
   }
 }
 
@@ -289,9 +323,15 @@ static void initMotorParameters(void)
 
 static void updateSpeed(uint8_t motor)
 {
+  const uint32_t now = cycleNow();
+  const uint32_t elapsed_cycles = cycleDelta(app.speed_cycle[motor], now);
+  app.speed_cycle[motor] = now;
+  const float elapsed_s = (float)elapsed_cycles * app.cycle_to_s;
   int diff = encoderRawDiff(as5047p[motor].enc_raw, app.motor[motor].pre_raw);
 
-  app.motor[motor].measured_rps = (float)diff / (float)ENC_CNT_MAX * 1000.0f;
+  if (elapsed_s > 0.0f) {
+    app.motor[motor].measured_rps = ((float)diff / (float)ENC_CNT_MAX) / elapsed_s;
+  }
   app.motor[motor].measured_rps_ave = app.motor[motor].measured_rps_ave * 0.98f + app.motor[motor].measured_rps * 0.02f;
   app.motor[motor].pre_raw = as5047p[motor].enc_raw;
 
@@ -359,12 +399,23 @@ static void updateOpenLoopVelocity(void)
   if (app.mode != BLDC_APP_MODE_RUN || !app.open_loop_velocity) {
     return;
   }
+}
 
-  for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
-    const float direction = (APP_OPEN_LOOP_DIRECTION < 0) ? -1.0f : 1.0f;
-    const float delta = direction * app.motor[m].target_rps * (2.0f * (float)M_PI) * (float)APP_POLE_PAIRS * 0.001f;
-    app.motor[m].open_loop_electrical_angle = focNormalizeAngle(app.motor[m].open_loop_electrical_angle + delta);
+static void updateOpenLoopVelocityInIsr(uint8_t motor)
+{
+  if (app.mode != BLDC_APP_MODE_RUN || !app.open_loop_velocity) {
+    app.open_loop_cycle[motor] = cycleNow();
+    return;
   }
+  const uint32_t now = cycleNow();
+  const uint32_t elapsed_cycles = cycleDelta(app.open_loop_cycle[motor], now);
+  app.open_loop_cycle[motor] = now;
+
+  const float direction = (APP_OPEN_LOOP_DIRECTION < 0) ? -1.0f : 1.0f;
+  const float motor_period_s = (float)elapsed_cycles * app.cycle_to_s;
+  const float delta =
+    direction * app.motor[motor].target_rps * (2.0f * (float)M_PI) * (float)APP_POLE_PAIRS * motor_period_s;
+  app.motor[motor].open_loop_electrical_angle = focNormalizeAngle(app.motor[motor].open_loop_electrical_angle + delta);
 }
 
 static void applyProtection(void)
@@ -431,6 +482,7 @@ static void applyPwmInIsr(uint8_t motor)
   }
 
   const float batt = getBatteryVoltage();
+  updateOpenLoopVelocityInIsr(motor);
   float electrical = app.motor[motor].open_loop_electrical_angle;
   if (!app.open_loop_velocity) {
     const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
@@ -488,7 +540,7 @@ static void printDiagnostics(void)
 
   switch (app.print_page) {
     case 0:
-      p("Mode %d OL %u Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu\n",
+      p("Mode %d OL %u Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu loop %lu/%lu us slack %ld us isr %lu/%lu us\n",
         app.mode,
         app.open_loop_velocity ? 1U : 0U,
         getBatteryVoltage(),
@@ -497,7 +549,14 @@ static void printDiagnostics(void)
         app.fault_id,
         app.fault_info,
         app.fault_value,
-        app.can_rx_count);
+        app.can_rx_count,
+        cyclesToUs(app.loop_busy_cycles),
+        cyclesToUs(app.loop_busy_cycles_max),
+        1000L - (long)cyclesToUs(app.loop_busy_cycles_max),
+        cyclesToUs(app.isr_cycles),
+        cyclesToUs(app.isr_cycles_max));
+      app.loop_busy_cycles_max = app.loop_busy_cycles;
+      app.isr_cycles_max = app.isr_cycles;
       break;
     case 1:
       p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
@@ -634,9 +693,12 @@ static void updateSensorAlignment(void)
 
 static void initOpenLoopAnglesFromSensor(void)
 {
+  const uint32_t now = cycleNow();
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     const float mech = encoderRawToMechanicalRad(as5047p[m].enc_raw);
     app.motor[m].open_loop_electrical_angle = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[m].zero_electric_angle, APP_SENSOR_DIRECTION);
+    app.open_loop_cycle[m] = now;
+    app.speed_cycle[m] = now;
   }
 }
 
@@ -1085,7 +1147,7 @@ static void handleCanMessage(CAN_RxHeaderTypeDef * header, can_msg_buf_t * msg)
 
 static void waitForNextMainCycle(void)
 {
-  while (app.pwm_irq_count <= APP_PWM_ISR_PER_1MS) {
+  while (app.pwm_irq_count < APP_PWM_ISR_PER_1MS) {
   }
   app.pwm_irq_count = 0;
 }
@@ -1093,6 +1155,8 @@ static void waitForNextMainCycle(void)
 void bldcAppInit(void)
 {
   app.mode = BLDC_APP_MODE_BOOT;
+  enableCycleCounter();
+  app.cycle_to_s = 1.0f / (float)SystemCoreClock;
   setLedRed(true);
   setLedGreen(false);
   setLedBlue(false);
@@ -1135,6 +1199,8 @@ void bldcAppInit(void)
 
 void bldcAppTick1kHz(void)
 {
+  const uint32_t loop_start = cycleNow();
+
   pollUart();
 
   if (app.io_check_request) {
@@ -1155,6 +1221,11 @@ void bldcAppTick1kHz(void)
   sendTelemetry();
   printDiagnostics();
 
+  app.loop_busy_cycles = cycleDelta(loop_start, cycleNow());
+  if (app.loop_busy_cycles > app.loop_busy_cycles_max) {
+    app.loop_busy_cycles_max = app.loop_busy_cycles;
+  }
+
   setLedRed(true);
   waitForNextMainCycle();
   setLedRed(false);
@@ -1167,12 +1238,17 @@ void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
   }
 
   static uint8_t motor_select = 0U;
+  const uint32_t isr_start = cycleNow();
   app.pwm_irq_count++;
   motor_select ^= 1U;
 
   setLedBlue(false);
   applyPwmInIsr(motor_select);
   setLedBlue(true);
+  app.isr_cycles = cycleDelta(isr_start, cycleNow());
+  if (app.isr_cycles > app.isr_cycles_max) {
+    app.isr_cycles_max = app.isr_cycles;
+  }
 }
 
 void bldcAppSetFreewheelMs(uint32_t ms)
