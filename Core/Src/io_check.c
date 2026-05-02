@@ -6,7 +6,7 @@
 #include "io_check.h"
 
 #include "adc.h"
-#include "app_rebuild.h"
+#include "bldc_app.h"
 #include "can.h"
 #include "flash.h"
 #include "foc_driver_hal.h"
@@ -89,7 +89,7 @@ void runIoCheckOnce(void)
   waitPrintDrain();
 
   setPwmAll(TIM_PWM_CENTER);
-  appSetFreewheelMs(60000U);
+  bldcAppSetFreewheelMs(60000U);
 
   updateADC(0);
   updateADC(1);
@@ -102,8 +102,8 @@ void runIoCheckOnce(void)
   focDriverPrintState();
   waitPrintDrain();
   p("APP mode %d CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n",
-    appGetMode(),
-    appGetCanRxCount(),
+    bldcAppGetMode(),
+    bldcAppGetCanRxCount(),
     getCanError(),
     flash.board_id,
     flash.calib[0],
@@ -119,3 +119,4 @@ void runIoCheckOnce(void)
   p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
   waitPrintDrain();
 }
+

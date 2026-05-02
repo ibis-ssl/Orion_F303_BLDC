@@ -1,9 +1,9 @@
 /**
- * @file app_rebuild.c
- * @brief Rebuilt BLDC application layer. CubeMX/HAL peripheral code remains in each peripheral file.
+ * @file bldc_app.c
+ * @brief BLDC application layer. CubeMX/HAL peripheral code remains in each peripheral file.
  */
 
-#include "app_rebuild.h"
+#include "bldc_app.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -35,8 +35,8 @@
 
 typedef struct
 {
-  app_mode_t mode;
-  app_motor_state_t motor[APP_MOTOR_COUNT];
+  bldc_app_mode_t mode;
+  bldc_app_motor_state_t motor[APP_MOTOR_COUNT];
   volatile uint32_t pwm_irq_count;
   uint32_t freewheel_ms;
   uint32_t zero_output_ms;
@@ -208,14 +208,14 @@ static void updateSpeed(uint8_t motor)
   app.motor[motor].measured_rps_ave = app.motor[motor].measured_rps_ave * 0.98f + app.motor[motor].measured_rps * 0.02f;
   app.motor[motor].pre_raw = as5047p[motor].enc_raw;
 
-  if (fabsf(app.motor[motor].measured_rps) > APP_RPS_LIMIT * 2.0f && app.mode == APP_MODE_RUN) {
-    appForceFault(BLDC_ENC_ERROR, motor, app.motor[motor].measured_rps);
+  if (fabsf(app.motor[motor].measured_rps) > APP_RPS_LIMIT * 2.0f && app.mode == BLDC_APP_MODE_RUN) {
+    bldcAppForceFault(BLDC_ENC_ERROR, motor, app.motor[motor].measured_rps);
   }
 }
 
 static void updateOutputVoltage(void)
 {
-  if (app.mode != APP_MODE_RUN) {
+  if (app.mode != BLDC_APP_MODE_RUN) {
     for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
       app.motor[m].voltage_q = 0.0f;
     }
@@ -239,28 +239,28 @@ static void applyProtection(void)
 {
   const float batt = getBatteryVoltage();
   if (batt < THR_BATTERY_UNVER_VOLTAGE) {
-    appForceFault(BLDC_UNDER_VOLTAGE, 0, batt);
+    bldcAppForceFault(BLDC_UNDER_VOLTAGE, 0, batt);
     return;
   }
   if (batt > THR_BATTERY_OVER_VOLTAGE) {
-    appForceFault(BLDC_OVER_VOLTAGE, 0, batt);
+    bldcAppForceFault(BLDC_OVER_VOLTAGE, 0, batt);
     return;
   }
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     const float current = fabsf(getCurrentMotor(m));
     if (current > THR_MOTOR_OVER_CURRENT) {
-      appForceFault(BLDC_OVER_CURRENT, m, current);
+      bldcAppForceFault(BLDC_OVER_CURRENT, m, current);
       return;
     }
     const int motor_temp = getTempMotor(m);
     const int fet_temp = getTempFET(m);
     if (motor_temp > THR_MOTOR_OVER_TEMPERATURE && motor_temp < THR_NO_CONNECTED_TEPERATURE) {
-      appForceFault(BLDC_MOTOR_OVER_HEAT, m, (float)motor_temp);
+      bldcAppForceFault(BLDC_MOTOR_OVER_HEAT, m, (float)motor_temp);
       return;
     }
     if (fet_temp > THR_FET_OVER_TEMPERATURE && fet_temp < THR_NO_CONNECTED_TEPERATURE) {
-      appForceFault(BLDC_FET_OVER_HEAT, m, (float)fet_temp);
+      bldcAppForceFault(BLDC_FET_OVER_HEAT, m, (float)fet_temp);
       return;
     }
   }
@@ -271,7 +271,7 @@ static void applyPwmInIsr(uint8_t motor)
   updateADC(motor);
   updateAS5047P(motor);
 
-  if (app.mode != APP_MODE_RUN || app.freewheel_ms > 0U) {
+  if (app.mode != BLDC_APP_MODE_RUN || app.freewheel_ms > 0U) {
     foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
     focDriverSetPwmCompare(motor, center);
     return;
@@ -287,17 +287,17 @@ static void handleFreewheelTimer(void)
 {
   if (app.freewheel_ms > 0U) {
     app.freewheel_ms--;
-    if (app.freewheel_ms == 0U && app.mode == APP_MODE_RUN) {
+    if (app.freewheel_ms == 0U && app.mode == BLDC_APP_MODE_RUN) {
       resumePwmOutput();
-    } else if (app.freewheel_ms == 0U && app.mode == APP_MODE_FREEWHEEL) {
-      app.mode = APP_MODE_READY;
+    } else if (app.freewheel_ms == 0U && app.mode == BLDC_APP_MODE_FREEWHEEL) {
+      app.mode = BLDC_APP_MODE_READY;
     }
   }
 }
 
 static void updateZeroOutputSleep(void)
 {
-  if (app.mode != APP_MODE_RUN) {
+  if (app.mode != BLDC_APP_MODE_RUN) {
     return;
   }
   if (app.motor[0].target_rps == 0.0f && app.motor[1].target_rps == 0.0f) {
@@ -409,8 +409,8 @@ static void setTarget(uint8_t motor, float rps, uint16_t timeout_ms)
   }
   app.motor[motor].target_rps = clampFloat(rps, APP_RPS_LIMIT);
   app.motor[motor].command_timeout_ms = timeout_ms;
-  if (app.mode == APP_MODE_READY || (app.mode == APP_MODE_FREEWHEEL && app.freewheel_ms == 0U)) {
-    appEnableRun();
+  if (app.mode == BLDC_APP_MODE_READY || (app.mode == BLDC_APP_MODE_FREEWHEEL && app.freewheel_ms == 0U)) {
+    bldcAppEnableRun();
   }
 }
 
@@ -424,12 +424,12 @@ static void handleUartCommand(uint8_t cmd)
       runFocMathCheckOnce();
       break;
     case 'n':
-      appEnableRun();
+      bldcAppEnableRun();
       p("run enabled, targets remain zero\n");
       break;
     case 'x':
     case '0':
-      appSetFreewheelMs(60000U);
+      bldcAppSetFreewheelMs(60000U);
       p("freewheel 60s\n");
       break;
     case 'w':
@@ -443,7 +443,7 @@ static void handleUartCommand(uint8_t cmd)
     case ' ':
       setTarget(0, 0.0f, 0U);
       setTarget(1, 0.0f, 0U);
-      appSetFreewheelMs(60000U);
+      bldcAppSetFreewheelMs(60000U);
       break;
     case '\n':
       app.print_page++;
@@ -488,7 +488,7 @@ static void handleCanMessage(CAN_RxHeaderTypeDef * header, can_msg_buf_t * msg)
       break;
     case 0x110:
       if (msg->data[0] == 3U) {
-        appSetFreewheelMs((uint32_t)msg->data[2]);
+        bldcAppSetFreewheelMs((uint32_t)msg->data[2]);
       }
       break;
     case 0x320:
@@ -506,9 +506,9 @@ static void waitForNextMainCycle(void)
   app.pwm_irq_count = 0;
 }
 
-void appInit(void)
+void bldcAppInit(void)
 {
-  app.mode = APP_MODE_BOOT;
+  app.mode = BLDC_APP_MODE_BOOT;
   setLedRed(true);
   setLedGreen(false);
   setLedBlue(false);
@@ -534,9 +534,9 @@ void appInit(void)
     Error_Handler();
   }
 
-  app.mode = APP_MODE_READY;
-  appSetFreewheelMs(60000U);
-  p("\n[APP] rebuild boot board 0x%03lx offset %+6.3f %+6.3f v/rps %+6.3f %+6.3f\n",
+  app.mode = BLDC_APP_MODE_READY;
+  bldcAppSetFreewheelMs(60000U);
+  p("\n[BLDC_APP] boot board 0x%03lx offset %+6.3f %+6.3f v/rps %+6.3f %+6.3f\n",
     flash.board_id,
     app.motor[0].zero_electric_angle,
     app.motor[1].zero_electric_angle,
@@ -544,7 +544,7 @@ void appInit(void)
     app.motor[1].voltage_per_rps);
 }
 
-void appTick1kHz(void)
+void bldcAppTick1kHz(void)
 {
   pollUart();
 
@@ -567,7 +567,7 @@ void appTick1kHz(void)
   setLedRed(false);
 }
 
-void appOnTimerElapsed(TIM_HandleTypeDef * htim)
+void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
 {
   if (htim->Instance != TIM1) {
     return;
@@ -582,7 +582,7 @@ void appOnTimerElapsed(TIM_HandleTypeDef * htim)
   setLedBlue(true);
 }
 
-void appSetFreewheelMs(uint32_t ms)
+void bldcAppSetFreewheelMs(uint32_t ms)
 {
   app.freewheel_ms = ms;
   app.motor[0].target_rps = 0.0f;
@@ -593,14 +593,14 @@ void appSetFreewheelMs(uint32_t ms)
   app.motor[1].voltage_q = 0.0f;
   setPwmAll(TIM_PWM_CENTER);
   setPwmOutPutFreeWheel();
-  if (app.mode != APP_MODE_FAULT) {
-    app.mode = APP_MODE_FREEWHEEL;
+  if (app.mode != BLDC_APP_MODE_FAULT) {
+    app.mode = BLDC_APP_MODE_FREEWHEEL;
   }
 }
 
-void appEnableRun(void)
+void bldcAppEnableRun(void)
 {
-  if (app.mode == APP_MODE_FAULT) {
+  if (app.mode == BLDC_APP_MODE_FAULT) {
     p("cannot run: fault 0x%04x info %u value %+6.2f\n", app.fault_id, app.fault_info, app.fault_value);
     return;
   }
@@ -608,18 +608,18 @@ void appEnableRun(void)
   app.zero_output_ms = 0U;
   setPwmAll(TIM_PWM_CENTER);
   resumePwmOutput();
-  app.mode = APP_MODE_RUN;
+  app.mode = BLDC_APP_MODE_RUN;
 }
 
-void appForceFault(uint16_t id, uint16_t info, float value)
+void bldcAppForceFault(uint16_t id, uint16_t info, float value)
 {
-  if (app.mode == APP_MODE_FAULT) {
+  if (app.mode == BLDC_APP_MODE_FAULT) {
     return;
   }
   app.fault_id = id;
   app.fault_info = info;
   app.fault_value = value;
-  app.mode = APP_MODE_FAULT;
+  app.mode = BLDC_APP_MODE_FAULT;
   setTarget(0, 0.0f, 0U);
   setTarget(1, 0.0f, 0U);
   setPwmAll(TIM_PWM_CENTER);
@@ -628,17 +628,17 @@ void appForceFault(uint16_t id, uint16_t info, float value)
   p("FAULT 0x%04x info %u value %+6.2f\n", id, info, value);
 }
 
-uint32_t appGetCanRxCount(void)
+uint32_t bldcAppGetCanRxCount(void)
 {
   return app.can_rx_count;
 }
 
-app_mode_t appGetMode(void)
+bldc_app_mode_t bldcAppGetMode(void)
 {
   return app.mode;
 }
 
-const app_motor_state_t * appGetMotorState(uint8_t motor)
+const bldc_app_motor_state_t * bldcAppGetMotorState(uint8_t motor)
 {
   if (motor >= APP_MOTOR_COUNT) {
     return 0;
@@ -670,3 +670,4 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef * hcan_arg)
     handleCanMessage(&header, &msg);
   }
 }
+

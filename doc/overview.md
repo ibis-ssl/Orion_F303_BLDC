@@ -1,12 +1,12 @@
-﻿# Orion_F303_BLDC 改善方針
+# Orion_F303_BLDC 改善方針
 
-## 現行方針（2026-05-02 再構築）
+## 現行方針（2026-05-02 アプリ層刷新）
 古いアプリケーション実装はビルド対象から外し、CubeMX生成コードとHAL周辺操作だけを流用する構成へ切り替えた。
-制御状態、1kHz処理、TIM割り込み、UART/CANコマンド、保護処理は `app_rebuild.c` に集約する。
+制御状態、1kHz処理、TIM割り込み、UART/CANコマンド、保護処理は `bldc_app.c` に集約する。
 
 現行のビルド対象:
-- `Core/Src/main.c`: MCU初期化と `app_rebuild` への委譲。
-- `Core/Src/app_rebuild.c`: 新アプリ層。状態管理、起動、1kHz周期処理、TIM割り込み処理、UART/CAN受信、保護、テレメトリを担当。
+- `Core/Src/main.c`: MCU初期化と `bldc_app` への委譲。
+- `Core/Src/bldc_app.c`: 新アプリ層。状態管理、起動、1kHz周期処理、TIM割り込み処理、UART/CAN受信、保護、テレメトリを担当。
 - `Core/Src/foc_math.c`: SimpleFOC風の角度正規化、電気角、SinePWM相電圧、CCR変換。
 - `Core/Src/foc_driver_hal.c`: `foc_math` の結果をTIM1/TIM8 CCRへ反映する薄いHALブリッジ。
 - `Core/Src/io_check.c`: モータを回さない実機I/Oチェック。
@@ -22,23 +22,23 @@
 - `startup_sequence.c`
 
 旧ソースファイルと旧ヘッダは削除済みで、`Debug/Core/Src/subdir.mk`, `Release/Core/Src/subdir.mk`, `objects.list` からも除外済み。
-再構築後の通常経路では `app_context.h` の共有グローバル状態を使わない。
+刷新後の通常経路では `app_context.h` の共有グローバル状態を使わない。
 
 ## 新アプリ層の状態
-`app_rebuild.c` は以下のモードで動作する。
+`bldc_app.c` は以下のモードで動作する。
 
-- `APP_MODE_BOOT`: 起動初期化中。
-- `APP_MODE_FREEWHEEL`: PWMチャネルを無効化し、相出力をフリーウィールにする。
-- `APP_MODE_READY`: 入出力は初期化済みで、出力指令待ち。
-- `APP_MODE_RUN`: PWM出力を有効化し、SimpleFOC風SinePWMで電圧指令を出す。
-- `APP_MODE_FAULT`: 保護検出後。PWMはフリーウィール固定。
+- `BLDC_APP_MODE_BOOT`: 起動初期化中。
+- `BLDC_APP_MODE_FREEWHEEL`: PWMチャネルを無効化し、相出力をフリーウィールにする。
+- `BLDC_APP_MODE_READY`: 入出力は初期化済みで、出力指令待ち。
+- `BLDC_APP_MODE_RUN`: PWM出力を有効化し、SimpleFOC風SinePWMで電圧指令を出す。
+- `BLDC_APP_MODE_FAULT`: 保護検出後。PWMはフリーウィール固定。
 
 起動直後は安全側として60秒のフリーウィールに入る。
 UART `n` でRUNへ入れるが、目標速度は0のままなので即時回転はしない。
 CANまたはUARTで速度指令が入ると、`target_rps * voltage_per_rps` の開ループ電圧指令をSinePWMへ渡す。
 
 ## 新1msループ
-`appTick1kHz()` の処理順:
+`bldcAppTick1kHz()` の処理順:
 
 1. UART受信コマンド処理。
 2. CANから要求されたI/Oチェック処理。
@@ -54,7 +54,7 @@ CANまたはUARTで速度指令が入ると、`target_rps * voltage_per_rps` の
 TIM1更新割り込みではM0/M1を交互に処理し、ADC注入変換値の取得、AS5047P更新、必要時のSinePWM CCR更新だけを行う。
 割り込み内でUART出力やCAN送信は行わない。
 
-## UART操作（再構築後）
+## UART操作（刷新後）
 ```text
 i  非回転I/Oチェック。PWMを60秒フリーウィールへ落としてADC/SPI/GPIO/CAN/Flash/PWM状態を表示。
 m  FOC計算セルフテストのみ実行。PWM出力は変更しない。
@@ -67,7 +67,7 @@ space  目標速度0、60秒フリーウィール。
 enter  診断ログページ切り替え。
 ```
 
-## CAN操作（再構築後）
+## CAN操作（刷新後）
 - `0x100` / `0x102`: M0速度指令。
 - `0x101` / `0x103`: M1速度指令。
 - `0x110`: `data[0] == 3` のときフリーウィール要求。
@@ -84,7 +84,7 @@ CANフィルタは既存の `CAN_Filter_Init()` を流用している。
 - 実回転前に必ずUART `i` でADC、エンコーダ、PWM CCER、Flash校正値を確認する。
 
 ## 旧設計メモ
-以下は再構築前の設計メモであり、現行ビルド対象ではない旧アプリ層の記録として残す。
+以下は刷新前の設計メモであり、現行ビルド対象ではない旧アプリ層の記録として残す。
 
 ## 目的
 - 可読性と保守性を上げる。
@@ -331,3 +331,4 @@ n
 - `isNotZeroCurrent()` がM0を2回見ていたため、M0/M1の両方を見るよう修正。
 - 起動時の `output_voltage_limit` 計算をFlash生値の直接割り算から、検証済みの `motor_param[].voltage_per_rps` ベースへ変更。
 - UART改行コマンドの `print idx` 表示で不足していた引数を追加。
+

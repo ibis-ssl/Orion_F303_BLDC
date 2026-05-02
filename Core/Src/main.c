@@ -2,7 +2,7 @@
 /**
  ******************************************************************************
  * @file           : main.c
- * @brief          : CubeMX entry point. Owns MCU initialization and delegates the rebuilt BLDC app layer.
+ * @brief          : CubeMX entry point. Owns MCU initialization and delegates the BLDC app layer.
  ******************************************************************************
  * @attention
  *
@@ -20,7 +20,7 @@
 #include "main.h"
 
 #include "adc.h"
-#include "app_rebuild.h"
+#include "bldc_app.h"
 #include "can.h"
 #include "dma.h"
 #include "gpio.h"
@@ -64,7 +64,7 @@ void SystemClock_Config(void);
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
 {
-  appOnTimerElapsed(htim);
+  bldcAppOnTimerElapsed(htim);
 }
 
 /* USER CODE END 0 */
@@ -107,7 +107,7 @@ int main(void)
   MX_TIM8_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  appInit();
+  bldcAppInit();
 
   /* USER CODE END 2 */
 
@@ -117,7 +117,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    appTick1kHz();
+    bldcAppTick1kHz();
   }
   /* USER CODE END 3 */
 }
@@ -201,3 +201,4 @@ void assert_failed(uint8_t * file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
