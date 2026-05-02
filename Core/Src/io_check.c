@@ -6,20 +6,26 @@
 #include "io_check.h"
 
 #include "adc.h"
-#include "app_context.h"
+#include "app_rebuild.h"
 #include "can.h"
-#include "comms.h"
 #include "flash.h"
 #include "foc_driver_hal.h"
 #include "foc_math.h"
 #include "gpio.h"
 #include "spi.h"
+#include "stm32f3xx_hal.h"
 #include "tim.h"
 #include "usart.h"
+
+static void waitPrintDrain(void)
+{
+  HAL_Delay(3);
+}
 
 static void printSwitchState(void)
 {
   p("SW 1:%d 2:%d 3:%d 4:%d\n", isPushedSW1(), isPushedSW2(), isPushedSW3(), isPushedSW4());
+  waitPrintDrain();
 }
 
 static void printAdcState(void)
@@ -43,6 +49,7 @@ static void printAdcState(void)
     getTempFET(1),
     getTempMotor(0),
     getTempMotor(1));
+  waitPrintDrain();
 }
 
 static void printEncoderState(void)
@@ -64,6 +71,7 @@ static void printEncoderState(void)
       as5047p[i].reg.mag,
       as5047p[i].reg.angleenc,
       as5047p[i].reg.anglecom);
+    waitPrintDrain();
   }
 }
 
@@ -72,21 +80,16 @@ void runFocMathCheckOnce(void)
   foc_pwm_compare_t sample = {0};
   const bool ok = focRunMathSelfTest(&sample);
   p("FOC math self-test %s sample CCR %4d %4d %4d limited %d\n", ok ? "OK" : "NG", sample.a, sample.b, sample.c, sample.limited);
+  waitPrintDrain();
 }
 
 void runIoCheckOnce(void)
 {
   p("\n[IO CHECK] non-rotating check start\n");
+  waitPrintDrain();
 
   setPwmAll(TIM_PWM_CENTER);
-  setPwmOutPutFreeWheel();
-  cmd[0].speed = 0.0f;
-  cmd[1].speed = 0.0f;
-  cmd[0].out_v = 0.0f;
-  cmd[1].out_v = 0.0f;
-  cmd[0].out_v_final = 0.0f;
-  cmd[1].out_v_final = 0.0f;
-  sys.free_wheel_cnt = 60000U;
+  appSetFreewheelMs(60000U);
 
   updateADC(0);
   updateADC(1);
@@ -97,18 +100,22 @@ void runIoCheckOnce(void)
   printAdcState();
   printEncoderState();
   focDriverPrintState();
-  p("CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n",
-    getCanRxCount(),
+  waitPrintDrain();
+  p("APP mode %d CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n",
+    appGetMode(),
+    appGetCanRxCount(),
     getCanError(),
     flash.board_id,
     flash.calib[0],
     flash.calib[1],
     flash.rps_per_v_cw[0],
     flash.rps_per_v_cw[1]);
+  waitPrintDrain();
   runFocMathCheckOnce();
 
   setLedRed(false);
   setLedGreen(false);
   setLedBlue(false);
   p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
+  waitPrintDrain();
 }

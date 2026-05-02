@@ -6,11 +6,8 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../Core/Src/adc.c \
-../Core/Src/calibration.c \
+../Core/Src/app_rebuild.c \
 ../Core/Src/can.c \
-../Core/Src/comms.c \
-../Core/Src/control_mode.c \
-../Core/Src/diagnostics.c \
 ../Core/Src/dma.c \
 ../Core/Src/flash.c \
 ../Core/Src/foc_driver_hal.c \
@@ -18,10 +15,7 @@ C_SRCS += \
 ../Core/Src/gpio.c \
 ../Core/Src/io_check.c \
 ../Core/Src/main.c \
-../Core/Src/motor.c \
-../Core/Src/protect.c \
 ../Core/Src/spi.c \
-../Core/Src/startup_sequence.c \
 ../Core/Src/stm32f3xx_hal_msp.c \
 ../Core/Src/stm32f3xx_it.c \
 ../Core/Src/syscalls.c \
@@ -32,11 +26,8 @@ C_SRCS += \
 
 C_DEPS += \
 ./Core/Src/adc.d \
-./Core/Src/calibration.d \
+./Core/Src/app_rebuild.d \
 ./Core/Src/can.d \
-./Core/Src/comms.d \
-./Core/Src/control_mode.d \
-./Core/Src/diagnostics.d \
 ./Core/Src/dma.d \
 ./Core/Src/flash.d \
 ./Core/Src/foc_driver_hal.d \
@@ -44,10 +35,7 @@ C_DEPS += \
 ./Core/Src/gpio.d \
 ./Core/Src/io_check.d \
 ./Core/Src/main.d \
-./Core/Src/motor.d \
-./Core/Src/protect.d \
 ./Core/Src/spi.d \
-./Core/Src/startup_sequence.d \
 ./Core/Src/stm32f3xx_hal_msp.d \
 ./Core/Src/stm32f3xx_it.d \
 ./Core/Src/syscalls.d \
@@ -58,11 +46,8 @@ C_DEPS += \
 
 OBJS += \
 ./Core/Src/adc.o \
-./Core/Src/calibration.o \
+./Core/Src/app_rebuild.o \
 ./Core/Src/can.o \
-./Core/Src/comms.o \
-./Core/Src/control_mode.o \
-./Core/Src/diagnostics.o \
 ./Core/Src/dma.o \
 ./Core/Src/flash.o \
 ./Core/Src/foc_driver_hal.o \
@@ -70,10 +55,7 @@ OBJS += \
 ./Core/Src/gpio.o \
 ./Core/Src/io_check.o \
 ./Core/Src/main.o \
-./Core/Src/motor.o \
-./Core/Src/protect.o \
 ./Core/Src/spi.o \
-./Core/Src/startup_sequence.o \
 ./Core/Src/stm32f3xx_hal_msp.o \
 ./Core/Src/stm32f3xx_it.o \
 ./Core/Src/syscalls.o \

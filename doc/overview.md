@@ -1,11 +1,97 @@
 ﻿# Orion_F303_BLDC 改善方針
 
+## 現行方針（2026-05-02 再構築）
+古いアプリケーション実装はビルド対象から外し、CubeMX生成コードとHAL周辺操作だけを流用する構成へ切り替えた。
+制御状態、1kHz処理、TIM割り込み、UART/CANコマンド、保護処理は `app_rebuild.c` に集約する。
+
+現行のビルド対象:
+- `Core/Src/main.c`: MCU初期化と `app_rebuild` への委譲。
+- `Core/Src/app_rebuild.c`: 新アプリ層。状態管理、起動、1kHz周期処理、TIM割り込み処理、UART/CAN受信、保護、テレメトリを担当。
+- `Core/Src/foc_math.c`: SimpleFOC風の角度正規化、電気角、SinePWM相電圧、CCR変換。
+- `Core/Src/foc_driver_hal.c`: `foc_math` の結果をTIM1/TIM8 CCRへ反映する薄いHALブリッジ。
+- `Core/Src/io_check.c`: モータを回さない実機I/Oチェック。
+- `adc.c`, `spi.c`, `tim.c`, `can.c`, `gpio.c`, `usart.c`, `flash.c`: CubeMX/HAL周辺操作と既存の低レベル補助関数。
+
+ビルド対象から外した旧アプリ層:
+- `calibration.c`
+- `comms.c`
+- `control_mode.c`
+- `diagnostics.c`
+- `motor.c`
+- `protect.c`
+- `startup_sequence.c`
+
+旧ソースファイルと旧ヘッダは削除済みで、`Debug/Core/Src/subdir.mk`, `Release/Core/Src/subdir.mk`, `objects.list` からも除外済み。
+再構築後の通常経路では `app_context.h` の共有グローバル状態を使わない。
+
+## 新アプリ層の状態
+`app_rebuild.c` は以下のモードで動作する。
+
+- `APP_MODE_BOOT`: 起動初期化中。
+- `APP_MODE_FREEWHEEL`: PWMチャネルを無効化し、相出力をフリーウィールにする。
+- `APP_MODE_READY`: 入出力は初期化済みで、出力指令待ち。
+- `APP_MODE_RUN`: PWM出力を有効化し、SimpleFOC風SinePWMで電圧指令を出す。
+- `APP_MODE_FAULT`: 保護検出後。PWMはフリーウィール固定。
+
+起動直後は安全側として60秒のフリーウィールに入る。
+UART `n` でRUNへ入れるが、目標速度は0のままなので即時回転はしない。
+CANまたはUARTで速度指令が入ると、`target_rps * voltage_per_rps` の開ループ電圧指令をSinePWMへ渡す。
+
+## 新1msループ
+`appTick1kHz()` の処理順:
+
+1. UART受信コマンド処理。
+2. CANから要求されたI/Oチェック処理。
+3. エンコーダ差分から速度推定。
+4. フリーウィールタイマ更新。
+5. 速度指令から `voltage_q` を計算。
+6. 電圧、電流、温度、エンコーダ異常の保護判定。
+7. ゼロ出力が続く場合のPWMフリーウィール化。
+8. CANテレメトリ送信。
+9. UART診断ログ出力。
+10. TIM1割り込み20回分を待って1ms周期に同期。
+
+TIM1更新割り込みではM0/M1を交互に処理し、ADC注入変換値の取得、AS5047P更新、必要時のSinePWM CCR更新だけを行う。
+割り込み内でUART出力やCAN送信は行わない。
+
+## UART操作（再構築後）
+```text
+i  非回転I/Oチェック。PWMを60秒フリーウィールへ落としてADC/SPI/GPIO/CAN/Flash/PWM状態を表示。
+m  FOC計算セルフテストのみ実行。PWM出力は変更しない。
+n  RUN許可。目標速度は0のまま、PWM出力だけ有効化。
+x  60秒フリーウィール。
+0  60秒フリーウィール。
+w  両モータの目標速度を +0.5 rps。
+s  両モータの目標速度を -0.5 rps。
+space  目標速度0、60秒フリーウィール。
+enter  診断ログページ切り替え。
+```
+
+## CAN操作（再構築後）
+- `0x100` / `0x102`: M0速度指令。
+- `0x101` / `0x103`: M1速度指令。
+- `0x110`: `data[0] == 3` のときフリーウィール要求。
+- `0x320`: 次回1kHzループで非回転I/Oチェック。
+- `0x010`: `data[0] == 0 && data[1] == 0` のときリセット。
+
+CANフィルタは既存の `CAN_Filter_Init()` を流用している。
+
+## 安全上の注意
+- 起動直後はフリーウィール固定で、意図せず回転しない。
+- `n` だけでは目標速度が0なので回転しない。
+- `w/s` またはCAN速度指令で初めて電圧指令が非ゼロになる。
+- 現状は電流FOCではなく、速度指令から電圧を作る開ループ寄りのSinePWMである。
+- 実回転前に必ずUART `i` でADC、エンコーダ、PWM CCER、Flash校正値を確認する。
+
+## 旧設計メモ
+以下は再構築前の設計メモであり、現行ビルド対象ではない旧アプリ層の記録として残す。
+
 ## 目的
 - 可読性と保守性を上げる。
 - リアルタイム制御性能を維持する。
 - 挙動を変えないリファクタリングを優先する。
 
-## 全体構成（現在）
+## 全体構成（旧実装）
 - `Core/Src/main.c`: 制御ループ本体、周期同期、共通コンテキスト定義。
 - `Core/Src/control_mode.c`: 実行モード判定とモードディスパッチ。
 - `Core/Src/calibration.c`: エンコーダ校正・モータ校正。
