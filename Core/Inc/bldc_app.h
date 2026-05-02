@@ -29,6 +29,7 @@ typedef struct
   float voltage_q;
   float voltage_limit;
   float voltage_per_rps;
+  float voltage_offset;
   float zero_electric_angle;
   float open_loop_electrical_angle;
   int pre_raw;

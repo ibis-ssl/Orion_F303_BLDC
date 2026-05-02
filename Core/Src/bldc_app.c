@@ -24,7 +24,8 @@
 #define APP_MOTOR_COUNT (2U)
 #define APP_PWM_ISR_PER_1MS (20U)
 #define APP_POLE_PAIRS (12)
-#define APP_SENSOR_DIRECTION (-1)
+#define APP_SENSOR_DIRECTION (1)
+#define APP_OPEN_LOOP_DIRECTION (-1)
 #define APP_RPS_LIMIT (80.0f)
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
 #define APP_DEFAULT_VOLTAGE_PER_RPS (0.08f)
@@ -32,10 +33,68 @@
 #define APP_RPS_SLEW_PER_MS (0.01f)
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
+#define APP_UART_RX_QUEUE_SIZE (32U)
 #define APP_CAN_TIMEOUT_MS (100U)
 #define APP_ALIGN_VOLTAGE (2.0f)
 #define APP_ALIGN_MS (1000U)
 #define APP_ALIGN_ELECTRICAL_ANGLE (4.71238898038f)
+#define APP_SENSOR_DIAG_SCAN_MS (1200U)
+#define APP_CAL_VOLTAGE_START (0.60f)
+#define APP_CAL_VOLTAGE_STEP (0.20f)
+#define APP_CAL_VOLTAGE_LIMIT (2.00f)
+#define APP_CAL_SETTLE_MS (600U)
+#define APP_CAL_SAMPLE_MS (900U)
+#define APP_CAL_MIN_FIT_RPS (0.30f)
+#define APP_CAL_MODEL_MARGIN (1.10f)
+#define APP_CAL_MAX_OFFSET_V (3.00f)
+
+typedef enum
+{
+  APP_PARAM_CAL_STAGE_IDLE = 0,
+  APP_PARAM_CAL_STAGE_ALIGN,
+  APP_PARAM_CAL_STAGE_SAMPLE
+} app_param_calib_stage_t;
+
+typedef enum
+{
+  APP_SENSOR_DIAG_STAGE_IDLE = 0,
+  APP_SENSOR_DIAG_STAGE_FORWARD,
+  APP_SENSOR_DIAG_STAGE_REVERSE,
+  APP_SENSOR_DIAG_STAGE_ALIGN
+} app_sensor_diag_stage_t;
+
+typedef struct
+{
+  bool active;
+  bool save_to_flash;
+  app_param_calib_stage_t stage;
+  uint8_t motor;
+  uint16_t elapsed_ms;
+  float test_voltage;
+  float speed_sum;
+  uint16_t speed_count;
+  float fit_sum_x;
+  float fit_sum_y;
+  float fit_sum_xx;
+  float fit_sum_xy;
+  uint8_t fit_count;
+  float voltage_per_rps[APP_MOTOR_COUNT];
+  float voltage_offset[APP_MOTOR_COUNT];
+} app_param_calib_t;
+
+typedef struct
+{
+  bool active;
+  uint8_t motor;
+  app_sensor_diag_stage_t stage;
+  uint16_t elapsed_ms;
+  int start_raw;
+  int forward_raw;
+  int reverse_raw;
+  int forward_diff;
+  int reverse_diff;
+  float electrical_angle;
+} app_sensor_diag_t;
 
 typedef struct
 {
@@ -54,10 +113,15 @@ typedef struct
   uint8_t align_motor;
   volatile bool align_active;
   bool open_loop_velocity;
+  app_param_calib_t param_calib;
+  app_sensor_diag_t sensor_diag;
   bool io_check_request;
   bool can_started;
   uint8_t uart_rx_byte;
-  volatile bool uart_rx_ready;
+  uint8_t uart_rx_queue[APP_UART_RX_QUEUE_SIZE];
+  volatile uint8_t uart_rx_head;
+  volatile uint8_t uart_rx_tail;
+  volatile uint32_t uart_rx_overrun;
 } app_state_t;
 
 static app_state_t app;
@@ -78,9 +142,25 @@ static bool validCalibFloat(float value)
   return isfinite(value) && fabsf(value) < 1000.0f;
 }
 
+static bool validVoltageOffset(float value)
+{
+  return isfinite(value) && value >= 0.0f && value <= APP_CAL_MAX_OFFSET_V;
+}
+
 static float encoderRawToMechanicalRad(int raw)
 {
   return (float)raw * (2.0f * (float)M_PI / (float)ENC_CNT_MAX);
+}
+
+static int encoderRawDiff(int from_raw, int to_raw)
+{
+  int diff = to_raw - from_raw;
+  if (diff < -HARF_OF_ENC_CNT_MAX) {
+    diff += ENC_CNT_MAX;
+  } else if (diff > HARF_OF_ENC_CNT_MAX) {
+    diff -= ENC_CNT_MAX;
+  }
+  return diff;
 }
 
 static void startPwmOutputsFreewheel(void)
@@ -190,6 +270,7 @@ static void initMotorParameters(void)
     if (validCalibFloat(rps_per_v) && fabsf(rps_per_v) > APP_MIN_VOLTAGE_PER_RPS) {
       voltage_per_rps = 1.0f / fabsf(rps_per_v);
     }
+    const float voltage_offset = validVoltageOffset(flash.voltage_offset[m]) ? flash.voltage_offset[m] : 0.0f;
 
     app.motor[m].target_rps = 0.0f;
     app.motor[m].command_rps = 0.0f;
@@ -197,6 +278,7 @@ static void initMotorParameters(void)
     app.motor[m].measured_rps_ave = 0.0f;
     app.motor[m].voltage_q = 0.0f;
     app.motor[m].voltage_per_rps = voltage_per_rps;
+    app.motor[m].voltage_offset = voltage_offset;
     app.motor[m].voltage_limit = APP_OUTPUT_VOLTAGE_LIMIT;
     app.motor[m].zero_electric_angle = validCalibFloat(flash.calib[m]) ? flash.calib[m] : 0.0f;
     app.motor[m].open_loop_electrical_angle = 0.0f;
@@ -207,12 +289,7 @@ static void initMotorParameters(void)
 
 static void updateSpeed(uint8_t motor)
 {
-  int diff = app.motor[motor].pre_raw - as5047p[motor].enc_raw;
-  if (diff < -HARF_OF_ENC_CNT_MAX) {
-    diff += ENC_CNT_MAX;
-  } else if (diff > HARF_OF_ENC_CNT_MAX) {
-    diff -= ENC_CNT_MAX;
-  }
+  int diff = encoderRawDiff(as5047p[motor].enc_raw, app.motor[motor].pre_raw);
 
   app.motor[motor].measured_rps = (float)diff / (float)ENC_CNT_MAX * 1000.0f;
   app.motor[motor].measured_rps_ave = app.motor[motor].measured_rps_ave * 0.98f + app.motor[motor].measured_rps * 0.02f;
@@ -233,6 +310,21 @@ static void updateOutputVoltage(void)
   }
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
+    if (app.param_calib.active) {
+      if (m == app.param_calib.motor) {
+        app.motor[m].command_rps = 0.0f;
+        app.motor[m].target_rps = 0.0f;
+        app.motor[m].voltage_q = app.param_calib.test_voltage;
+      } else {
+        app.motor[m].command_rps = 0.0f;
+        app.motor[m].target_rps = 0.0f;
+        app.motor[m].voltage_q = 0.0f;
+      }
+      app.motor[m].command_timeout_ms = 0U;
+      app.motor[m].output_limited = false;
+      continue;
+    }
+
     if (app.motor[m].command_timeout_ms == 0xFFFFU) {
       /* UART manual command is held until another UART command changes it. */
     } else if (app.motor[m].command_timeout_ms > 0U) {
@@ -252,6 +344,11 @@ static void updateOutputVoltage(void)
     }
 
     float command_v = app.motor[m].target_rps * app.motor[m].voltage_per_rps;
+    if (app.motor[m].target_rps > 0.0f) {
+      command_v += app.motor[m].voltage_offset;
+    } else if (app.motor[m].target_rps < 0.0f) {
+      command_v -= app.motor[m].voltage_offset;
+    }
     app.motor[m].voltage_q = clampFloat(command_v, app.motor[m].voltage_limit);
     app.motor[m].output_limited = (app.motor[m].voltage_q != command_v);
   }
@@ -264,7 +361,7 @@ static void updateOpenLoopVelocity(void)
   }
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
-    const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+    const float direction = (APP_OPEN_LOOP_DIRECTION < 0) ? -1.0f : 1.0f;
     const float delta = direction * app.motor[m].target_rps * (2.0f * (float)M_PI) * (float)APP_POLE_PAIRS * 0.001f;
     app.motor[m].open_loop_electrical_angle = focNormalizeAngle(app.motor[m].open_loop_electrical_angle + delta);
   }
@@ -306,8 +403,19 @@ static void applyPwmInIsr(uint8_t motor)
   updateADC(motor);
   updateAS5047P(motor);
 
-  if (app.align_active) {
-    if (motor == app.align_motor) {
+  if (app.sensor_diag.active) {
+    if (motor == app.sensor_diag.motor) {
+      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, app.sensor_diag.electrical_angle, getBatteryVoltage());
+    } else {
+      foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
+      focDriverSetPwmCompare(motor, center);
+    }
+    return;
+  }
+
+  if (app.align_active || (app.param_calib.active && app.param_calib.stage == APP_PARAM_CAL_STAGE_ALIGN)) {
+    const uint8_t align_motor = app.align_active ? app.align_motor : app.param_calib.motor;
+    if (motor == align_motor) {
       focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, APP_ALIGN_ELECTRICAL_ANGLE, getBatteryVoltage());
     } else {
       foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
@@ -346,6 +454,12 @@ static void handleFreewheelTimer(void)
 static void updateZeroOutputSleep(void)
 {
   if (app.align_active) {
+    return;
+  }
+  if (app.sensor_diag.active) {
+    return;
+  }
+  if (app.param_calib.active) {
     return;
   }
   if (app.mode != BLDC_APP_MODE_RUN) {
@@ -467,7 +581,8 @@ static void setTarget(uint8_t motor, float rps, uint16_t timeout_ms)
     app.motor[motor].command_rps = 0.0f;
     app.motor[motor].target_rps = 0.0f;
   }
-  if (app.mode == BLDC_APP_MODE_READY || (app.mode == BLDC_APP_MODE_FREEWHEEL && app.freewheel_ms == 0U)) {
+  if (app.motor[motor].command_rps != 0.0f &&
+      (app.mode == BLDC_APP_MODE_READY || app.mode == BLDC_APP_MODE_FREEWHEEL)) {
     bldcAppEnableRun();
   }
 }
@@ -523,6 +638,317 @@ static void initOpenLoopAnglesFromSensor(void)
     const float mech = encoderRawToMechanicalRad(as5047p[m].enc_raw);
     app.motor[m].open_loop_electrical_angle = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[m].zero_electric_angle, APP_SENSOR_DIRECTION);
   }
+}
+
+static void startSensorDiagStage(app_sensor_diag_stage_t stage)
+{
+  app.sensor_diag.stage = stage;
+  app.sensor_diag.elapsed_ms = 0U;
+  if (stage == APP_SENSOR_DIAG_STAGE_FORWARD) {
+    app.sensor_diag.start_raw = as5047p[app.sensor_diag.motor].enc_raw;
+    app.sensor_diag.electrical_angle = APP_ALIGN_ELECTRICAL_ANGLE;
+    p("sensor diag M%u forward start raw %5d\n", app.sensor_diag.motor, app.sensor_diag.start_raw);
+  } else if (stage == APP_SENSOR_DIAG_STAGE_REVERSE) {
+    app.sensor_diag.electrical_angle = focNormalizeAngle(APP_ALIGN_ELECTRICAL_ANGLE + 2.0f * (float)M_PI);
+    p("sensor diag M%u reverse start raw %5d\n", app.sensor_diag.motor, app.sensor_diag.forward_raw);
+  } else if (stage == APP_SENSOR_DIAG_STAGE_ALIGN) {
+    app.sensor_diag.electrical_angle = APP_ALIGN_ELECTRICAL_ANGLE;
+    p("sensor diag M%u zero align raw %5d\n", app.sensor_diag.motor, as5047p[app.sensor_diag.motor].enc_raw);
+  }
+}
+
+static void finishSensorDiagMotor(void)
+{
+  const uint8_t motor = app.sensor_diag.motor;
+  const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
+  const float configured_direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+  const int inferred_direction = (app.sensor_diag.forward_diff >= 0) ? 1 : -1;
+  const bool direction_matches = (inferred_direction == APP_SENSOR_DIRECTION);
+
+  app.motor[motor].zero_electric_angle =
+    focNormalizeAngle(configured_direction * (float)APP_POLE_PAIRS * shaft);
+
+  p("sensor diag M%u result fwd %+6d rev %+6d inferred %+d config %+d match %u zero %+6.3f\n",
+    motor,
+    app.sensor_diag.forward_diff,
+    app.sensor_diag.reverse_diff,
+    inferred_direction,
+    APP_SENSOR_DIRECTION,
+    direction_matches ? 1U : 0U,
+    app.motor[motor].zero_electric_angle);
+
+  app.sensor_diag.motor++;
+  if (app.sensor_diag.motor < APP_MOTOR_COUNT) {
+    startSensorDiagStage(APP_SENSOR_DIAG_STAGE_FORWARD);
+    return;
+  }
+
+  app.sensor_diag.active = false;
+  app.sensor_diag.stage = APP_SENSOR_DIAG_STAGE_IDLE;
+  app.open_loop_velocity = true;
+  initOpenLoopAnglesFromSensor();
+  bldcAppSetFreewheelMs(60000U);
+  p("sensor diag done\n");
+}
+
+static void updateSensorDiag(void)
+{
+  if (!app.sensor_diag.active) {
+    return;
+  }
+
+  const uint8_t motor = app.sensor_diag.motor;
+  if (app.sensor_diag.stage == APP_SENSOR_DIAG_STAGE_FORWARD) {
+    if (app.sensor_diag.elapsed_ms < APP_SENSOR_DIAG_SCAN_MS) {
+      const float ratio = (float)app.sensor_diag.elapsed_ms / (float)APP_SENSOR_DIAG_SCAN_MS;
+      app.sensor_diag.electrical_angle =
+        focNormalizeAngle(APP_ALIGN_ELECTRICAL_ANGLE + ratio * 2.0f * (float)M_PI);
+      app.sensor_diag.elapsed_ms++;
+      return;
+    }
+
+    app.sensor_diag.forward_raw = as5047p[motor].enc_raw;
+    app.sensor_diag.forward_diff = encoderRawDiff(app.sensor_diag.start_raw, app.sensor_diag.forward_raw);
+    p("sensor diag M%u forward end raw %5d diff %+6d\n", motor, app.sensor_diag.forward_raw, app.sensor_diag.forward_diff);
+    startSensorDiagStage(APP_SENSOR_DIAG_STAGE_REVERSE);
+    return;
+  }
+
+  if (app.sensor_diag.stage == APP_SENSOR_DIAG_STAGE_REVERSE) {
+    if (app.sensor_diag.elapsed_ms < APP_SENSOR_DIAG_SCAN_MS) {
+      const float ratio = (float)app.sensor_diag.elapsed_ms / (float)APP_SENSOR_DIAG_SCAN_MS;
+      app.sensor_diag.electrical_angle =
+        focNormalizeAngle(APP_ALIGN_ELECTRICAL_ANGLE + (1.0f - ratio) * 2.0f * (float)M_PI);
+      app.sensor_diag.elapsed_ms++;
+      return;
+    }
+
+    app.sensor_diag.reverse_raw = as5047p[motor].enc_raw;
+    app.sensor_diag.reverse_diff = encoderRawDiff(app.sensor_diag.forward_raw, app.sensor_diag.reverse_raw);
+    p("sensor diag M%u reverse end raw %5d diff %+6d\n", motor, app.sensor_diag.reverse_raw, app.sensor_diag.reverse_diff);
+    startSensorDiagStage(APP_SENSOR_DIAG_STAGE_ALIGN);
+    return;
+  }
+
+  if (app.sensor_diag.stage == APP_SENSOR_DIAG_STAGE_ALIGN) {
+    if (app.sensor_diag.elapsed_ms++ < APP_ALIGN_MS) {
+      return;
+    }
+    finishSensorDiagMotor();
+  }
+}
+
+static void startSensorDiag(void)
+{
+  if (app.mode == BLDC_APP_MODE_FAULT) {
+    p("cannot run sensor diag: fault 0x%04x\n", app.fault_id);
+    return;
+  }
+
+  app.align_active = false;
+  app.param_calib.active = false;
+  app.sensor_diag.active = true;
+  app.sensor_diag.motor = 0U;
+  app.open_loop_velocity = false;
+  app.freewheel_ms = 0U;
+  app.zero_output_ms = 0U;
+  app.motor[0].target_rps = 0.0f;
+  app.motor[1].target_rps = 0.0f;
+  app.motor[0].command_rps = 0.0f;
+  app.motor[1].command_rps = 0.0f;
+  setPwmAll(TIM_PWM_CENTER);
+  resumePwmOutput();
+  app.mode = BLDC_APP_MODE_RUN;
+  p("sensor diag start scan_ms %u uq %+4.1f\n", APP_SENSOR_DIAG_SCAN_MS, APP_ALIGN_VOLTAGE);
+  startSensorDiagStage(APP_SENSOR_DIAG_STAGE_FORWARD);
+}
+
+static void resetParamFit(uint8_t motor)
+{
+  app.param_calib.fit_sum_x = 0.0f;
+  app.param_calib.fit_sum_y = 0.0f;
+  app.param_calib.fit_sum_xx = 0.0f;
+  app.param_calib.fit_sum_xy = 0.0f;
+  app.param_calib.fit_count = 0U;
+  app.motor[motor].measured_rps_ave = 0.0f;
+}
+
+static void startParamCalibAlign(void)
+{
+  app.param_calib.stage = APP_PARAM_CAL_STAGE_ALIGN;
+  app.param_calib.elapsed_ms = 0U;
+  app.param_calib.test_voltage = 0.0f;
+  resetParamFit(app.param_calib.motor);
+  p("param cal M%u align uq %+4.1f\n", app.param_calib.motor, APP_ALIGN_VOLTAGE);
+}
+
+static void startParamCalibSample(float voltage)
+{
+  app.param_calib.stage = APP_PARAM_CAL_STAGE_SAMPLE;
+  app.param_calib.elapsed_ms = 0U;
+  app.param_calib.test_voltage = voltage;
+  app.param_calib.speed_sum = 0.0f;
+  app.param_calib.speed_count = 0U;
+  app.motor[app.param_calib.motor].measured_rps_ave = 0.0f;
+  p("param cal M%u vq %+4.2f\n", app.param_calib.motor, voltage);
+}
+
+static bool fitParamCalibMotor(uint8_t motor)
+{
+  const float n = (float)app.param_calib.fit_count;
+  const float denom = n * app.param_calib.fit_sum_xx - app.param_calib.fit_sum_x * app.param_calib.fit_sum_x;
+  if (app.param_calib.fit_count < 2U || fabsf(denom) < 0.0001f) {
+    p("param cal M%u fit NG count %u\n", motor, app.param_calib.fit_count);
+    return false;
+  }
+
+  float voltage_per_rps =
+    (n * app.param_calib.fit_sum_xy - app.param_calib.fit_sum_x * app.param_calib.fit_sum_y) / denom;
+  float voltage_offset =
+    (app.param_calib.fit_sum_y - voltage_per_rps * app.param_calib.fit_sum_x) / n;
+
+  if (!isfinite(voltage_per_rps) || voltage_per_rps < APP_MIN_VOLTAGE_PER_RPS) {
+    p("param cal M%u slope NG %+6.3f\n", motor, voltage_per_rps);
+    return false;
+  }
+  if (!isfinite(voltage_offset) || voltage_offset < 0.0f) {
+    voltage_offset = 0.0f;
+  }
+  if (voltage_offset > APP_CAL_MAX_OFFSET_V) {
+    voltage_offset = APP_CAL_MAX_OFFSET_V;
+  }
+
+  app.param_calib.voltage_per_rps[motor] = voltage_per_rps * APP_CAL_MODEL_MARGIN;
+  app.param_calib.voltage_offset[motor] = voltage_offset * APP_CAL_MODEL_MARGIN;
+  p("param cal M%u model off %+5.2f v/rps %+6.3f points %u\n",
+    motor,
+    app.param_calib.voltage_offset[motor],
+    app.param_calib.voltage_per_rps[motor],
+    app.param_calib.fit_count);
+  return true;
+}
+
+static void finishParamCalibration(void)
+{
+  const float rps_per_v0 = 1.0f / app.param_calib.voltage_per_rps[0];
+  const float rps_per_v1 = 1.0f / app.param_calib.voltage_per_rps[1];
+  const bool save = app.param_calib.save_to_flash;
+
+  app.motor[0].voltage_per_rps = app.param_calib.voltage_per_rps[0];
+  app.motor[1].voltage_per_rps = app.param_calib.voltage_per_rps[1];
+  app.motor[0].voltage_offset = app.param_calib.voltage_offset[0];
+  app.motor[1].voltage_offset = app.param_calib.voltage_offset[1];
+  app.param_calib.active = false;
+  app.param_calib.stage = APP_PARAM_CAL_STAGE_IDLE;
+  app.open_loop_velocity = true;
+  initOpenLoopAnglesFromSensor();
+  bldcAppSetFreewheelMs(60000U);
+
+  if (save) {
+    writeMotorModelValue(rps_per_v0, rps_per_v1, app.motor[0].voltage_offset, app.motor[1].voltage_offset);
+  }
+
+  p("param cal done off %+5.2f %+5.2f v/rps %+6.3f %+6.3f rps/v %+6.3f %+6.3f save %u\n",
+    app.motor[0].voltage_offset,
+    app.motor[1].voltage_offset,
+    app.motor[0].voltage_per_rps,
+    app.motor[1].voltage_per_rps,
+    rps_per_v0,
+    rps_per_v1,
+    save ? 1U : 0U);
+}
+
+static void advanceParamCalibrationMotor(void)
+{
+  const uint8_t motor = app.param_calib.motor;
+  if (!fitParamCalibMotor(motor)) {
+    app.param_calib.voltage_per_rps[motor] = app.motor[motor].voltage_per_rps;
+    app.param_calib.voltage_offset[motor] = app.motor[motor].voltage_offset;
+  }
+
+  app.param_calib.motor++;
+  if (app.param_calib.motor < APP_MOTOR_COUNT) {
+    startParamCalibAlign();
+    return;
+  }
+
+  finishParamCalibration();
+}
+
+static void updateParamCalibration(void)
+{
+  if (!app.param_calib.active) {
+    return;
+  }
+
+  const uint8_t motor = app.param_calib.motor;
+  if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ALIGN) {
+    if (app.param_calib.elapsed_ms++ < APP_ALIGN_MS) {
+      return;
+    }
+
+    const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
+    const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+    app.motor[motor].zero_electric_angle = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft);
+    p("param cal M%u align done raw %5d zero %+6.3f\n", motor, as5047p[motor].enc_raw, app.motor[motor].zero_electric_angle);
+    startParamCalibSample(APP_CAL_VOLTAGE_START);
+    return;
+  }
+
+  if (app.param_calib.stage != APP_PARAM_CAL_STAGE_SAMPLE) {
+    return;
+  }
+
+  if (app.param_calib.elapsed_ms >= APP_CAL_SETTLE_MS) {
+    app.param_calib.speed_sum += fabsf(app.motor[motor].measured_rps);
+    if (app.param_calib.speed_count < 0xFFFFU) {
+      app.param_calib.speed_count++;
+    }
+  }
+
+  app.param_calib.elapsed_ms++;
+  if (app.param_calib.elapsed_ms < (APP_CAL_SETTLE_MS + APP_CAL_SAMPLE_MS)) {
+    return;
+  }
+
+  const float count = (app.param_calib.speed_count == 0U) ? 1.0f : (float)app.param_calib.speed_count;
+  const float measured = app.param_calib.speed_sum / count;
+  p("param cal M%u point vq %+4.2f rps %+6.3f\n", motor, app.param_calib.test_voltage, measured);
+
+  if (measured >= APP_CAL_MIN_FIT_RPS) {
+    app.param_calib.fit_sum_x += measured;
+    app.param_calib.fit_sum_y += app.param_calib.test_voltage;
+    app.param_calib.fit_sum_xx += measured * measured;
+    app.param_calib.fit_sum_xy += measured * app.param_calib.test_voltage;
+    app.param_calib.fit_count++;
+  }
+
+  const float next_voltage = app.param_calib.test_voltage + APP_CAL_VOLTAGE_STEP;
+  if (next_voltage <= APP_CAL_VOLTAGE_LIMIT + 0.001f) {
+    startParamCalibSample(next_voltage);
+    return;
+  }
+
+  advanceParamCalibrationMotor();
+}
+
+static void startParamCalibration(bool save_to_flash)
+{
+  app.param_calib.active = true;
+  app.param_calib.save_to_flash = save_to_flash;
+  app.param_calib.motor = 0U;
+  app.param_calib.voltage_per_rps[0] = app.motor[0].voltage_per_rps;
+  app.param_calib.voltage_per_rps[1] = app.motor[1].voltage_per_rps;
+  app.param_calib.voltage_offset[0] = app.motor[0].voltage_offset;
+  app.param_calib.voltage_offset[1] = app.motor[1].voltage_offset;
+  app.open_loop_velocity = false;
+  app.freewheel_ms = 0U;
+  app.zero_output_ms = 0U;
+  setPwmAll(TIM_PWM_CENTER);
+  resumePwmOutput();
+  app.mode = BLDC_APP_MODE_RUN;
+  p("param cal start vq sweep save %u\n", save_to_flash ? 1U : 0U);
+  startParamCalibAlign();
 }
 
 static void handleUartCommand(uint8_t cmd)
@@ -581,6 +1007,9 @@ static void handleUartCommand(uint8_t cmd)
     case 'h':
       startSensorAlignment(1);
       break;
+    case 'v':
+      startSensorDiag();
+      break;
     case 'o':
       app.open_loop_velocity = true;
       initOpenLoopAnglesFromSensor();
@@ -589,6 +1018,12 @@ static void handleUartCommand(uint8_t cmd)
     case 'c':
       app.open_loop_velocity = false;
       p("sensor-angle voltage diagnostic enabled\n");
+      break;
+    case 'k':
+      startParamCalibration(false);
+      break;
+    case 'K':
+      startParamCalibration(true);
       break;
     case ' ':
       setTarget(0, 0.0f, 0U);
@@ -609,12 +1044,11 @@ static void handleUartCommand(uint8_t cmd)
 
 static void pollUart(void)
 {
-  if (!app.uart_rx_ready) {
+  if (app.uart_rx_tail == app.uart_rx_head) {
     return;
   }
-  app.uart_rx_ready = false;
-  const uint8_t cmd = app.uart_rx_byte;
-  HAL_UART_Receive_IT(&huart1, &app.uart_rx_byte, 1);
+  const uint8_t cmd = app.uart_rx_queue[app.uart_rx_tail];
+  app.uart_rx_tail = (uint8_t)((app.uart_rx_tail + 1U) % APP_UART_RX_QUEUE_SIZE);
   handleUartCommand(cmd);
 }
 
@@ -687,12 +1121,14 @@ void bldcAppInit(void)
 
   app.mode = BLDC_APP_MODE_READY;
   bldcAppSetFreewheelMs(60000U);
-  p("\n[BLDC_APP] boot board 0x%03lx pp %d ol %u offset %+6.3f %+6.3f v/rps %+6.3f %+6.3f\n",
+  p("\n[BLDC_APP] boot board 0x%03lx pp %d ol %u zero %+6.3f %+6.3f off %+5.2f %+5.2f v/rps %+6.3f %+6.3f\n",
     flash.board_id,
     APP_POLE_PAIRS,
     app.open_loop_velocity ? 1U : 0U,
     app.motor[0].zero_electric_angle,
     app.motor[1].zero_electric_angle,
+    app.motor[0].voltage_offset,
+    app.motor[1].voltage_offset,
     app.motor[0].voltage_per_rps,
     app.motor[1].voltage_per_rps);
 }
@@ -710,6 +1146,8 @@ void bldcAppTick1kHz(void)
   updateSpeed(1);
   handleFreewheelTimer();
   updateSensorAlignment();
+  updateSensorDiag();
+  updateParamCalibration();
   updateOutputVoltage();
   updateOpenLoopVelocity();
   applyProtection();
@@ -740,6 +1178,8 @@ void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
 void bldcAppSetFreewheelMs(uint32_t ms)
 {
   app.align_active = false;
+  app.sensor_diag.active = false;
+  app.param_calib.active = false;
   app.freewheel_ms = ms;
   app.motor[0].target_rps = 0.0f;
   app.motor[1].target_rps = 0.0f;
@@ -780,6 +1220,8 @@ void bldcAppForceFault(uint16_t id, uint16_t info, float value)
   app.fault_value = value;
   app.mode = BLDC_APP_MODE_FAULT;
   app.align_active = false;
+  app.sensor_diag.active = false;
+  app.param_calib.active = false;
   setTarget(0, 0.0f, 0U);
   setTarget(1, 0.0f, 0U);
   setPwmAll(TIM_PWM_CENTER);
@@ -809,7 +1251,14 @@ const bldc_app_motor_state_t * bldcAppGetMotorState(uint8_t motor)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef * huart)
 {
   if (huart->Instance == USART1) {
-    app.uart_rx_ready = true;
+    const uint8_t next_head = (uint8_t)((app.uart_rx_head + 1U) % APP_UART_RX_QUEUE_SIZE);
+    if (next_head != app.uart_rx_tail) {
+      app.uart_rx_queue[app.uart_rx_head] = app.uart_rx_byte;
+      app.uart_rx_head = next_head;
+    } else {
+      app.uart_rx_overrun++;
+    }
+    HAL_UART_Receive_IT(&huart1, &app.uart_rx_byte, 1);
   }
 }
 

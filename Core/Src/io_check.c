@@ -101,7 +101,7 @@ void runIoCheckOnce(void)
   printEncoderState();
   focDriverPrintState();
   waitPrintDrain();
-  p("APP mode %d CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n",
+  p("APP mode %d CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f off %+5.2f %+5.2f\n",
     bldcAppGetMode(),
     bldcAppGetCanRxCount(),
     getCanError(),
@@ -109,7 +109,9 @@ void runIoCheckOnce(void)
     flash.calib[0],
     flash.calib[1],
     flash.rps_per_v_cw[0],
-    flash.rps_per_v_cw[1]);
+    flash.rps_per_v_cw[1],
+    flash.voltage_offset[0],
+    flash.voltage_offset[1]);
   waitPrintDrain();
   runFocMathCheckOnce();
 

@@ -4,16 +4,57 @@
 古いアプリケーション実装はビルド対象から外し、CubeMX生成コードとHAL周辺操作だけを流用する構成へ切り替えた。
 制御状態、1kHz処理、TIM割り込み、UART/CANコマンド、保護処理は `bldc_app.c` に集約する。
 
+## 2026-05-02 電圧モデル推定方式の更新
+電流センスは電源ラインのローパス後の値のみで、相電流制御や電流ベースのモーターパラメーター推定には使わない。電流値は過電流保護と状態監視に限定する。
+
+通常運転は引き続き `velocity_openloop` を標準とし、速度指令から電圧指令を作る。ただし低速域では起電力だけでなく摩擦、デッドゾーン、静止抵抗的な要素が支配的になるため、電圧モデルを次の一次式として扱う。
+
+```text
+Vq = sign(rps) * (voltage_offset + voltage_per_rps * abs(rps))
+```
+
+- `voltage_per_rps` は速度に比例して必要になる電圧成分。
+- `voltage_offset` は低速域で支配的になる回転開始・維持のための固定電圧成分。
+- Flash 保存では既存の `rps_per_v_cw` 領域に `1 / voltage_per_rps` を保存する。
+- 旧 `rps_per_v_ccw` 用だった未使用領域は `voltage_offset` の保存先として再利用する。
+
+UART `k` / `K` のモーターパラメーター推定は、目標速度を達成できる最低 Vq を探す方式から、Vq 掃引で実測回転数を観測する方式へ変更した。
+
+推定手順:
+1. M0、M1 の順に実行する。
+2. 各モーターで SimpleFOC 風の固定電気角アライメントを行い、RAM 上の `zero_electric_angle` を更新する。
+3. センサ角を使う電圧トルク診断モードに切り替え、`0.60 V` から `2.00 V` まで `0.20 V` 刻みで Vq を印加する。
+4. 各 Vq で 600 ms 待ってから 900 ms の実測 rps 平均を取る。
+5. `0.30 rps` 以上で回った点だけを使い、`Vq = offset + K * rps` を最小二乗で推定する。
+6. 推定値には 10% の電圧マージンを加える。
+7. `k` はRAM反映のみ、`K` は推定後にFlashへ保存する。
+
+この推定はセンサ角電圧モードで実際に回転できることを前提にしている。十分な観測点が得られないモーターは推定失敗として、既存の `voltage_per_rps` と `voltage_offset` を保持する。
+
 ## 最終的な完成形
 現時点の完成形は、SimpleFOCのC++/Arduino依存を持ち込まず、CubeMX/HAL環境のままSimpleFOC相当のSinePWMと `velocity_openloop` をC実装として取り込む構成とする。
 
 - 通常RUN経路は `velocity_openloop` を標準とし、CAN/UARTの速度指令から回転磁界を生成する。
 - 電圧指令は `target_rps * voltage_per_rps` で作り、Flashに保存済みの `rps_per_v_cw` が妥当な場合はその逆数を使う。
 - 外部から受けた速度指令は `command_rps` として保持し、1kHz周期で `target_rps` を `0.01 rps/ms` 以下の変化量に制限して追従させる。
-- 極対数は12、センサ符号は既存速度推定と整合する `APP_SENSOR_DIRECTION = -1` とする。
+- 極対数は12、センサ角を使う診断/校正経路の符号は実機診断結果に合わせて `APP_SENSOR_DIRECTION = +1` とする。
 - センサ角を使う電圧FOCは通常経路ではなく、zero angle、相順、センサ方向を詰めるための診断モードとして残す。
+- センサ方向はSimpleFOC風の電気角スキャンで確認し、現ハードでは `APP_SENSOR_DIRECTION = +1`。open-loop速度指令の符号は別に `APP_OPEN_LOOP_DIRECTION = -1` として扱う。
 - 起動直後は60秒フリーウィール、`n` だけでは目標速度0、`space`/`x`/`0` で即フリーウィールへ戻る。
 - 電流FOCと速度PI閉ループは今回の完成範囲外。ADC注入変換、2モータ、保護監視、電流センス相順を別フェーズで確認してから扱う。
+- 電流センスは電源ラインのローパスありの値だけを使う。制御には使わず、過電流保護と状態監視に限定する。
+
+## モーターパラメーター推定
+電流制御に必要な相電流は観測できないため、推定対象は電圧次元の速度フィードフォワード係数に限定する。
+
+- 推定コマンドはUART `k` / `K`。
+- `k` はRAM反映のみ、`K` は推定後にFlashの `rps_per_v_cw` へ保存する。
+- 推定はM0、M1の順に実行する。
+- 各モーターで固定電気角アライメントを行ってから、センサ角電圧モードで `0.60 V` から `2.00 V` までVqを掃引する。
+- 各Vqで実測rpsを観測し、`Vq = offset + voltage_per_rps * rps` を最小二乗で推定する。
+- 推定値には10%の電圧マージンを乗せる。
+- Flashへ保存する値は既存形式に合わせて `rps_per_v = 1 / voltage_per_rps` とする。
+- 推定中に `space`、Fault、電圧/温度/電流保護が入った場合は中断し、フリーウィールへ戻す。
 
 ## 実装・デバッグ手順
 1. 非回転I/O確認: UART `i` でADC、AS5047P、PWM CCER/BDTR、Flash校正値、FOC計算を確認する。
@@ -39,11 +80,20 @@
 
 ## 実機確認結果（2026-05-02 追加）
 - 12極対設定でSimpleFOC風センサアラインを再実行し、RAM上のzero angleを更新できた。
-- センサ角を使う電圧FOC診断は、再アライン後も `+2.5 rps` 相当の電圧指令で持続回転しなかった。通常経路には採用しない。
+- センサ角を使う電圧診断は、センサ方向を `APP_SENSOR_DIRECTION = +1` に修正した後、Vq掃引で持続回転できることを確認した。ただし通常経路は引き続き速度open-loopを使う。
 - 速度指令スルーレート制限を追加し、UARTログに `cmd` と `tgt` を分けて表示するようにした。
 - M0単独 `cmd +2.5 rps` では `tgt` が段階的に上がり、最終的に推定速度 `+2.48〜+2.52 rps` で安定した。
 - M1単独 `cmd +2.5 rps` でも同様に推定速度 `+2.48〜+2.52 rps` で安定した。
 - M0/M1同時 `cmd +2.5 rps` でも両軸が推定速度 `+2.48〜+2.52 rps` で安定し、停止後Faultなし。
+
+## 実機確認結果（2026-05-02 パラメーター推定）
+- UART `k` でRAM上のモーターパラメーター推定を実行し、Faultなしで完了した。
+- UART `K` で同じ推定を実行し、Flashへ保存した。
+- 推定結果は M0 `voltage_offset = +0.18 V`, `voltage_per_rps = +0.190 V/rps`。
+- 推定結果は M1 `voltage_offset = +0.20 V`, `voltage_per_rps = +0.186 V/rps`。
+- Flash保存形式では M0 `rps_per_v_cw = +5.268 rps/V`、M1 `rps_per_v_cw = +5.367 rps/V`。
+- 保存後の通常RUNでM0/M1同時 `cmd +2.5 rps` を確認し、`vq` はM0約 `+0.66 V`、M1約 `+0.67 V`、推定速度は `+2.49〜+2.52 rps` で安定した。
+- 最終状態は `Mode 1 OL 1`、Fault `0x0000`。
 
 現行のビルド対象:
 - `Core/Src/main.c`: MCU初期化と `bldc_app` への委譲。
@@ -112,6 +162,9 @@ y  M0のSimpleFOC風センサアラインをRAM上で実行し、zero_electric_a
 h  M1のSimpleFOC風センサアラインをRAM上で実行し、zero_electric_angleを更新して60秒フリーウィールへ戻す。
 o  通常RUN経路の velocity_openloop を有効化する。
 c  センサ角を使う電圧FOC診断へ切り替える。通常運用では使わない。
+v  SimpleFOC風センサ方向診断をM0/M1の順に実行する。電気角を正逆へ動かし、raw差分、推定方向、設定との一致、zero angleを表示する。
+k  モーターパラメーター推定をRAM上で実行する。Flashへは保存しない。
+K  モーターパラメーター推定を実行し、推定した `rps_per_v_cw` をFlashへ保存する。
 space  目標速度0、60秒フリーウィール。
 1  診断ログを状態ページへ固定。
 2  診断ログをM0ページへ固定。
@@ -386,3 +439,19 @@ n
 - 起動時の `output_voltage_limit` 計算をFlash生値の直接割り算から、検証済みの `motor_param[].voltage_per_rps` ベースへ変更。
 - UART改行コマンドの `print idx` 表示で不足していた引数を追加。
 
+## 2026-05-02 追記: SimpleFOC風Vq電圧制御の前提確認と実測結果
+SimpleFOCの `voltage` トルク制御相当では、センサ角から電気角を作り、その角度に対して `Uq` を印加する。したがって、Vq掃引で回らない場合は電圧量より先に、センサ方向、zero electric angle、極対数、PWM相順の前提を疑う。
+
+今回の確認では、SimpleFOC風の電気角スキャン診断 `v` により、現ハードのセンサ方向は M0/M1 とも `+1` と判定された。通常のopen-loop速度指令の符号とは分離し、設定は次の通りにした。
+
+- センサ角を使う診断/校正経路: `APP_SENSOR_DIRECTION = +1`
+- 通常の速度open-loop経路: `APP_OPEN_LOOP_DIRECTION = -1`
+
+この修正後、UART `k` / `K` のVq掃引は正常に回転し、`K` でFlash保存した値は次の通り。
+
+- M0: `voltage_offset = +0.18 V`, `voltage_per_rps = +0.190 V/rps`, `rps_per_v = +5.268 rps/V`
+- M1: `voltage_offset = +0.20 V`, `voltage_per_rps = +0.186 V/rps`, `rps_per_v = +5.367 rps/V`
+
+通常速度指令では、`Vq = sign(rps) * (voltage_offset + voltage_per_rps * abs(rps))` を使う。速度指令が入った場合は、60秒フリーウィール保持中でも `FREEWHEEL` から `RUN` へ戻す。これにより、校正直後やI/Oチェック直後に `w/s/q/a/e/d` またはCAN速度指令を送っても通常経路の確認へ進められる。
+
+UART受信は1バイト保持では連続入力を取りこぼすため、32バイトのリングバッファへ変更した。`wwww3` のような連続コマンドでも順次処理できる。
