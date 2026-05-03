@@ -4,7 +4,7 @@
 // fault/protection thresholds
 #define MOTOR_OVER_LOAD_CNT_LIMIT (3000)
 
-#define THR_MOTOR_OVER_CURRENT (0.70f)
+#define THR_MOTOR_OVER_CURRENT (1.00f)
 #define THR_BATTERY_UNVER_VOLTAGE (18.0f)
 #define THR_BATTERY_OVER_VOLTAGE (35.0f)
 #define THR_MOTOR_OVER_TEMPERATURE (70)

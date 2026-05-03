@@ -24,6 +24,7 @@ typedef struct
   bool limited;
 } foc_pwm_compare_t;
 
+void focMathInit(void);
 float focNormalizeAngle(float angle);
 float focElectricalAngle(float shaft_angle, int pole_pairs, float zero_electric_angle, int sensor_direction);
 float focLimitSymmetric(float value, float limit);

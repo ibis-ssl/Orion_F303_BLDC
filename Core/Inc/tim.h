@@ -38,7 +38,7 @@ extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim8;
 
 /* USER CODE BEGIN Private defines */
-#define TIM_PWM_CENTER (900)
+#define TIM_PWM_CENTER (1200)
 
 /* USER CODE END Private defines */
 
@@ -58,6 +58,7 @@ void setPwmOutPutFreeWheel(void);
 void resumePwmOutput(void);
 void stopTimerInterrupt(void);
 void setPwmAll(uint32_t pwm_cnt);
+void setPwmTimerHalfPhase(void);
 void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit);
 
 /* USER CODE END Prototypes */

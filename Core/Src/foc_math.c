@@ -13,14 +13,55 @@
 
 #define FOC_TWO_PI ((float)(2.0 * M_PI))
 #define FOC_SQRT3_2 (0.8660254037844386f)
+#define FOC_SIN_TABLE_BITS (10U)
+#define FOC_SIN_TABLE_SIZE (1U << FOC_SIN_TABLE_BITS)
+#define FOC_SIN_TABLE_MASK (FOC_SIN_TABLE_SIZE - 1U)
+#define FOC_ANGLE_TO_INDEX ((float)FOC_SIN_TABLE_SIZE / FOC_TWO_PI)
+
+static float sin_table[FOC_SIN_TABLE_SIZE];
+static bool sin_table_ready;
+
+void focMathInit(void)
+{
+  const float step = FOC_TWO_PI / (float)FOC_SIN_TABLE_SIZE;
+  for (uint16_t i = 0U; i < FOC_SIN_TABLE_SIZE; i++) {
+    sin_table[i] = sinf((float)i * step);
+  }
+  sin_table_ready = true;
+}
 
 float focNormalizeAngle(float angle)
 {
-  float normalized = fmodf(angle, FOC_TWO_PI);
-  if (normalized < 0.0f) {
-    normalized += FOC_TWO_PI;
+  while (angle >= FOC_TWO_PI) {
+    angle -= FOC_TWO_PI;
   }
-  return normalized;
+  while (angle < 0.0f) {
+    angle += FOC_TWO_PI;
+  }
+  return angle;
+}
+
+static float focFastSinNormalized(float angle)
+{
+  const float index_f = angle * FOC_ANGLE_TO_INDEX;
+  const uint16_t index = (uint16_t)index_f & FOC_SIN_TABLE_MASK;
+  const uint16_t next = (uint16_t)(index + 1U) & FOC_SIN_TABLE_MASK;
+  const float frac = index_f - (float)((uint16_t)index_f);
+  return sin_table[index] + (sin_table[next] - sin_table[index]) * frac;
+}
+
+static void focFastSinCos(float angle, float * sin_out, float * cos_out)
+{
+  angle = focNormalizeAngle(angle);
+
+  if (!sin_table_ready) {
+    *sin_out = sinf(angle);
+    *cos_out = cosf(angle);
+    return;
+  }
+
+  *sin_out = focFastSinNormalized(angle);
+  *cos_out = focFastSinNormalized(focNormalizeAngle(angle + (0.5f * (float)M_PI)));
 }
 
 float focElectricalAngle(float shaft_angle, int pole_pairs, float zero_electric_angle, int sensor_direction)
@@ -61,10 +102,7 @@ foc_phase_voltage_t focSetPhaseVoltageSine(float uq, float ud, float angle_el, f
 
   uq = focLimitSymmetric(uq, half_limit);
   ud = focLimitSymmetric(ud, half_limit);
-  angle_el = focNormalizeAngle(angle_el);
-
-  sin_el = sinf(angle_el);
-  cos_el = cosf(angle_el);
+  focFastSinCos(angle_el, &sin_el, &cos_el);
 
   /* Inverse Park + Clarke transform, matching SimpleFOC SinePWM voltage mode. */
   ualpha = cos_el * ud - sin_el * uq;

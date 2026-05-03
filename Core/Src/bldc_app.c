@@ -22,14 +22,14 @@
 #include "usart.h"
 
 #define APP_MOTOR_COUNT (2U)
-#define APP_PWM_ISR_PER_1MS (20U)
+#define APP_PWM_ISR_PER_1MS (15U)
 #define APP_POLE_PAIRS (12)
 #define APP_SENSOR_DIRECTION (1)
 #define APP_OPEN_LOOP_DIRECTION (-1)
 #define APP_RPS_LIMIT (80.0f)
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
 #define APP_DEFAULT_VOLTAGE_PER_RPS (0.08f)
-#define APP_OUTPUT_VOLTAGE_LIMIT (6.0f)
+#define APP_OUTPUT_VOLTAGE_LIMIT (8.0f)
 #define APP_RPS_SLEW_PER_MS (0.01f)
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
@@ -47,6 +47,7 @@
 #define APP_CAL_MIN_FIT_RPS (0.30f)
 #define APP_CAL_MODEL_MARGIN (1.10f)
 #define APP_CAL_MAX_OFFSET_V (3.00f)
+#define APP_PROTECT_DEBOUNCE_MS (20U)
 
 typedef enum
 {
@@ -103,8 +104,9 @@ typedef struct
   volatile uint32_t pwm_irq_count;
   uint32_t freewheel_ms;
   uint32_t zero_output_ms;
-  uint32_t print_ms;
   uint8_t print_page;
+  bool debug_print_request;
+  bool foc_math_request;
   uint16_t fault_id;
   uint16_t fault_info;
   float fault_value;
@@ -128,6 +130,9 @@ typedef struct
   uint32_t isr_cycles_max;
   uint32_t open_loop_cycle[APP_MOTOR_COUNT];
   uint32_t speed_cycle[APP_MOTOR_COUNT];
+  uint16_t under_voltage_ms;
+  uint16_t over_voltage_ms;
+  uint16_t over_current_ms[APP_MOTOR_COUNT];
   float cycle_to_s;
 } app_state_t;
 
@@ -296,6 +301,22 @@ static void primeSensors(void)
   }
 }
 
+static void calibrateCurrentOffset(void)
+{
+  int64_t offset = 0;
+  for (int i = 0; i < 128; i++) {
+    updateADC(0);
+    updateADC(1);
+    offset += (int64_t)adc_raw.cs_motor[0];
+    offset += (int64_t)adc_raw.cs_motor[1];
+  }
+  adc_raw.cs_adc_offset = (int)(offset / 256);
+  p("current offset raw %d cur %+5.2f %+5.2f\n",
+    adc_raw.cs_adc_offset,
+    getCurrentMotor(0),
+    getCurrentMotor(1));
+}
+
 static void initMotorParameters(void)
 {
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
@@ -422,19 +443,31 @@ static void applyProtection(void)
 {
   const float batt = getBatteryVoltage();
   if (batt < THR_BATTERY_UNVER_VOLTAGE) {
-    bldcAppForceFault(BLDC_UNDER_VOLTAGE, 0, batt);
-    return;
+    if (++app.under_voltage_ms >= APP_PROTECT_DEBOUNCE_MS) {
+      bldcAppForceFault(BLDC_UNDER_VOLTAGE, 0, batt);
+      return;
+    }
+  } else {
+    app.under_voltage_ms = 0U;
   }
   if (batt > THR_BATTERY_OVER_VOLTAGE) {
-    bldcAppForceFault(BLDC_OVER_VOLTAGE, 0, batt);
-    return;
+    if (++app.over_voltage_ms >= APP_PROTECT_DEBOUNCE_MS) {
+      bldcAppForceFault(BLDC_OVER_VOLTAGE, 0, batt);
+      return;
+    }
+  } else {
+    app.over_voltage_ms = 0U;
   }
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     const float current = fabsf(getCurrentMotor(m));
     if (current > THR_MOTOR_OVER_CURRENT) {
-      bldcAppForceFault(BLDC_OVER_CURRENT, m, current);
-      return;
+      if (++app.over_current_ms[m] >= APP_PROTECT_DEBOUNCE_MS) {
+        bldcAppForceFault(BLDC_OVER_CURRENT, m, current);
+        return;
+      }
+    } else {
+      app.over_current_ms[m] = 0U;
     }
     const int motor_temp = getTempMotor(m);
     const int fet_temp = getTempFET(m);
@@ -531,13 +564,14 @@ static void updateZeroOutputSleep(void)
   }
 }
 
+static void requestDebugPrint(uint8_t page)
+{
+  app.print_page = page;
+  app.debug_print_request = true;
+}
+
 static void printDiagnostics(void)
 {
-  if (app.print_ms++ < 100U) {
-    return;
-  }
-  app.print_ms = 0;
-
   switch (app.print_page) {
     case 0:
       p("Mode %d OL %u Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu loop %lu/%lu us slack %ld us isr %lu/%lu us\n",
@@ -580,6 +614,24 @@ static void printDiagnostics(void)
         getTempMotor(1),
         getTempFET(1));
       break;
+  }
+}
+
+static void processDeferredDebugOutput(void)
+{
+  if (app.io_check_request) {
+    app.io_check_request = false;
+    runIoCheckOnce();
+    return;
+  }
+  if (app.foc_math_request) {
+    app.foc_math_request = false;
+    runFocMathCheckOnce();
+    return;
+  }
+  if (app.debug_print_request) {
+    app.debug_print_request = false;
+    printDiagnostics();
   }
 }
 
@@ -1017,10 +1069,19 @@ static void handleUartCommand(uint8_t cmd)
 {
   switch (cmd) {
     case 'i':
-      runIoCheckOnce();
+      bldcAppSetFreewheelMs(60000U);
+      app.io_check_request = true;
       break;
     case 'm':
-      runFocMathCheckOnce();
+      app.foc_math_request = true;
+      break;
+    case 'R':
+      p("system reset\n");
+      HAL_NVIC_SystemReset();
+      break;
+    case 'u':
+      bldcAppSetFreewheelMs(60000U);
+      calibrateCurrentOffset();
       break;
     case 'n':
       bldcAppEnableRun();
@@ -1032,16 +1093,13 @@ static void handleUartCommand(uint8_t cmd)
       p("freewheel 60s\n");
       break;
     case '1':
-      app.print_page = 0U;
-      p("print page %u\n", app.print_page);
+      requestDebugPrint(0U);
       break;
     case '2':
-      app.print_page = 1U;
-      p("print page %u\n", app.print_page);
+      requestDebugPrint(1U);
       break;
     case '3':
-      app.print_page = 2U;
-      p("print page %u\n", app.print_page);
+      requestDebugPrint(2U);
       break;
     case 'w':
       setTarget(0, app.motor[0].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
@@ -1097,7 +1155,7 @@ static void handleUartCommand(uint8_t cmd)
       if (app.print_page > 2U) {
         app.print_page = 0;
       }
-      p("print page %u\n", app.print_page);
+      requestDebugPrint(app.print_page);
       break;
     default:
       break;
@@ -1156,6 +1214,7 @@ void bldcAppInit(void)
 {
   app.mode = BLDC_APP_MODE_BOOT;
   enableCycleCounter();
+  focMathInit();
   app.cycle_to_s = 1.0f / (float)SystemCoreClock;
   setLedRed(true);
   setLedGreen(false);
@@ -1179,7 +1238,11 @@ void bldcAppInit(void)
 
   HAL_UART_Receive_IT(&huart1, &app.uart_rx_byte, 1);
 
+  setPwmTimerHalfPhase();
   if (HAL_TIM_Base_Start_IT(&htim1) != HAL_OK) {
+    Error_Handler();
+  }
+  if (HAL_TIM_Base_Start_IT(&htim8) != HAL_OK) {
     Error_Handler();
   }
 
@@ -1203,11 +1266,6 @@ void bldcAppTick1kHz(void)
 
   pollUart();
 
-  if (app.io_check_request) {
-    app.io_check_request = false;
-    runIoCheckOnce();
-  }
-
   updateSpeed(0);
   updateSpeed(1);
   handleFreewheelTimer();
@@ -1219,12 +1277,13 @@ void bldcAppTick1kHz(void)
   applyProtection();
   updateZeroOutputSleep();
   sendTelemetry();
-  printDiagnostics();
 
   app.loop_busy_cycles = cycleDelta(loop_start, cycleNow());
   if (app.loop_busy_cycles > app.loop_busy_cycles_max) {
     app.loop_busy_cycles_max = app.loop_busy_cycles;
   }
+
+  processDeferredDebugOutput();
 
   setLedRed(true);
   waitForNextMainCycle();
@@ -1233,14 +1292,17 @@ void bldcAppTick1kHz(void)
 
 void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
 {
-  if (htim->Instance != TIM1) {
+  const uint32_t isr_start = cycleNow();
+  uint8_t motor_select;
+
+  if (htim->Instance == TIM1) {
+    app.pwm_irq_count++;
+    motor_select = 0U;
+  } else if (htim->Instance == TIM8) {
+    motor_select = 1U;
+  } else {
     return;
   }
-
-  static uint8_t motor_select = 0U;
-  const uint32_t isr_start = cycleNow();
-  app.pwm_irq_count++;
-  motor_select ^= 1U;
 
   setLedBlue(false);
   applyPwmInIsr(motor_select);
