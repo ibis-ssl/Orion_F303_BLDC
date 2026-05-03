@@ -45,6 +45,8 @@ typedef struct
   int enc_elec_raw;
   int pre_enc_raw;
   int diff_enc, diff_min, diff_max, diff_max_cnt, diff_min_cnt;
+  uint32_t spi_error_count;
+  uint16_t last_frame;
   struct
   {
     uint8_t error, prog, diagagc, mag, angleenc, anglecom;

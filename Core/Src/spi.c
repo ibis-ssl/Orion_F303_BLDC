@@ -141,6 +141,19 @@ inline void updateDiff(bool enc)
   }
 }
 
+static uint16_t transferAS5047P(uint16_t tx)
+{
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_TXE) == RESET) {
+  }
+  hspi1.Instance->DR = tx;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
+  }
+  const uint16_t rx = (uint16_t)hspi1.Instance->DR;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_BSY) != RESET) {
+  }
+  return rx;
+}
+
 uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
 {
   if (enc) {
@@ -149,9 +162,7 @@ uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
   }
 
-  hspi1.Instance->DR = reg_address | (1 << 14);
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
-  }
+  const uint16_t rx = transferAS5047P(reg_address | (1 << 14));
 
   if (enc) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
@@ -159,22 +170,24 @@ uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
   }
   // 14 bit registor
-  return (hspi1.Instance->DR & 0x3FFF);
+  return (rx & 0x3FFF);
 }
 
 inline void updateAS5047P_Common(as5047p_t * enc)
 {
   enc->pre_enc_raw = enc->enc_raw;
 
-  enc->enc_raw = hspi1.Instance->DR;
   // addr 0x3FFF & 1 << 14 (read) & parity
   // 0x3FFE : without dynamic errro compensation
   // 0x3FFF : with dynamic errro compensation
-  hspi1.Instance->DR = 0xFFFF;
-  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
+  const uint16_t frame = transferAS5047P(0xFFFF);
+  enc->last_frame = frame;
+  if ((frame & 0x4000U) != 0U) {
+    enc->spi_error_count++;
+    return;
   }
   // 分解能は14bitだが、後段であまり算をするため、16bitに変換
-  enc->enc_raw = (hspi1.Instance->DR & 0x3FFF) << 2;
+  enc->enc_raw = (int)((frame & 0x3FFFU) << 2);
 
   enc->enc_elec_raw = 5461 - (enc->enc_raw % 5461);
   enc->output_radian = (float)enc->enc_elec_raw / 5461 * 2 * M_PI;

@@ -29,7 +29,7 @@
 #define APP_RPS_LIMIT (80.0f)
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
 #define APP_DEFAULT_VOLTAGE_PER_RPS (0.08f)
-#define APP_OUTPUT_VOLTAGE_LIMIT (8.0f)
+#define APP_OUTPUT_VOLTAGE_LIMIT (12.0f)
 #define APP_RPS_SLEW_PER_MS (0.01f)
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
@@ -48,6 +48,8 @@
 #define APP_CAL_MODEL_MARGIN (1.10f)
 #define APP_CAL_MAX_OFFSET_V (3.00f)
 #define APP_PROTECT_DEBOUNCE_MS (20U)
+#define APP_SPEED_GLITCH_LIMIT_RPS (160.0f)
+#define APP_SPEED_GLITCH_FAULT_COUNT (5U)
 
 typedef enum
 {
@@ -130,6 +132,10 @@ typedef struct
   uint32_t isr_cycles_max;
   uint32_t open_loop_cycle[APP_MOTOR_COUNT];
   uint32_t speed_cycle[APP_MOTOR_COUNT];
+  uint32_t speed_glitch_count[APP_MOTOR_COUNT];
+  uint16_t speed_glitch_streak[APP_MOTOR_COUNT];
+  float speed_glitch_rps[APP_MOTOR_COUNT];
+  int speed_glitch_diff[APP_MOTOR_COUNT];
   uint16_t under_voltage_ms;
   uint16_t over_voltage_ms;
   uint16_t over_current_ms[APP_MOTOR_COUNT];
