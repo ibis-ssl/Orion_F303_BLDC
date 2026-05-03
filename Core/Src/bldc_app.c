@@ -22,7 +22,7 @@
 #include "usart.h"
 
 #define APP_MOTOR_COUNT (2U)
-#define APP_PWM_ISR_PER_1MS (15U)
+#define APP_PWM_ISR_PER_1MS (23U)
 #define APP_POLE_PAIRS (12)
 #define APP_SENSOR_DIRECTION (1)
 #define APP_OPEN_LOOP_DIRECTION (-1)
@@ -1238,11 +1238,8 @@ void bldcAppInit(void)
 
   HAL_UART_Receive_IT(&huart1, &app.uart_rx_byte, 1);
 
-  setPwmTimerHalfPhase();
+  setPwmTimerSyncPhase();
   if (HAL_TIM_Base_Start_IT(&htim1) != HAL_OK) {
-    Error_Handler();
-  }
-  if (HAL_TIM_Base_Start_IT(&htim8) != HAL_OK) {
     Error_Handler();
   }
 
@@ -1292,17 +1289,14 @@ void bldcAppTick1kHz(void)
 
 void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
 {
-  const uint32_t isr_start = cycleNow();
-  uint8_t motor_select;
-
-  if (htim->Instance == TIM1) {
-    app.pwm_irq_count++;
-    motor_select = 0U;
-  } else if (htim->Instance == TIM8) {
-    motor_select = 1U;
-  } else {
+  if (htim->Instance != TIM1) {
     return;
   }
+
+  static uint8_t motor_select = 0U;
+  const uint32_t isr_start = cycleNow();
+  app.pwm_irq_count++;
+  motor_select ^= 1U;
 
   setLedBlue(false);
   applyPwmInIsr(motor_select);

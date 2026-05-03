@@ -52,7 +52,7 @@ void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 2400;
+  htim1.Init.Period = 1566;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -120,7 +120,7 @@ void MX_TIM8_Init(void)
   htim8.Instance = TIM8;
   htim8.Init.Prescaler = 1;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = 2400;
+  htim8.Init.Period = 1566;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim8.Init.RepetitionCounter = 0;
   htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -450,11 +450,17 @@ void stopTimerInterrupt(void)
   HAL_TIM_Base_Stop_IT(&htim8);
 }
 
-void setPwmTimerHalfPhase(void)
+void setPwmTimerSyncPhase(void)
 {
+  htim1.Instance->CR1 &= ~TIM_CR1_CEN;
+  htim8.Instance->CR1 &= ~TIM_CR1_CEN;
   __HAL_TIM_SET_COUNTER(&htim1, 0U);
-  __HAL_TIM_SET_COUNTER(&htim8, (uint32_t)(htim8.Init.Period / 2U));
+  __HAL_TIM_SET_COUNTER(&htim8, 0U);
+  htim1.Instance->EGR = TIM_EGR_UG;
+  htim8.Instance->EGR = TIM_EGR_UG;
   __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE);
   __HAL_TIM_CLEAR_FLAG(&htim8, TIM_FLAG_UPDATE);
+  htim1.Instance->CR1 |= TIM_CR1_CEN;
+  htim8.Instance->CR1 |= TIM_CR1_CEN;
 }
 /* USER CODE END 1 */

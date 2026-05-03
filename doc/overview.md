@@ -592,3 +592,30 @@ CPU余裕を見て、最終的にTIM1/TIM8を15kHzへ下げた。
 | `+30 rps` | - | - | - | - | `BLDC_OVER_CURRENT`, M0 `+1.22 A` |
 
 15kHz/25rps時のTIM1/TIM8 ISR単体最大は約`27us`、1kHz側の通常処理最大は約`578us`だった。30rpsでは過電流が再現したため、現構成で安全に確認できた上限はM0/M1同時の`+25 rps`である。30rps以上へ進める場合は、PWM周波数ではなく電流保護、Vqモデル、加速ランプ、または電流オフセット/過渡電流検出の扱いを先に見直す。
+
+## 2026-05-03 追記: TIM1単独ISRへの復帰とTIM1/TIM8同期
+TIM1/TIM8の両方で制御ISRを走らせる構成は、割り込み負荷とデバッグ時の扱いが複雑になるため廃止した。制御ISRはTIM1 updateのみへ戻し、TIM1 ISR内でM0/M1を交互更新する。TIM8はPWM出力タイマーとして使用するが、base interruptは開始しない。
+
+TIM1/TIM8のカウンタ位相は同期させる。起動時に両タイマーのカウンタを0へ戻し、update eventを発行してプリロード値を反映してから、update flagをクリアする。CCR preload、ARR preload、TIM DeadTime 0は維持する。
+
+最終設定:
+
+| 項目 | 値 |
+|---|---:|
+| 制御ISR | TIM1 updateのみ |
+| TIM1/TIM8 Period | `1566` |
+| `TIM_PWM_CENTER` | `783` |
+| `APP_PWM_ISR_PER_1MS` | `23` |
+| TIM1/TIM8位相 | 同期 |
+| TIM8 base interrupt | 未使用 |
+| TIM DeadTime | `0` |
+| CCR preload | 有効 |
+
+実機確認:
+
+| 指令 | M0実測 | M1実測 | M0 Vq | M1 Vq | 結果 |
+|---:|---:|---:|---:|---:|---|
+| `+10 rps` | `+10.01` | `+9.98` | `+2.08 V` | `+2.06 V` | Faultなし |
+| `+30 rps` | `+29.97` | `+30.00` | `+5.88 V` | `+5.79 V` | Faultなし |
+
+30rps時のTIM1 ISR最大は約`27us`、1kHz loop最大は約`236us`で、TIM1/TIM8分離ISR構成より1kHz側の余裕が大きく改善した。
