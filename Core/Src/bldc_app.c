@@ -22,7 +22,7 @@
 #include "usart.h"
 
 #define APP_MOTOR_COUNT (2U)
-#define APP_PWM_ISR_PER_1MS (23U)
+#define APP_PWM_ISR_PER_1MS (40U)
 #define APP_POLE_PAIRS (12)
 #define APP_SENSOR_DIRECTION (1)
 #define APP_OPEN_LOOP_DIRECTION (-1)
@@ -30,7 +30,7 @@
 #define APP_RPS_LIMIT (80.0f)
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
 #define APP_DEFAULT_VOLTAGE_PER_RPS (0.08f)
-#define APP_OUTPUT_VOLTAGE_LIMIT (8.0f)
+#define APP_OUTPUT_VOLTAGE_LIMIT (12.0f)
 #define APP_RPS_SLEW_PER_MS (0.01f)
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
@@ -141,6 +141,7 @@ typedef struct
   uint16_t over_voltage_ms;
   uint16_t over_current_ms[APP_MOTOR_COUNT];
   float cycle_to_s;
+  float speed_cycles_to_rps;
 } app_state_t;
 
 static app_state_t app;
@@ -354,11 +355,10 @@ static void updateSpeedInIsr(uint8_t motor)
   const uint32_t now = cycleNow();
   const uint32_t elapsed_cycles = cycleDelta(app.speed_cycle[motor], now);
   app.speed_cycle[motor] = now;
-  const float elapsed_s = (float)elapsed_cycles * app.cycle_to_s;
   int diff = encoderRawDiff(as5047p[motor].enc_raw, app.motor[motor].pre_raw);
 
-  if (elapsed_s > 0.0f) {
-    const float measured = ((float)diff / (float)ENC_CNT_MAX) / elapsed_s;
+  if (elapsed_cycles > 0U) {
+    const float measured = ((float)diff * app.speed_cycles_to_rps) / (float)elapsed_cycles;
     if (fabsf(measured) > APP_SPEED_GLITCH_LIMIT_RPS && app.mode == BLDC_APP_MODE_RUN) {
       app.speed_glitch_count[motor]++;
       app.speed_glitch_streak[motor]++;
@@ -504,13 +504,13 @@ static void applyProtection(void)
 
 static void applyPwmInIsr(uint8_t motor)
 {
-  updateADC(motor);
+  adcUpdateFast(motor);
   updateAS5047P(motor);
   updateSpeedInIsr(motor);
 
   if (app.sensor_diag.active) {
     if (motor == app.sensor_diag.motor) {
-      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, app.sensor_diag.electrical_angle, getBatteryVoltage());
+      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, app.sensor_diag.electrical_angle, adcBatteryVoltageFast());
     } else {
       foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
       focDriverSetPwmCompare(motor, center);
@@ -521,7 +521,7 @@ static void applyPwmInIsr(uint8_t motor)
   if (app.align_active || (app.param_calib.active && app.param_calib.stage == APP_PARAM_CAL_STAGE_ALIGN)) {
     const uint8_t align_motor = app.align_active ? app.align_motor : app.param_calib.motor;
     if (motor == align_motor) {
-      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, APP_ALIGN_ELECTRICAL_ANGLE, getBatteryVoltage());
+      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, APP_ALIGN_ELECTRICAL_ANGLE, adcBatteryVoltageFast());
     } else {
       foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
       focDriverSetPwmCompare(motor, center);
@@ -535,7 +535,7 @@ static void applyPwmInIsr(uint8_t motor)
     return;
   }
 
-  const float batt = getBatteryVoltage();
+  const float batt = adcBatteryVoltageFast();
   updateOpenLoopVelocityInIsr(motor);
   float electrical = app.motor[motor].open_loop_electrical_angle;
   if (!app.open_loop_velocity) {
@@ -1247,6 +1247,7 @@ void bldcAppInit(void)
   enableCycleCounter();
   focMathInit();
   app.cycle_to_s = 1.0f / (float)SystemCoreClock;
+  app.speed_cycles_to_rps = (float)SystemCoreClock / (float)ENC_CNT_MAX;
   setLedRed(true);
   setLedGreen(false);
   setLedBlue(false);

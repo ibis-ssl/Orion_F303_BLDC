@@ -21,8 +21,6 @@
 #include "spi.h"
 
 /* USER CODE BEGIN 0 */
-#include <stdlib.h>
-
 as5047p_t as5047p[2];
 /* USER CODE END 0 */
 
@@ -130,15 +128,16 @@ static inline void updateDiff(bool enc)
   }
 
   as5047p[enc].diff_enc = temp;
+}
 
-  if (abs(as5047p[enc].diff_max) < abs(temp)) {
-    as5047p[enc].diff_max = temp;
-    as5047p[enc].diff_max_cnt = as5047p[enc].enc_raw;
-  }
-  if (abs(as5047p[enc].diff_min) > abs(temp)) {
-    as5047p[enc].diff_min = temp;
-    as5047p[enc].diff_min_cnt = as5047p[enc].enc_raw;
-  }
+static inline void selectAS5047P(bool enc)
+{
+  GPIOB->BSRR = (uint32_t)(enc ? GPIO_PIN_6 : GPIO_PIN_7) << 16U;
+}
+
+static inline void deselectAS5047P(bool enc)
+{
+  GPIOB->BSRR = enc ? GPIO_PIN_6 : GPIO_PIN_7;
 }
 
 static uint16_t transferAS5047P(uint16_t tx)
@@ -156,19 +155,11 @@ static uint16_t transferAS5047P(uint16_t tx)
 
 uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
 {
-  if (enc) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-  }
+  selectAS5047P(enc);
 
   const uint16_t rx = transferAS5047P(reg_address | (1 << 14));
 
-  if (enc) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-  } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-  }
+  deselectAS5047P(enc);
   // 14 bit registor
   return (rx & 0x3FFF);
 }
@@ -188,27 +179,24 @@ static inline void updateAS5047P_Common(as5047p_t * enc)
   }
   // 分解能は14bitだが、後段であまり算をするため、16bitに変換
   enc->enc_raw = (int)((frame & 0x3FFFU) << 2);
-
-  enc->enc_elec_raw = 5461 - (enc->enc_raw % 5461);
-  enc->output_radian = (float)enc->enc_elec_raw / 5461 * 2 * M_PI;
 }
 
 void updateAS5047P(bool motor)
 {
   if (motor == 0) {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+    selectAS5047P(0);
 
     updateAS5047P_Common(&as5047p[0]);
     updateDiff(0);
 
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    deselectAS5047P(0);
   } else {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+    selectAS5047P(1);
 
     updateAS5047P_Common(&as5047p[1]);
     updateDiff(1);
 
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+    deselectAS5047P(1);
   }
 }
 

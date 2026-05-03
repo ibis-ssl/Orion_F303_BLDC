@@ -66,6 +66,38 @@ int getTempFET(bool motor);
 int getTempMotor(bool motor);
 void updateADC(bool motor);
 
+static inline float adcBatteryVoltageFast(void)
+{
+  return (float)adc_raw.batt_v * (3.3f * 11.0f / 4096.0f);
+}
+
+static inline float adcCurrentMotorFast(bool motor)
+{
+  return (float)(adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * (3.3f * 8.0f / 4096.0f);
+}
+
+static inline void adcUpdateFast(bool motor)
+{
+  if (motor == 0) {
+    GPIOC->BSRR = GPIO_PIN_13;
+    adc_raw.batt_v = (int)ADC3->JDR1;
+    adc_raw.cs_motor[1] = (int)ADC2->JDR1;
+    adc_raw.temp_fet[0] = (int)ADC2->JDR2;
+    adc_raw.temp_fet[1] = (int)ADC2->JDR3;
+    ADC2->CR |= ADC_CR_JADSTART;
+    ADC3->CR |= ADC_CR_JADSTART;
+    GPIOC->BSRR = ((uint32_t)GPIO_PIN_13 << 16U);
+  } else {
+    GPIOC->BSRR = GPIO_PIN_13;
+    adc_raw.cs_motor[0] = (int)ADC1->JDR1;
+    adc_raw.temp_motor[0] = (int)ADC1->JDR2;
+    adc_raw.temp_motor[1] = (int)ADC1->JDR3;
+    adc_raw.gd_dcdc_v = (int)ADC1->JDR4;
+    ADC1->CR |= ADC_CR_JADSTART;
+    GPIOC->BSRR = ((uint32_t)GPIO_PIN_13 << 16U);
+  }
+}
+
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

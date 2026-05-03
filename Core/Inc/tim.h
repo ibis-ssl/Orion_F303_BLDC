@@ -38,7 +38,7 @@ extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim8;
 
 /* USER CODE BEGIN Private defines */
-#define TIM_PWM_CENTER (783)
+#define TIM_PWM_CENTER (450)
 
 /* USER CODE END Private defines */
 
