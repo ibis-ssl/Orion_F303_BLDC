@@ -24,6 +24,22 @@
 #define APP_MOTOR_COUNT (2U)
 #define APP_PWM_ISR_PER_1MS (40U)
 #define APP_POLE_PAIRS (12)
+
+/*
+ * Sign convention locked by the 2026-05-03 hardware tests.
+ *
+ * Do not change one of these constants in isolation.  Re-run the UART
+ * sign-check sequence documented in doc/overview.md whenever phase order,
+ * encoder wiring, zero-angle alignment, or FOC math is changed.
+ *
+ * Positive user command:
+ * - measured_rps must become positive in sensor-angle Vq mode (`c`, `n`, `q`)
+ * - AS5047P raw diff must become positive during the electrical forward scan (`v`)
+ *
+ * The hardware phase order requires two separate sign corrections:
+ * - APP_OPEN_LOOP_DIRECTION advances the open-loop electrical angle.
+ * - APP_SENSOR_TORQUE_DIRECTION flips Uq only when using measured sensor angle.
+ */
 #define APP_SENSOR_DIRECTION (1)
 #define APP_OPEN_LOOP_DIRECTION (-1)
 #define APP_SENSOR_TORQUE_DIRECTION (-1.0f)
@@ -40,14 +56,28 @@
 #define APP_ALIGN_MS (1000U)
 #define APP_ALIGN_ELECTRICAL_ANGLE (4.71238898038f)
 #define APP_SENSOR_DIAG_SCAN_MS (1200U)
-#define APP_CAL_VOLTAGE_START (0.60f)
-#define APP_CAL_VOLTAGE_STEP (0.20f)
-#define APP_CAL_VOLTAGE_LIMIT (2.00f)
-#define APP_CAL_SETTLE_MS (600U)
-#define APP_CAL_SAMPLE_MS (900U)
-#define APP_CAL_MIN_FIT_RPS (0.30f)
-#define APP_CAL_MODEL_MARGIN (1.10f)
+#define APP_CAL_ENC_POINTS (6U)
+#define APP_CAL_ENC_PASSES (2U)
+#define APP_CAL_ENC_SETTLE_MS (500U)
+#define APP_CAL_ENC_SAMPLE_MS (250U)
+#define APP_CAL_SPEED_SETTLE_MS (6000U)
+#define APP_CAL_SPEED_SAMPLE_MS (1000U)
+#define APP_CAL_SPEED_POINTS (4U)
+#define APP_CAL_SPEED_START_RPS (10.0f)
+#define APP_CAL_SPEED_STEP_RPS (10.0f)
+#define APP_CAL_MIN_FIT_RPS (8.0f)
+#define APP_CAL_MODEL_MARGIN (1.05f)
 #define APP_CAL_MAX_OFFSET_V (3.00f)
+
+/*
+ * "Positive" phase advance is the mathematical electrical-angle direction.
+ * On this hardware, positive advance made high-speed current worse; use
+ * a negative speed-proportional model as the current baseline.
+ */
+#define APP_PHASE_ADVANCE_MODEL_RAD_PER_RPS (-0.003457f)
+#define APP_PHASE_ADVANCE_STEP_RAD (0.01745329252f)
+#define APP_PHASE_ADVANCE_LIMIT_RAD (0.78539816339f)
+#define APP_RAD_TO_DEG (57.2957795131f)
 #define APP_PROTECT_DEBOUNCE_MS (20U)
 #define APP_SPEED_GLITCH_LIMIT_RPS (160.0f)
 #define APP_SPEED_GLITCH_FAULT_COUNT (5U)
@@ -55,8 +85,10 @@
 typedef enum
 {
   APP_PARAM_CAL_STAGE_IDLE = 0,
-  APP_PARAM_CAL_STAGE_ALIGN,
-  APP_PARAM_CAL_STAGE_SAMPLE
+  APP_PARAM_CAL_STAGE_ENC_SETTLE,
+  APP_PARAM_CAL_STAGE_ENC_SAMPLE,
+  APP_PARAM_CAL_STAGE_SPEED_SETTLE,
+  APP_PARAM_CAL_STAGE_SPEED_SAMPLE
 } app_param_calib_stage_t;
 
 typedef enum
@@ -73,17 +105,22 @@ typedef struct
   bool save_to_flash;
   app_param_calib_stage_t stage;
   uint8_t motor;
+  uint8_t point_index;
+  uint8_t pass_index;
   uint16_t elapsed_ms;
-  float test_voltage;
+  float electrical_angle;
+  float test_rps;
   float speed_sum;
   uint16_t speed_count;
+  float zero_sin_sum;
+  float zero_cos_sum;
+  uint16_t zero_count;
   float fit_sum_x;
-  float fit_sum_y;
   float fit_sum_xx;
   float fit_sum_xy;
-  uint8_t fit_count;
+  uint16_t fit_count;
+  float zero_electric_angle[APP_MOTOR_COUNT];
   float voltage_per_rps[APP_MOTOR_COUNT];
-  float voltage_offset[APP_MOTOR_COUNT];
 } app_param_calib_t;
 
 typedef struct
@@ -142,6 +179,7 @@ typedef struct
   uint16_t over_current_ms[APP_MOTOR_COUNT];
   float cycle_to_s;
   float speed_cycles_to_rps;
+  float phase_advance_trim_rad;
 } app_state_t;
 
 static app_state_t app;
@@ -393,16 +431,39 @@ static void updateOutputVoltage(void)
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     if (app.param_calib.active) {
       if (m == app.param_calib.motor) {
-        app.motor[m].command_rps = 0.0f;
-        app.motor[m].target_rps = 0.0f;
-        app.motor[m].voltage_q = app.param_calib.test_voltage;
+        if (app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SETTLE ||
+            app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SAMPLE) {
+          app.motor[m].command_rps = app.param_calib.test_rps;
+          const float error = app.motor[m].command_rps - app.motor[m].target_rps;
+          if (error > APP_RPS_SLEW_PER_MS) {
+            app.motor[m].target_rps += APP_RPS_SLEW_PER_MS;
+          } else if (error < -APP_RPS_SLEW_PER_MS) {
+            app.motor[m].target_rps -= APP_RPS_SLEW_PER_MS;
+          } else {
+            app.motor[m].target_rps = app.motor[m].command_rps;
+          }
+
+          float command_v = app.motor[m].target_rps * app.motor[m].voltage_per_rps;
+          if (app.motor[m].target_rps > 0.0f) {
+            command_v += app.motor[m].voltage_offset;
+          } else if (app.motor[m].target_rps < 0.0f) {
+            command_v -= app.motor[m].voltage_offset;
+          }
+          app.motor[m].voltage_q = clampFloat(command_v, app.motor[m].voltage_limit);
+          app.motor[m].output_limited = (app.motor[m].voltage_q != command_v);
+        } else {
+          app.motor[m].command_rps = 0.0f;
+          app.motor[m].target_rps = 0.0f;
+          app.motor[m].voltage_q = 0.0f;
+          app.motor[m].output_limited = false;
+        }
       } else {
         app.motor[m].command_rps = 0.0f;
         app.motor[m].target_rps = 0.0f;
         app.motor[m].voltage_q = 0.0f;
+        app.motor[m].output_limited = false;
       }
       app.motor[m].command_timeout_ms = 0U;
-      app.motor[m].output_limited = false;
       continue;
     }
 
@@ -457,6 +518,12 @@ static void updateOpenLoopVelocityInIsr(uint8_t motor)
   const float delta =
     direction * app.motor[motor].target_rps * (2.0f * (float)M_PI) * (float)APP_POLE_PAIRS * motor_period_s;
   app.motor[motor].open_loop_electrical_angle = focNormalizeAngle(app.motor[motor].open_loop_electrical_angle + delta);
+}
+
+static float phaseAdvanceForTarget(float target_rps)
+{
+  const float model = APP_PHASE_ADVANCE_MODEL_RAD_PER_RPS * fabsf(target_rps);
+  return clampFloat(model + app.phase_advance_trim_rad, APP_PHASE_ADVANCE_LIMIT_RAD);
 }
 
 static void applyProtection(void)
@@ -518,10 +585,40 @@ static void applyPwmInIsr(uint8_t motor)
     return;
   }
 
-  if (app.align_active || (app.param_calib.active && app.param_calib.stage == APP_PARAM_CAL_STAGE_ALIGN)) {
-    const uint8_t align_motor = app.align_active ? app.align_motor : app.param_calib.motor;
-    if (motor == align_motor) {
-      focDriverApplySineVoltage(motor, APP_ALIGN_VOLTAGE, 0.0f, APP_ALIGN_ELECTRICAL_ANGLE, adcBatteryVoltageFast());
+  if (app.param_calib.active) {
+    if (motor != app.param_calib.motor) {
+      foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
+      focDriverSetPwmCompare(motor, center);
+      return;
+    }
+
+    if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE ||
+        app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SAMPLE) {
+      focDriverApplySineVoltage(motor, 0.0f, APP_ALIGN_VOLTAGE, app.param_calib.electrical_angle, adcBatteryVoltageFast());
+      return;
+    }
+
+    if (app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SETTLE ||
+        app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SAMPLE) {
+      const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
+      float electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
+      const float phase_advance = phaseAdvanceForTarget(app.motor[motor].target_rps);
+      const float advance = (app.motor[motor].target_rps < 0.0f) ? -phase_advance : phase_advance;
+      const float voltage_cmd = app.motor[motor].voltage_q;
+      const float voltage_q = APP_SENSOR_TORQUE_DIRECTION * voltage_cmd;
+      electrical = focNormalizeAngle(electrical + advance);
+      focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical, adcBatteryVoltageFast());
+      return;
+    }
+
+    foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
+    focDriverSetPwmCompare(motor, center);
+    return;
+  }
+
+  if (app.align_active) {
+    if (motor == app.align_motor) {
+      focDriverApplySineVoltage(motor, 0.0f, APP_ALIGN_VOLTAGE, APP_ALIGN_ELECTRICAL_ANGLE, adcBatteryVoltageFast());
     } else {
       foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
       focDriverSetPwmCompare(motor, center);
@@ -541,7 +638,12 @@ static void applyPwmInIsr(uint8_t motor)
   if (!app.open_loop_velocity) {
     const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
     electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
+    /* Apply signed phase advance after sensor zero-angle conversion. */
+    const float phase_advance = phaseAdvanceForTarget(app.motor[motor].target_rps);
+    const float advance = (app.motor[motor].target_rps < 0.0f) ? -phase_advance : phase_advance;
+    electrical = focNormalizeAngle(electrical + advance);
   }
+  /* Sensor-angle Vq torque sign is intentionally independent from sensor direction. */
   const float voltage_q = app.open_loop_velocity ? app.motor[motor].voltage_q :
     (APP_SENSOR_TORQUE_DIRECTION * app.motor[motor].voltage_q);
   focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical, batt);
@@ -593,13 +695,21 @@ static void requestDebugPrint(uint8_t page)
   app.debug_print_request = true;
 }
 
+static void adjustPhaseAdvance(float delta_rad)
+{
+  app.phase_advance_trim_rad = clampFloat(app.phase_advance_trim_rad + delta_rad, APP_PHASE_ADVANCE_LIMIT_RAD);
+  p("phase trim %+5.1f deg\n", app.phase_advance_trim_rad * APP_RAD_TO_DEG);
+}
+
 static void printDiagnostics(void)
 {
   switch (app.print_page) {
     case 0:
-      p("Mode %d OL %u Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu loop %lu/%lu us slack %ld us isr %lu/%lu us\n",
+      p("Mode %d OL %u Adv %+5.1f/%+5.1f deg Batt %5.2f GD %5.2f Free %lu Fault 0x%04x/%u %+6.2f CAN %lu loop %lu/%lu us slack %ld us isr %lu/%lu us\n",
         app.mode,
         app.open_loop_velocity ? 1U : 0U,
+        phaseAdvanceForTarget(app.motor[0].target_rps) * APP_RAD_TO_DEG,
+        phaseAdvanceForTarget(app.motor[1].target_rps) * APP_RAD_TO_DEG,
         getBatteryVoltage(),
         getGateDriverDCDCVoltage(),
         app.freewheel_ms,
@@ -768,7 +878,8 @@ static void updateSensorAlignment(void)
   const uint8_t motor = app.align_motor;
   const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
   const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
-  app.motor[motor].zero_electric_angle = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft);
+  app.motor[motor].zero_electric_angle =
+    focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft - APP_ALIGN_ELECTRICAL_ANGLE);
   app.align_active = false;
   bldcAppSetFreewheelMs(60000U);
   p("align M%u done: raw %5d zero %+6.3f\n", motor, as5047p[motor].enc_raw, app.motor[motor].zero_electric_angle);
@@ -911,63 +1022,74 @@ static void startSensorDiag(void)
 static void resetParamFit(uint8_t motor)
 {
   app.param_calib.fit_sum_x = 0.0f;
-  app.param_calib.fit_sum_y = 0.0f;
   app.param_calib.fit_sum_xx = 0.0f;
   app.param_calib.fit_sum_xy = 0.0f;
   app.param_calib.fit_count = 0U;
+  app.param_calib.zero_sin_sum = 0.0f;
+  app.param_calib.zero_cos_sum = 0.0f;
+  app.param_calib.zero_count = 0U;
   app.motor[motor].measured_rps_ave = 0.0f;
 }
 
-static void startParamCalibAlign(void)
+static float paramCalibElectricalAngle(uint8_t point_index)
 {
-  app.param_calib.stage = APP_PARAM_CAL_STAGE_ALIGN;
-  app.param_calib.elapsed_ms = 0U;
-  app.param_calib.test_voltage = 0.0f;
-  resetParamFit(app.param_calib.motor);
-  p("param cal M%u align uq %+4.1f\n", app.param_calib.motor, APP_ALIGN_VOLTAGE);
+  return (2.0f * (float)M_PI * (float)point_index) / (float)APP_CAL_ENC_POINTS;
 }
 
-static void startParamCalibSample(float voltage)
+static uint8_t paramCalibPointForPass(uint8_t pass_index, uint8_t point_index)
 {
-  app.param_calib.stage = APP_PARAM_CAL_STAGE_SAMPLE;
+  if (pass_index == 0U) {
+    return point_index;
+  }
+  return (uint8_t)((APP_CAL_ENC_POINTS - 1U) - point_index);
+}
+
+static void startParamCalibEncSettle(void)
+{
+  const uint8_t point = paramCalibPointForPass(app.param_calib.pass_index, app.param_calib.point_index);
+  app.param_calib.stage = APP_PARAM_CAL_STAGE_ENC_SETTLE;
   app.param_calib.elapsed_ms = 0U;
-  app.param_calib.test_voltage = voltage;
+  app.param_calib.electrical_angle = paramCalibElectricalAngle(point);
+  p("param cal M%u enc pass %u point %u angle %+5.2f\n",
+    app.param_calib.motor,
+    app.param_calib.pass_index,
+    point,
+    app.param_calib.electrical_angle);
+}
+
+static void startParamCalibSpeedSettle(void)
+{
+  const uint8_t point = app.param_calib.point_index % APP_CAL_SPEED_POINTS;
+  const bool negative = (app.param_calib.pass_index != 0U);
+  float target_rps = APP_CAL_SPEED_START_RPS + APP_CAL_SPEED_STEP_RPS * (float)point;
+  if (negative) {
+    target_rps = -target_rps;
+  }
+  app.param_calib.stage = APP_PARAM_CAL_STAGE_SPEED_SETTLE;
+  app.param_calib.elapsed_ms = 0U;
+  app.param_calib.test_rps = target_rps;
   app.param_calib.speed_sum = 0.0f;
   app.param_calib.speed_count = 0U;
   app.motor[app.param_calib.motor].measured_rps_ave = 0.0f;
-  p("param cal M%u vq %+4.2f\n", app.param_calib.motor, voltage);
+  p("param cal M%u speed target %+5.1f rps\n", app.param_calib.motor, target_rps);
 }
 
 static bool fitParamCalibMotor(uint8_t motor)
 {
-  const float n = (float)app.param_calib.fit_count;
-  const float denom = n * app.param_calib.fit_sum_xx - app.param_calib.fit_sum_x * app.param_calib.fit_sum_x;
-  if (app.param_calib.fit_count < 2U || fabsf(denom) < 0.0001f) {
+  if (app.param_calib.fit_count < 3U || fabsf(app.param_calib.fit_sum_xx) < 0.0001f) {
     p("param cal M%u fit NG count %u\n", motor, app.param_calib.fit_count);
     return false;
   }
 
-  float voltage_per_rps =
-    (n * app.param_calib.fit_sum_xy - app.param_calib.fit_sum_x * app.param_calib.fit_sum_y) / denom;
-  float voltage_offset =
-    (app.param_calib.fit_sum_y - voltage_per_rps * app.param_calib.fit_sum_x) / n;
-
+  float voltage_per_rps = app.param_calib.fit_sum_xy / app.param_calib.fit_sum_xx;
   if (!isfinite(voltage_per_rps) || voltage_per_rps < APP_MIN_VOLTAGE_PER_RPS) {
     p("param cal M%u slope NG %+6.3f\n", motor, voltage_per_rps);
     return false;
   }
-  if (!isfinite(voltage_offset) || voltage_offset < 0.0f) {
-    voltage_offset = 0.0f;
-  }
-  if (voltage_offset > APP_CAL_MAX_OFFSET_V) {
-    voltage_offset = APP_CAL_MAX_OFFSET_V;
-  }
 
   app.param_calib.voltage_per_rps[motor] = voltage_per_rps * APP_CAL_MODEL_MARGIN;
-  app.param_calib.voltage_offset[motor] = voltage_offset * APP_CAL_MODEL_MARGIN;
-  p("param cal M%u model off %+5.2f v/rps %+6.3f points %u\n",
+  p("param cal M%u model v/rps %+6.3f points %u\n",
     motor,
-    app.param_calib.voltage_offset[motor],
     app.param_calib.voltage_per_rps[motor],
     app.param_calib.fit_count);
   return true;
@@ -981,8 +1103,10 @@ static void finishParamCalibration(void)
 
   app.motor[0].voltage_per_rps = app.param_calib.voltage_per_rps[0];
   app.motor[1].voltage_per_rps = app.param_calib.voltage_per_rps[1];
-  app.motor[0].voltage_offset = app.param_calib.voltage_offset[0];
-  app.motor[1].voltage_offset = app.param_calib.voltage_offset[1];
+  app.motor[0].voltage_offset = 0.0f;
+  app.motor[1].voltage_offset = 0.0f;
+  app.motor[0].zero_electric_angle = app.param_calib.zero_electric_angle[0];
+  app.motor[1].zero_electric_angle = app.param_calib.zero_electric_angle[1];
   app.param_calib.active = false;
   app.param_calib.stage = APP_PARAM_CAL_STAGE_IDLE;
   app.open_loop_velocity = true;
@@ -990,12 +1114,13 @@ static void finishParamCalibration(void)
   bldcAppSetFreewheelMs(60000U);
 
   if (save) {
-    writeMotorModelValue(rps_per_v0, rps_per_v1, app.motor[0].voltage_offset, app.motor[1].voltage_offset);
+    writeEncCalibrationValue(app.motor[0].zero_electric_angle, app.motor[1].zero_electric_angle);
+    writeMotorModelValue(rps_per_v0, rps_per_v1, 0.0f, 0.0f);
   }
 
-  p("param cal done off %+5.2f %+5.2f v/rps %+6.3f %+6.3f rps/v %+6.3f %+6.3f save %u\n",
-    app.motor[0].voltage_offset,
-    app.motor[1].voltage_offset,
+  p("param cal done zero %+6.3f %+6.3f v/rps %+6.3f %+6.3f rps/v %+6.3f %+6.3f save %u\n",
+    app.motor[0].zero_electric_angle,
+    app.motor[1].zero_electric_angle,
     app.motor[0].voltage_per_rps,
     app.motor[1].voltage_per_rps,
     rps_per_v0,
@@ -1008,12 +1133,14 @@ static void advanceParamCalibrationMotor(void)
   const uint8_t motor = app.param_calib.motor;
   if (!fitParamCalibMotor(motor)) {
     app.param_calib.voltage_per_rps[motor] = app.motor[motor].voltage_per_rps;
-    app.param_calib.voltage_offset[motor] = app.motor[motor].voltage_offset;
   }
 
   app.param_calib.motor++;
   if (app.param_calib.motor < APP_MOTOR_COUNT) {
-    startParamCalibAlign();
+    resetParamFit(app.param_calib.motor);
+    app.param_calib.pass_index = 0U;
+    app.param_calib.point_index = 0U;
+    startParamCalibEncSettle();
     return;
   }
 
@@ -1027,50 +1154,100 @@ static void updateParamCalibration(void)
   }
 
   const uint8_t motor = app.param_calib.motor;
-  if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ALIGN) {
-    if (app.param_calib.elapsed_ms++ < APP_ALIGN_MS) {
+  if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE) {
+    if (app.param_calib.elapsed_ms++ < APP_CAL_ENC_SETTLE_MS) {
+      return;
+    }
+    app.param_calib.stage = APP_PARAM_CAL_STAGE_ENC_SAMPLE;
+    app.param_calib.elapsed_ms = 0U;
+    return;
+  }
+
+  if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SAMPLE) {
+    const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
+    const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+    const float zero = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft - app.param_calib.electrical_angle);
+    app.param_calib.zero_sin_sum += sinf(zero);
+    app.param_calib.zero_cos_sum += cosf(zero);
+    app.param_calib.zero_count++;
+
+    if (++app.param_calib.elapsed_ms < APP_CAL_ENC_SAMPLE_MS) {
       return;
     }
 
-    const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
-    const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
-    app.motor[motor].zero_electric_angle = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft);
-    p("param cal M%u align done raw %5d zero %+6.3f\n", motor, as5047p[motor].enc_raw, app.motor[motor].zero_electric_angle);
-    startParamCalibSample(APP_CAL_VOLTAGE_START);
-    return;
-  }
-
-  if (app.param_calib.stage != APP_PARAM_CAL_STAGE_SAMPLE) {
-    return;
-  }
-
-  if (app.param_calib.elapsed_ms >= APP_CAL_SETTLE_MS) {
-    app.param_calib.speed_sum += fabsf(app.motor[motor].measured_rps);
-    if (app.param_calib.speed_count < 0xFFFFU) {
-      app.param_calib.speed_count++;
+    app.param_calib.point_index++;
+    if (app.param_calib.point_index >= APP_CAL_ENC_POINTS) {
+      app.param_calib.point_index = 0U;
+      app.param_calib.pass_index++;
     }
+    if (app.param_calib.pass_index < APP_CAL_ENC_PASSES) {
+      startParamCalibEncSettle();
+      return;
+    }
+
+    if (app.param_calib.zero_count == 0U ||
+        (fabsf(app.param_calib.zero_sin_sum) < 0.0001f && fabsf(app.param_calib.zero_cos_sum) < 0.0001f)) {
+      p("param cal M%u zero NG count %u\n", motor, app.param_calib.zero_count);
+      app.param_calib.zero_electric_angle[motor] = app.motor[motor].zero_electric_angle;
+    } else {
+      app.param_calib.zero_electric_angle[motor] =
+        focNormalizeAngle(atan2f(app.param_calib.zero_sin_sum, app.param_calib.zero_cos_sum));
+    }
+    app.motor[motor].zero_electric_angle = app.param_calib.zero_electric_angle[motor];
+    p("param cal M%u zero %+6.3f samples %u\n", motor, app.motor[motor].zero_electric_angle, app.param_calib.zero_count);
+    app.param_calib.pass_index = 0U;
+    app.param_calib.point_index = 0U;
+    startParamCalibSpeedSettle();
+    return;
   }
 
-  app.param_calib.elapsed_ms++;
-  if (app.param_calib.elapsed_ms < (APP_CAL_SETTLE_MS + APP_CAL_SAMPLE_MS)) {
+  if (app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SETTLE) {
+    if (app.param_calib.elapsed_ms++ < APP_CAL_SPEED_SETTLE_MS) {
+      return;
+    }
+    app.param_calib.stage = APP_PARAM_CAL_STAGE_SPEED_SAMPLE;
+    app.param_calib.elapsed_ms = 0U;
+    app.param_calib.speed_sum = 0.0f;
+    app.param_calib.speed_count = 0U;
+    app.motor[motor].measured_rps_ave = 0.0f;
+    return;
+  }
+
+  if (app.param_calib.stage != APP_PARAM_CAL_STAGE_SPEED_SAMPLE) {
+    return;
+  }
+
+  app.param_calib.speed_sum += fabsf(app.motor[motor].measured_rps);
+  if (app.param_calib.speed_count < 0xFFFFU) {
+    app.param_calib.speed_count++;
+  }
+  if (++app.param_calib.elapsed_ms < APP_CAL_SPEED_SAMPLE_MS) {
     return;
   }
 
   const float count = (app.param_calib.speed_count == 0U) ? 1.0f : (float)app.param_calib.speed_count;
   const float measured = app.param_calib.speed_sum / count;
-  p("param cal M%u point vq %+4.2f rps %+6.3f\n", motor, app.param_calib.test_voltage, measured);
+  const float measured_voltage = fabsf(app.motor[motor].voltage_q);
+  p("param cal M%u point target %+5.1f rps vq %+4.2f rps %+6.3f\n",
+    motor,
+    app.param_calib.test_rps,
+    measured_voltage,
+    measured);
 
   if (measured >= APP_CAL_MIN_FIT_RPS) {
     app.param_calib.fit_sum_x += measured;
-    app.param_calib.fit_sum_y += app.param_calib.test_voltage;
     app.param_calib.fit_sum_xx += measured * measured;
-    app.param_calib.fit_sum_xy += measured * app.param_calib.test_voltage;
+    app.param_calib.fit_sum_xy += measured * measured_voltage;
     app.param_calib.fit_count++;
   }
 
-  const float next_voltage = app.param_calib.test_voltage + APP_CAL_VOLTAGE_STEP;
-  if (next_voltage <= APP_CAL_VOLTAGE_LIMIT + 0.001f) {
-    startParamCalibSample(next_voltage);
+  app.param_calib.point_index++;
+  if (app.param_calib.point_index >= APP_CAL_SPEED_POINTS) {
+    app.param_calib.point_index = 0U;
+    app.param_calib.pass_index++;
+  }
+  if (app.param_calib.pass_index < 2U) {
+    startParamCalibSpeedSettle();
     return;
   }
 
@@ -1082,18 +1259,21 @@ static void startParamCalibration(bool save_to_flash)
   app.param_calib.active = true;
   app.param_calib.save_to_flash = save_to_flash;
   app.param_calib.motor = 0U;
+  app.param_calib.point_index = 0U;
+  app.param_calib.pass_index = 0U;
   app.param_calib.voltage_per_rps[0] = app.motor[0].voltage_per_rps;
   app.param_calib.voltage_per_rps[1] = app.motor[1].voltage_per_rps;
-  app.param_calib.voltage_offset[0] = app.motor[0].voltage_offset;
-  app.param_calib.voltage_offset[1] = app.motor[1].voltage_offset;
+  app.param_calib.zero_electric_angle[0] = app.motor[0].zero_electric_angle;
+  app.param_calib.zero_electric_angle[1] = app.motor[1].zero_electric_angle;
   app.open_loop_velocity = false;
   app.freewheel_ms = 0U;
   app.zero_output_ms = 0U;
   setPwmAll(TIM_PWM_CENTER);
   resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
-  p("param cal start vq sweep save %u\n", save_to_flash ? 1U : 0U);
-  startParamCalibAlign();
+  p("param cal start multi-point save %u\n", save_to_flash ? 1U : 0U);
+  resetParamFit(0U);
+  startParamCalibEncSettle();
 }
 
 static void handleUartCommand(uint8_t cmd)
@@ -1169,6 +1349,16 @@ static void handleUartCommand(uint8_t cmd)
     case 'c':
       app.open_loop_velocity = false;
       p("sensor-angle voltage diagnostic enabled\n");
+      break;
+    case '[':
+      adjustPhaseAdvance(-APP_PHASE_ADVANCE_STEP_RAD);
+      break;
+    case ']':
+      adjustPhaseAdvance(APP_PHASE_ADVANCE_STEP_RAD);
+      break;
+    case 'p':
+      app.phase_advance_trim_rad = 0.0f;
+      p("phase trim %+5.1f deg\n", app.phase_advance_trim_rad * APP_RAD_TO_DEG);
       break;
     case 'k':
       startParamCalibration(false);
