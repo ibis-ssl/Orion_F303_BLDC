@@ -120,7 +120,7 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef * spiHandle)
 
 /* USER CODE BEGIN 1 */
 
-inline void updateDiff(bool enc)
+static inline void updateDiff(bool enc)
 {
   int temp = as5047p[enc].pre_enc_raw - as5047p[enc].enc_raw;
   if (temp < -HARF_OF_ENC_CNT_MAX) {
@@ -173,7 +173,7 @@ uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
   return (rx & 0x3FFF);
 }
 
-inline void updateAS5047P_Common(as5047p_t * enc)
+static inline void updateAS5047P_Common(as5047p_t * enc)
 {
   enc->pre_enc_raw = enc->enc_raw;
 

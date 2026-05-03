@@ -26,10 +26,11 @@
 #define APP_POLE_PAIRS (12)
 #define APP_SENSOR_DIRECTION (1)
 #define APP_OPEN_LOOP_DIRECTION (-1)
+#define APP_SENSOR_TORQUE_DIRECTION (-1.0f)
 #define APP_RPS_LIMIT (80.0f)
 #define APP_MIN_VOLTAGE_PER_RPS (0.02f)
 #define APP_DEFAULT_VOLTAGE_PER_RPS (0.08f)
-#define APP_OUTPUT_VOLTAGE_LIMIT (12.0f)
+#define APP_OUTPUT_VOLTAGE_LIMIT (8.0f)
 #define APP_RPS_SLEW_PER_MS (0.01f)
 #define APP_ZERO_SLEEP_MS (5000U)
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
@@ -348,7 +349,7 @@ static void initMotorParameters(void)
   }
 }
 
-static void updateSpeed(uint8_t motor)
+static void updateSpeedInIsr(uint8_t motor)
 {
   const uint32_t now = cycleNow();
   const uint32_t elapsed_cycles = cycleDelta(app.speed_cycle[motor], now);
@@ -357,14 +358,27 @@ static void updateSpeed(uint8_t motor)
   int diff = encoderRawDiff(as5047p[motor].enc_raw, app.motor[motor].pre_raw);
 
   if (elapsed_s > 0.0f) {
-    app.motor[motor].measured_rps = ((float)diff / (float)ENC_CNT_MAX) / elapsed_s;
+    const float measured = ((float)diff / (float)ENC_CNT_MAX) / elapsed_s;
+    if (fabsf(measured) > APP_SPEED_GLITCH_LIMIT_RPS && app.mode == BLDC_APP_MODE_RUN) {
+      app.speed_glitch_count[motor]++;
+      app.speed_glitch_streak[motor]++;
+      app.speed_glitch_rps[motor] = measured;
+      app.speed_glitch_diff[motor] = diff;
+      if (app.speed_glitch_streak[motor] >= APP_SPEED_GLITCH_FAULT_COUNT) {
+        bldcAppForceFault(BLDC_ENC_ERROR, motor, measured);
+      }
+    } else {
+      app.speed_glitch_streak[motor] = 0U;
+      app.motor[motor].measured_rps = measured;
+    }
   }
   app.motor[motor].measured_rps_ave = app.motor[motor].measured_rps_ave * 0.98f + app.motor[motor].measured_rps * 0.02f;
   app.motor[motor].pre_raw = as5047p[motor].enc_raw;
+}
 
-  if (fabsf(app.motor[motor].measured_rps) > APP_RPS_LIMIT * 2.0f && app.mode == BLDC_APP_MODE_RUN) {
-    bldcAppForceFault(BLDC_ENC_ERROR, motor, app.motor[motor].measured_rps);
-  }
+static void updateSpeed(uint8_t motor)
+{
+  (void)motor;
 }
 
 static void updateOutputVoltage(void)
@@ -492,6 +506,7 @@ static void applyPwmInIsr(uint8_t motor)
 {
   updateADC(motor);
   updateAS5047P(motor);
+  updateSpeedInIsr(motor);
 
   if (app.sensor_diag.active) {
     if (motor == app.sensor_diag.motor) {
@@ -527,7 +542,9 @@ static void applyPwmInIsr(uint8_t motor)
     const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
     electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
   }
-  focDriverApplySineVoltage(motor, app.motor[motor].voltage_q, 0.0f, electrical, batt);
+  const float voltage_q = app.open_loop_velocity ? app.motor[motor].voltage_q :
+    (APP_SENSOR_TORQUE_DIRECTION * app.motor[motor].voltage_q);
+  focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical, batt);
 }
 
 static void handleFreewheelTimer(void)
@@ -599,7 +616,7 @@ static void printDiagnostics(void)
       app.isr_cycles_max = app.isr_cycles;
       break;
     case 1:
-      p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
+      p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
         app.motor[0].command_rps,
         app.motor[0].target_rps,
         app.motor[0].measured_rps_ave,
@@ -607,10 +624,14 @@ static void printDiagnostics(void)
         as5047p[0].enc_raw,
         getCurrentMotor(0),
         getTempMotor(0),
-        getTempFET(0));
+        getTempFET(0),
+        app.speed_glitch_count[0],
+        app.speed_glitch_rps[0],
+        app.speed_glitch_diff[0],
+        as5047p[0].spi_error_count);
       break;
     default:
-      p("M1 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d\n",
+      p("M1 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
         app.motor[1].command_rps,
         app.motor[1].target_rps,
         app.motor[1].measured_rps_ave,
@@ -618,7 +639,11 @@ static void printDiagnostics(void)
         as5047p[1].enc_raw,
         getCurrentMotor(1),
         getTempMotor(1),
-        getTempFET(1));
+        getTempFET(1),
+        app.speed_glitch_count[1],
+        app.speed_glitch_rps[1],
+        app.speed_glitch_diff[1],
+        as5047p[1].spi_error_count);
       break;
   }
 }
