@@ -52,6 +52,10 @@
 #define APP_SERIAL_SPEED_STEP_RPS (0.5f)
 #define APP_UART_RX_QUEUE_SIZE (32U)
 #define APP_CAN_TIMEOUT_MS (100U)
+#define APP_SWITCH_COMMAND_TIMEOUT_MS (2U)
+#define APP_SWITCH_LOW_RPS (10.0f)
+#define APP_SWITCH_CW_HIGH_RPS (40.0f)
+#define APP_SWITCH_CCW_HIGH_RPS (60.0f)
 #define APP_ALIGN_VOLTAGE (2.0f)
 #define APP_ALIGN_MS (1000U)
 #define APP_ALIGN_ELECTRICAL_ANGLE (4.71238898038f)
@@ -119,17 +123,17 @@ typedef struct
   float test_rps;
   float speed_sum;
   uint16_t speed_count;
-  float zero_sin_sum;
-  float zero_cos_sum;
-  uint16_t zero_count;
-  float point_zero_sin_sum;
-  float point_zero_cos_sum;
-  uint16_t point_zero_count;
-  float zero_hyst_sum;
-  float zero_hyst_max;
-  uint16_t zero_used_count;
-  uint16_t zero_rejected_count;
-  float forward_zero[APP_CAL_ENC_POINTS];
+  float zero_sin_sum[APP_MOTOR_COUNT];
+  float zero_cos_sum[APP_MOTOR_COUNT];
+  uint16_t zero_count[APP_MOTOR_COUNT];
+  float point_zero_sin_sum[APP_MOTOR_COUNT];
+  float point_zero_cos_sum[APP_MOTOR_COUNT];
+  uint16_t point_zero_count[APP_MOTOR_COUNT];
+  float zero_hyst_sum[APP_MOTOR_COUNT];
+  float zero_hyst_max[APP_MOTOR_COUNT];
+  uint16_t zero_used_count[APP_MOTOR_COUNT];
+  uint16_t zero_rejected_count[APP_MOTOR_COUNT];
+  float forward_zero[APP_MOTOR_COUNT][APP_CAL_ENC_POINTS];
   float fit_sum_x;
   float fit_sum_xx;
   float fit_sum_xy;
@@ -174,6 +178,8 @@ typedef struct
   app_sensor_diag_t sensor_diag;
   bool io_check_request;
   bool protection_check_request;
+  bool switch_inhibit_until_release;
+  bool boot_calibration_request;
   bool can_started;
   uint8_t uart_rx_byte;
   uint8_t uart_rx_queue[APP_UART_RX_QUEUE_SIZE];
@@ -690,15 +696,15 @@ static void applyPwmInIsr(uint8_t motor)
   }
 
   if (app.param_calib.active) {
-    if (motor != app.param_calib.motor) {
-      foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
-      focDriverSetPwmCompare(motor, center);
-      return;
-    }
-
     if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE ||
         app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SAMPLE) {
       focDriverApplySineVoltage(motor, 0.0f, APP_ALIGN_VOLTAGE, app.param_calib.electrical_angle, adcBatteryVoltageFast());
+      return;
+    }
+
+    if (motor != app.param_calib.motor) {
+      foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
+      focDriverSetPwmCompare(motor, center);
       return;
     }
 
@@ -1010,6 +1016,70 @@ static void setTarget(uint8_t motor, float rps, uint16_t timeout_ms)
   }
 }
 
+static void setBothTargets(float rps, uint16_t timeout_ms)
+{
+  setTarget(0U, rps, timeout_ms);
+  setTarget(1U, rps, timeout_ms);
+}
+
+static bool anySwitchPushed(void)
+{
+  return isPushedSW1() || isPushedSW2() || isPushedSW3() || isPushedSW4();
+}
+
+static void handleBootSwitches(void)
+{
+  app.switch_inhibit_until_release = anySwitchPushed();
+  app.boot_calibration_request = isPushedSW4();
+
+  if (isPushedSW1()) {
+    writeCanBoardID(0U);
+    p("boot switch: board id set 0\n");
+  } else if (isPushedSW2()) {
+    writeCanBoardID(1U);
+    p("boot switch: board id set 1\n");
+  }
+}
+
+static void waitForBootSwitchRelease(void)
+{
+  if (!app.switch_inhibit_until_release) {
+    return;
+  }
+
+  p("boot switch: wait release\n");
+  while (anySwitchPushed()) {
+    HAL_Delay(10U);
+  }
+  app.switch_inhibit_until_release = false;
+  p("boot switch: released\n");
+}
+
+static void updateSwitchCommand(void)
+{
+  if (app.mode == BLDC_APP_MODE_FAULT || app.align_active ||
+      app.sensor_diag.active || app.param_calib.active) {
+    return;
+  }
+
+  if (app.switch_inhibit_until_release) {
+    if (!anySwitchPushed()) {
+      app.switch_inhibit_until_release = false;
+    }
+    return;
+  }
+
+  if (isPushedSW4()) {
+    setBothTargets(-APP_SWITCH_CCW_HIGH_RPS, APP_SWITCH_COMMAND_TIMEOUT_MS);
+  } else if (isPushedSW3()) {
+    setBothTargets(APP_SWITCH_CW_HIGH_RPS, APP_SWITCH_COMMAND_TIMEOUT_MS);
+  } else if (isPushedSW2()) {
+    setBothTargets(-APP_SWITCH_LOW_RPS, APP_SWITCH_COMMAND_TIMEOUT_MS);
+  } else if (isPushedSW1()) {
+    setBothTargets(APP_SWITCH_LOW_RPS, APP_SWITCH_COMMAND_TIMEOUT_MS);
+  }
+}
+
 static void startSensorAlignment(uint8_t motor)
 {
   if (motor >= APP_MOTOR_COUNT || app.mode == BLDC_APP_MODE_FAULT) {
@@ -1190,26 +1260,32 @@ static void startSensorDiag(void)
   startSensorDiagStage(APP_SENSOR_DIAG_STAGE_FORWARD);
 }
 
-static void resetParamFit(uint8_t motor)
+static void resetParamSpeedFit(uint8_t motor)
 {
   app.param_calib.fit_sum_x = 0.0f;
   app.param_calib.fit_sum_xx = 0.0f;
   app.param_calib.fit_sum_xy = 0.0f;
   app.param_calib.fit_count = 0U;
-  app.param_calib.zero_sin_sum = 0.0f;
-  app.param_calib.zero_cos_sum = 0.0f;
-  app.param_calib.zero_count = 0U;
-  app.param_calib.point_zero_sin_sum = 0.0f;
-  app.param_calib.point_zero_cos_sum = 0.0f;
-  app.param_calib.point_zero_count = 0U;
-  app.param_calib.zero_hyst_sum = 0.0f;
-  app.param_calib.zero_hyst_max = 0.0f;
-  app.param_calib.zero_used_count = 0U;
-  app.param_calib.zero_rejected_count = 0U;
-  for (uint8_t i = 0U; i < APP_CAL_ENC_POINTS; i++) {
-    app.param_calib.forward_zero[i] = 0.0f;
-  }
   app.motor[motor].measured_rps_ave = 0.0f;
+}
+
+static void resetParamZeroCalibration(void)
+{
+  for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+    app.param_calib.zero_sin_sum[m] = 0.0f;
+    app.param_calib.zero_cos_sum[m] = 0.0f;
+    app.param_calib.zero_count[m] = 0U;
+    app.param_calib.point_zero_sin_sum[m] = 0.0f;
+    app.param_calib.point_zero_cos_sum[m] = 0.0f;
+    app.param_calib.point_zero_count[m] = 0U;
+    app.param_calib.zero_hyst_sum[m] = 0.0f;
+    app.param_calib.zero_hyst_max[m] = 0.0f;
+    app.param_calib.zero_used_count[m] = 0U;
+    app.param_calib.zero_rejected_count[m] = 0U;
+    for (uint8_t i = 0U; i < APP_CAL_ENC_POINTS; i++) {
+      app.param_calib.forward_zero[m][i] = 0.0f;
+    }
+  }
 }
 
 static float paramCalibElectricalAngle(uint8_t point_index)
@@ -1232,11 +1308,12 @@ static void startParamCalibEncSettle(void)
   app.param_calib.stage = APP_PARAM_CAL_STAGE_ENC_SETTLE;
   app.param_calib.elapsed_ms = 0U;
   app.param_calib.electrical_angle = paramCalibElectricalAngle(point);
-  app.param_calib.point_zero_sin_sum = 0.0f;
-  app.param_calib.point_zero_cos_sum = 0.0f;
-  app.param_calib.point_zero_count = 0U;
-  p("param cal M%u enc pass %u point %u/%u angle %+5.2f\n",
-    app.param_calib.motor,
+  for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+    app.param_calib.point_zero_sin_sum[m] = 0.0f;
+    app.param_calib.point_zero_cos_sum[m] = 0.0f;
+    app.param_calib.point_zero_count[m] = 0U;
+  }
+  p("param cal enc both pass %u point %u/%u angle %+5.2f\n",
     app.param_calib.pass_index,
     point,
     APP_CAL_ENC_POINTS,
@@ -1323,10 +1400,10 @@ static void advanceParamCalibrationMotor(void)
 
   app.param_calib.motor++;
   if (app.param_calib.motor < APP_MOTOR_COUNT) {
-    resetParamFit(app.param_calib.motor);
+    resetParamSpeedFit(app.param_calib.motor);
     app.param_calib.pass_index = 0U;
     app.param_calib.point_index = 0U;
-    startParamCalibEncSettle();
+    startParamCalibSpeedSettle();
     return;
   }
 
@@ -1339,7 +1416,6 @@ static void updateParamCalibration(void)
     return;
   }
 
-  const uint8_t motor = app.param_calib.motor;
   if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE) {
     if (app.param_calib.elapsed_ms++ < APP_CAL_ENC_SETTLE_MS) {
       return;
@@ -1350,44 +1426,49 @@ static void updateParamCalibration(void)
   }
 
   if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SAMPLE) {
-    const float shaft = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
-    const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
-    const float zero = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft - app.param_calib.electrical_angle);
-    app.param_calib.point_zero_sin_sum += sinf(zero);
-    app.param_calib.point_zero_cos_sum += cosf(zero);
-    app.param_calib.point_zero_count++;
+    for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+      const float shaft = encoderRawToMechanicalRad(as5047p[m].enc_raw);
+      const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+      const float zero = focNormalizeAngle(direction * (float)APP_POLE_PAIRS * shaft - app.param_calib.electrical_angle);
+      app.param_calib.point_zero_sin_sum[m] += sinf(zero);
+      app.param_calib.point_zero_cos_sum[m] += cosf(zero);
+      app.param_calib.point_zero_count[m]++;
+    }
 
     if (++app.param_calib.elapsed_ms < APP_CAL_ENC_SAMPLE_MS) {
       return;
     }
 
     const uint8_t point = paramCalibPointForPass(app.param_calib.pass_index, app.param_calib.point_index);
-    float point_zero = zero;
-    if (app.param_calib.point_zero_count > 0U &&
-        (fabsf(app.param_calib.point_zero_sin_sum) >= 0.0001f || fabsf(app.param_calib.point_zero_cos_sum) >= 0.0001f)) {
-      point_zero = focNormalizeAngle(atan2f(app.param_calib.point_zero_sin_sum, app.param_calib.point_zero_cos_sum));
-    }
+    for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+      float point_zero = 0.0f;
+      if (app.param_calib.point_zero_count[m] > 0U &&
+          (fabsf(app.param_calib.point_zero_sin_sum[m]) >= 0.0001f ||
+           fabsf(app.param_calib.point_zero_cos_sum[m]) >= 0.0001f)) {
+        point_zero = focNormalizeAngle(atan2f(app.param_calib.point_zero_sin_sum[m], app.param_calib.point_zero_cos_sum[m]));
+      }
 
-    if (app.param_calib.pass_index == 0U) {
-      app.param_calib.forward_zero[point] = point_zero;
-    } else {
-      const float hysteresis = angleDiffAbs(point_zero, app.param_calib.forward_zero[point]);
-      if (hysteresis <= APP_CAL_ENC_HYST_REJECT_RAD) {
-        const float pair_sin = sinf(point_zero) + sinf(app.param_calib.forward_zero[point]);
-        const float pair_cos = cosf(point_zero) + cosf(app.param_calib.forward_zero[point]);
-        const float pair_zero = focNormalizeAngle(atan2f(pair_sin, pair_cos));
-        app.param_calib.zero_sin_sum += sinf(pair_zero);
-        app.param_calib.zero_cos_sum += cosf(pair_zero);
-        app.param_calib.zero_used_count++;
+      if (app.param_calib.pass_index == 0U) {
+        app.param_calib.forward_zero[m][point] = point_zero;
       } else {
-        app.param_calib.zero_rejected_count++;
+        const float hysteresis = angleDiffAbs(point_zero, app.param_calib.forward_zero[m][point]);
+        if (hysteresis <= APP_CAL_ENC_HYST_REJECT_RAD) {
+          const float pair_sin = sinf(point_zero) + sinf(app.param_calib.forward_zero[m][point]);
+          const float pair_cos = cosf(point_zero) + cosf(app.param_calib.forward_zero[m][point]);
+          const float pair_zero = focNormalizeAngle(atan2f(pair_sin, pair_cos));
+          app.param_calib.zero_sin_sum[m] += sinf(pair_zero);
+          app.param_calib.zero_cos_sum[m] += cosf(pair_zero);
+          app.param_calib.zero_used_count[m]++;
+        } else {
+          app.param_calib.zero_rejected_count[m]++;
+        }
+        app.param_calib.zero_hyst_sum[m] += hysteresis;
+        if (hysteresis > app.param_calib.zero_hyst_max[m]) {
+          app.param_calib.zero_hyst_max[m] = hysteresis;
+        }
       }
-      app.param_calib.zero_hyst_sum += hysteresis;
-      if (hysteresis > app.param_calib.zero_hyst_max) {
-        app.param_calib.zero_hyst_max = hysteresis;
-      }
+      app.param_calib.zero_count[m]++;
     }
-    app.param_calib.zero_count++;
 
     app.param_calib.point_index++;
     if (app.param_calib.point_index >= APP_CAL_ENC_POINTS) {
@@ -1399,30 +1480,35 @@ static void updateParamCalibration(void)
       return;
     }
 
-    if (app.param_calib.zero_used_count == 0U ||
-        (fabsf(app.param_calib.zero_sin_sum) < 0.0001f && fabsf(app.param_calib.zero_cos_sum) < 0.0001f)) {
-      p("param cal M%u zero NG count %u\n", motor, app.param_calib.zero_count);
-      app.param_calib.zero_electric_angle[motor] = app.motor[motor].zero_electric_angle;
-    } else {
-      app.param_calib.zero_electric_angle[motor] =
-        focNormalizeAngle(atan2f(app.param_calib.zero_sin_sum, app.param_calib.zero_cos_sum));
+    for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+      if (app.param_calib.zero_used_count[m] == 0U ||
+          (fabsf(app.param_calib.zero_sin_sum[m]) < 0.0001f && fabsf(app.param_calib.zero_cos_sum[m]) < 0.0001f)) {
+        p("param cal M%u zero NG count %u\n", m, app.param_calib.zero_count[m]);
+        app.param_calib.zero_electric_angle[m] = app.motor[m].zero_electric_angle;
+      } else {
+        app.param_calib.zero_electric_angle[m] =
+          focNormalizeAngle(atan2f(app.param_calib.zero_sin_sum[m], app.param_calib.zero_cos_sum[m]));
+      }
+      app.motor[m].zero_electric_angle = app.param_calib.zero_electric_angle[m];
+      const float hyst_avg = (APP_CAL_ENC_POINTS == 0U) ? 0.0f : app.param_calib.zero_hyst_sum[m] / (float)APP_CAL_ENC_POINTS;
+      p("param cal M%u zero %+6.3f pairs used/rej %u/%u hyst avg/max %+4.1f/%+4.1f deg samples %u\n",
+        m,
+        app.motor[m].zero_electric_angle,
+        app.param_calib.zero_used_count[m],
+        app.param_calib.zero_rejected_count[m],
+        hyst_avg * APP_RAD_TO_DEG,
+        app.param_calib.zero_hyst_max[m] * APP_RAD_TO_DEG,
+        app.param_calib.zero_count[m] * APP_CAL_ENC_SAMPLE_MS);
     }
-    app.motor[motor].zero_electric_angle = app.param_calib.zero_electric_angle[motor];
-    const float hyst_avg = (APP_CAL_ENC_POINTS == 0U) ? 0.0f : app.param_calib.zero_hyst_sum / (float)APP_CAL_ENC_POINTS;
-    p("param cal M%u zero %+6.3f pairs used/rej %u/%u hyst avg/max %+4.1f/%+4.1f deg samples %u\n",
-      motor,
-      app.motor[motor].zero_electric_angle,
-      app.param_calib.zero_used_count,
-      app.param_calib.zero_rejected_count,
-      hyst_avg * APP_RAD_TO_DEG,
-      app.param_calib.zero_hyst_max * APP_RAD_TO_DEG,
-      app.param_calib.zero_count * APP_CAL_ENC_SAMPLE_MS);
+    app.param_calib.motor = 0U;
     app.param_calib.pass_index = 0U;
     app.param_calib.point_index = 0U;
+    resetParamSpeedFit(app.param_calib.motor);
     startParamCalibSpeedSettle();
     return;
   }
 
+  const uint8_t motor = app.param_calib.motor;
   if (app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SETTLE) {
     if (app.param_calib.elapsed_ms++ < APP_CAL_SPEED_SETTLE_MS) {
       return;
@@ -1494,7 +1580,8 @@ static void startParamCalibration(bool save_to_flash)
   resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
   p("param cal start multi-point save %u\n", save_to_flash ? 1U : 0U);
-  resetParamFit(0U);
+  resetParamZeroCalibration();
+  resetParamSpeedFit(0U);
   startParamCalibEncSettle();
 }
 
@@ -1671,6 +1758,8 @@ void bldcAppInit(void)
   if (flash.board_id > 0x7FU) {
     flash.board_id = 1U;
   }
+  handleBootSwitches();
+  waitForBootSwitchRelease();
 
   startAdcInjected();
   primeSensors();
@@ -1702,6 +1791,10 @@ void bldcAppInit(void)
     app.motor[1].voltage_offset,
     app.motor[0].voltage_per_rps,
     app.motor[1].voltage_per_rps);
+
+  if (app.boot_calibration_request) {
+    startParamCalibration(true);
+  }
 }
 
 void bldcAppTick1kHz(void)
@@ -1716,6 +1809,7 @@ void bldcAppTick1kHz(void)
   updateSensorAlignment();
   updateSensorDiag();
   updateParamCalibration();
+  updateSwitchCommand();
   updateOutputVoltage();
   updateOpenLoopVelocity();
   applyProtection();
