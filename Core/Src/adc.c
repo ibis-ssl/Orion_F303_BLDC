@@ -448,25 +448,21 @@ inline float getGateDriverDCDCVoltage(void)
 // timer割り込みの中で更新する
 inline void updateADC_M1(void)
 {
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   adc_raw.cs_motor[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
   adc_raw.temp_motor[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
   adc_raw.temp_motor[1] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
   adc_raw.gd_dcdc_v = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_4);
   HAL_ADCEx_InjectedStart(&hadc1);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
 inline void updateADC_M0(void)
 {
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   adc_raw.batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
   adc_raw.cs_motor[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
   adc_raw.temp_fet[0] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
   adc_raw.temp_fet[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_3);
   HAL_ADCEx_InjectedStart(&hadc2);
   HAL_ADCEx_InjectedStart(&hadc3);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 }
 
 bool isNotZeroCurrent()
