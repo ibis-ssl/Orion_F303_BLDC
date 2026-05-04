@@ -83,6 +83,11 @@
 #define APP_PROTECT_DEBOUNCE_MS (20U)
 #define APP_SPEED_GLITCH_LIMIT_RPS (160.0f)
 #define APP_SPEED_GLITCH_FAULT_COUNT (5U)
+#define APP_EST_CURRENT_RESISTANCE_OHM (0.28f)
+#define APP_EST_OVERLOAD_WINDOW_MS (1000.0f)
+#define APP_EST_OVERLOAD_DECAY_TAU_MS (3000.0f)
+#define APP_EST_OVERLOAD_ENERGY_J (THR_MOTOR_EST_CURRENT_LIMIT * THR_MOTOR_EST_CURRENT_LIMIT * APP_EST_CURRENT_RESISTANCE_OHM * (APP_EST_OVERLOAD_WINDOW_MS * 0.001f))
+#define APP_EST_OVERLOAD_DT_S (0.001f)
 
 typedef enum
 {
@@ -168,6 +173,7 @@ typedef struct
   app_param_calib_t param_calib;
   app_sensor_diag_t sensor_diag;
   bool io_check_request;
+  bool protection_check_request;
   bool can_started;
   uint8_t uart_rx_byte;
   uint8_t uart_rx_queue[APP_UART_RX_QUEUE_SIZE];
@@ -187,6 +193,9 @@ typedef struct
   uint16_t under_voltage_ms;
   uint16_t over_voltage_ms;
   uint16_t over_current_ms[APP_MOTOR_COUNT];
+  float est_overload_loss_j[APP_MOTOR_COUNT];
+  uint32_t short_current_count[APP_MOTOR_COUNT];
+  float short_current_peak[APP_MOTOR_COUNT];
   float cycle_to_s;
   float speed_cycles_to_rps;
   float phase_advance_trim_rad;
@@ -399,11 +408,13 @@ static void initMotorParameters(void)
     app.motor[m].voltage_q = 0.0f;
     app.motor[m].voltage_per_rps = voltage_per_rps;
     app.motor[m].voltage_offset = voltage_offset;
+    app.motor[m].estimated_current = 0.0f;
     app.motor[m].voltage_limit = APP_OUTPUT_VOLTAGE_LIMIT;
     app.motor[m].zero_electric_angle = validCalibFloat(flash.calib[m]) ? flash.calib[m] : 0.0f;
     app.motor[m].open_loop_electrical_angle = 0.0f;
     app.motor[m].command_timeout_ms = 0;
     app.motor[m].output_limited = false;
+    app.motor[m].current_limited = false;
   }
 }
 
@@ -438,11 +449,64 @@ static void updateSpeed(uint8_t motor)
   (void)motor;
 }
 
+static float estimateCurrentFromVoltage(uint8_t motor, float voltage_q)
+{
+  const float expected_voltage =
+    fabsf(app.motor[motor].measured_rps_ave) * app.motor[motor].voltage_per_rps +
+    app.motor[motor].voltage_offset;
+  float residual_voltage = fabsf(voltage_q) - expected_voltage;
+  if (residual_voltage < 0.0f) {
+    residual_voltage = 0.0f;
+  }
+  return residual_voltage / APP_EST_CURRENT_RESISTANCE_OHM;
+}
+
+static float nextEstimatedOverloadLoss(float accumulated_j, float estimated_current)
+{
+  const float loss_j =
+    estimated_current * estimated_current * APP_EST_CURRENT_RESISTANCE_OHM * APP_EST_OVERLOAD_DT_S;
+  const float decay_j = accumulated_j / APP_EST_OVERLOAD_DECAY_TAU_MS;
+  float next_j = accumulated_j + loss_j - decay_j;
+
+  if (next_j < 0.0f) {
+    next_j = 0.0f;
+  }
+  return next_j;
+}
+
+static void updateEstimatedOverloadLoss(uint8_t motor, float estimated_current)
+{
+  app.est_overload_loss_j[motor] =
+    nextEstimatedOverloadLoss(app.est_overload_loss_j[motor], estimated_current);
+}
+
+static float limitVoltageByEstimatedCurrent(uint8_t motor, float command_v)
+{
+  const float expected_voltage =
+    fabsf(app.motor[motor].measured_rps_ave) * app.motor[motor].voltage_per_rps +
+    app.motor[motor].voltage_offset;
+  const float allowed_voltage = expected_voltage +
+    THR_MOTOR_LOAD_CURRENT_LIMIT * APP_EST_CURRENT_RESISTANCE_OHM;
+  const float limited_v = clampFloat(command_v, allowed_voltage);
+
+  const float requested_current = estimateCurrentFromVoltage(motor, command_v);
+  app.motor[motor].estimated_current = requested_current;
+  updateEstimatedOverloadLoss(motor, requested_current);
+  app.motor[motor].current_limited = (limited_v != command_v);
+  if (app.motor[motor].current_limited) {
+    app.motor[motor].estimated_current = requested_current;
+  }
+  return limited_v;
+}
+
 static void updateOutputVoltage(void)
 {
   if (app.mode != BLDC_APP_MODE_RUN) {
     for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
       app.motor[m].voltage_q = 0.0f;
+      app.motor[m].estimated_current = 0.0f;
+      app.motor[m].current_limited = false;
+      updateEstimatedOverloadLoss(m, 0.0f);
     }
     return;
   }
@@ -468,19 +532,26 @@ static void updateOutputVoltage(void)
           } else if (app.motor[m].target_rps < 0.0f) {
             command_v -= app.motor[m].voltage_offset;
           }
-          app.motor[m].voltage_q = clampFloat(command_v, app.motor[m].voltage_limit);
+          const float current_limited_v = limitVoltageByEstimatedCurrent(m, command_v);
+          app.motor[m].voltage_q = clampFloat(current_limited_v, app.motor[m].voltage_limit);
           app.motor[m].output_limited = (app.motor[m].voltage_q != command_v);
         } else {
           app.motor[m].command_rps = 0.0f;
           app.motor[m].target_rps = 0.0f;
           app.motor[m].voltage_q = 0.0f;
+          app.motor[m].estimated_current = 0.0f;
           app.motor[m].output_limited = false;
+          app.motor[m].current_limited = false;
+          updateEstimatedOverloadLoss(m, 0.0f);
         }
       } else {
         app.motor[m].command_rps = 0.0f;
         app.motor[m].target_rps = 0.0f;
         app.motor[m].voltage_q = 0.0f;
+        app.motor[m].estimated_current = 0.0f;
         app.motor[m].output_limited = false;
+        app.motor[m].current_limited = false;
+        updateEstimatedOverloadLoss(m, 0.0f);
       }
       app.motor[m].command_timeout_ms = 0U;
       continue;
@@ -510,7 +581,8 @@ static void updateOutputVoltage(void)
     } else if (app.motor[m].target_rps < 0.0f) {
       command_v -= app.motor[m].voltage_offset;
     }
-    app.motor[m].voltage_q = clampFloat(command_v, app.motor[m].voltage_limit);
+    const float current_limited_v = limitVoltageByEstimatedCurrent(m, command_v);
+    app.motor[m].voltage_q = clampFloat(current_limited_v, app.motor[m].voltage_limit);
     app.motor[m].output_limited = (app.motor[m].voltage_q != command_v);
   }
 }
@@ -569,11 +641,15 @@ static void applyProtection(void)
     const float current = fabsf(getCurrentMotor(m));
     if (current > THR_MOTOR_OVER_CURRENT) {
       if (++app.over_current_ms[m] >= APP_PROTECT_DEBOUNCE_MS) {
-        bldcAppForceFault(BLDC_OVER_CURRENT, m, current);
+        bldcAppForceFault(BLDC_OVER_LOAD, m, current);
         return;
       }
     } else {
       app.over_current_ms[m] = 0U;
+    }
+    if (app.est_overload_loss_j[m] >= APP_EST_OVERLOAD_ENERGY_J) {
+      bldcAppForceFault(BLDC_OVER_LOAD, m, app.motor[m].estimated_current);
+      return;
     }
     const int motor_temp = getTempMotor(m);
     const int fet_temp = getTempFET(m);
@@ -591,6 +667,15 @@ static void applyProtection(void)
 static void applyPwmInIsr(uint8_t motor)
 {
   adcUpdateFast(motor);
+  const float current = fabsf(adcCurrentMotorFast(motor));
+  if (current > THR_MOTOR_SHORT_CURRENT && app.mode == BLDC_APP_MODE_RUN) {
+    app.short_current_count[motor]++;
+    if (current > app.short_current_peak[motor]) {
+      app.short_current_peak[motor] = current;
+    }
+    bldcAppForceFault(BLDC_OVER_CURRENT, motor, current);
+    return;
+  }
   updateAS5047P(motor);
   updateSpeedInIsr(motor);
 
@@ -745,11 +830,14 @@ static void printDiagnostics(void)
       app.isr_cycles_max = app.isr_cycles;
       break;
     case 1:
-      p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
+      p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f est %+4.2f ej %+4.2f lim %u enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
         app.motor[0].command_rps,
         app.motor[0].target_rps,
         app.motor[0].measured_rps_ave,
         app.motor[0].voltage_q,
+        app.motor[0].estimated_current,
+        app.est_overload_loss_j[0],
+        app.motor[0].current_limited ? 1U : 0U,
         as5047p[0].enc_raw,
         getCurrentMotor(0),
         getTempMotor(0),
@@ -760,11 +848,14 @@ static void printDiagnostics(void)
         as5047p[0].spi_error_count);
       break;
     default:
-      p("M1 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
+      p("M1 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f est %+4.2f ej %+4.2f lim %u enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
         app.motor[1].command_rps,
         app.motor[1].target_rps,
         app.motor[1].measured_rps_ave,
         app.motor[1].voltage_q,
+        app.motor[1].estimated_current,
+        app.est_overload_loss_j[1],
+        app.motor[1].current_limited ? 1U : 0U,
         as5047p[1].enc_raw,
         getCurrentMotor(1),
         getTempMotor(1),
@@ -777,11 +868,72 @@ static void printDiagnostics(void)
   }
 }
 
+static uint32_t simulateEstimatedOverloadTripMs(float high_current, uint32_t first_high_ms, uint32_t release_ms)
+{
+  float loss_j = 0.0f;
+  uint32_t elapsed_ms = 0U;
+
+  while (elapsed_ms < 10000U) {
+    float current = high_current;
+    if (elapsed_ms >= first_high_ms && elapsed_ms < (first_high_ms + release_ms)) {
+      current = 0.0f;
+    }
+    loss_j = nextEstimatedOverloadLoss(loss_j, current);
+    elapsed_ms++;
+    if (loss_j >= APP_EST_OVERLOAD_ENERGY_J) {
+      return elapsed_ms;
+    }
+  }
+  return 0U;
+}
+
+static void runProtectionModelCheckOnce(void)
+{
+  p("[PROTECT CHECK] thresholds short %.2fA overload %.2fA load_limit %.2fA est_limit %.2fA R %.2fohm energy %.2fJ tau %.0fms\n",
+    THR_MOTOR_SHORT_CURRENT,
+    THR_MOTOR_OVER_CURRENT,
+    THR_MOTOR_LOAD_CURRENT_LIMIT,
+    THR_MOTOR_EST_CURRENT_LIMIT,
+    APP_EST_CURRENT_RESISTANCE_OHM,
+    APP_EST_OVERLOAD_ENERGY_J,
+    APP_EST_OVERLOAD_DECAY_TAU_MS);
+
+  for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
+    const float expected_v =
+      fabsf(app.motor[m].measured_rps_ave) * app.motor[m].voltage_per_rps +
+      app.motor[m].voltage_offset;
+    const float command_v = expected_v + 2.0f * APP_EST_CURRENT_RESISTANCE_OHM;
+    const float allowed_v = expected_v + THR_MOTOR_LOAD_CURRENT_LIMIT * APP_EST_CURRENT_RESISTANCE_OHM;
+    const float estimated_a = (command_v - expected_v) / APP_EST_CURRENT_RESISTANCE_OHM;
+    p("[PROTECT CHECK] M%u expected %.2fV command %.2fV allowed %.2fV estimated %.2fA limited %u\n",
+      m,
+      expected_v,
+      command_v,
+      allowed_v,
+      estimated_a,
+      (command_v > allowed_v) ? 1U : 0U);
+  }
+
+  const uint32_t trip_cont_ms =
+    simulateEstimatedOverloadTripMs(THR_MOTOR_EST_CURRENT_LIMIT, 10000U, 0U);
+  const uint32_t trip_release_ms =
+    simulateEstimatedOverloadTripMs(THR_MOTOR_EST_CURRENT_LIMIT, 900U, 20U);
+  p("[PROTECT CHECK] est overload trip %.2fA continuous %lums, 900ms+20ms release %lums\n",
+    THR_MOTOR_EST_CURRENT_LIMIT,
+    trip_cont_ms,
+    trip_release_ms);
+}
+
 static void processDeferredDebugOutput(void)
 {
   if (app.io_check_request) {
     app.io_check_request = false;
     runIoCheckOnce();
+    return;
+  }
+  if (app.protection_check_request) {
+    app.protection_check_request = false;
+    runProtectionModelCheckOnce();
     return;
   }
   if (app.foc_math_request) {
@@ -880,7 +1032,7 @@ static void startSensorAlignment(uint8_t motor)
   resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
   app.align_active = true;
-  p("align M%u start: uq %+4.1f angle %+4.2f\n", motor, APP_ALIGN_VOLTAGE, APP_ALIGN_ELECTRICAL_ANGLE);
+  p("align M%u start: ud %+4.1f angle %+4.2f\n", motor, APP_ALIGN_VOLTAGE, APP_ALIGN_ELECTRICAL_ANGLE);
 }
 
 static void updateSensorAlignment(void)
@@ -1355,6 +1507,9 @@ static void handleUartCommand(uint8_t cmd)
       break;
     case 'm':
       app.foc_math_request = true;
+      break;
+    case 'l':
+      app.protection_check_request = true;
       break;
     case 'R':
       p("system reset\n");

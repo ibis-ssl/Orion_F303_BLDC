@@ -30,11 +30,13 @@ typedef struct
   float voltage_limit;
   float voltage_per_rps;
   float voltage_offset;
+  float estimated_current;
   float zero_electric_angle;
   float open_loop_electrical_angle;
   int pre_raw;
   uint16_t command_timeout_ms;
   bool output_limited;
+  bool current_limited;
 } bldc_app_motor_state_t;
 
 void bldcAppInit(void);
