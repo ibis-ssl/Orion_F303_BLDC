@@ -263,6 +263,8 @@ UART監視:
 powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM167 -BaudRate 2000000
 ```
 
+CANableを使ったCAN入出力デバッグCLIの設計方針は [canable_debug_design.md](canable_debug_design.md) にまとめる。
+
 既存のリンカ警告 `LOAD segment with RWX permissions` は残っている。
 
 ## 主要ファイル
@@ -273,6 +275,7 @@ powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM167 
 - `Core/Src/io_check.c`: 非回転I/Oチェック。
 - `Core/Src/adc.c`, `spi.c`, `tim.c`, `can.c`, `gpio.c`, `usart.c`, `flash.c`: CubeMX/HAL周辺操作と低レベル補助関数。
 - `doc/hardware_spec.md`: ハードウェア仕様メモ。
+- `doc/canable_debug_design.md`: CANable/libusbを使うCANデバッグCLIの設計方針。
 - `doc/work_log.md`: 過去の実装、評価、試行錯誤ログ。
 
 ## 安全上の注意
