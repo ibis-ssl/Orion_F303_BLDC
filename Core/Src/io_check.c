@@ -55,14 +55,17 @@ static void printAdcState(void)
 static void printEncoderState(void)
 {
   for (int i = 0; i < 2; i++) {
-    p("ENC M%d raw %5d elec %5d rad %+6.3f diff %+6d min %+6d max %+6d\n",
+    updateAS5047PDiagnostics(i);
+    p("ENC M%d raw %5d elec %5d rad %+6.3f diff %+6d min %+6d max %+6d frame 0x%04x spierr %lu\n",
       i,
       as5047p[i].enc_raw,
       as5047p[i].enc_elec_raw,
       as5047p[i].output_radian,
       as5047p[i].diff_enc,
       as5047p[i].diff_min,
-      as5047p[i].diff_max);
+      as5047p[i].diff_max,
+      as5047p[i].last_frame,
+      as5047p[i].spi_error_count);
     p("ENC M%d reg err 0x%02x prog 0x%02x diag 0x%03x mag 0x%03x enc 0x%03x com 0x%03x\n",
       i,
       as5047p[i].reg.error,

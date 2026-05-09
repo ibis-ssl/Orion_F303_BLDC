@@ -79,6 +79,8 @@ void HAL_CAN_MspInit(CAN_HandleTypeDef * canHandle)
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* CAN interrupt Init */
+    HAL_NVIC_SetPriority(CAN_RX0_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(CAN_RX0_IRQn);
     HAL_NVIC_SetPriority(CAN_RX1_IRQn, 2, 0);
     HAL_NVIC_EnableIRQ(CAN_RX1_IRQn);
     /* USER CODE BEGIN CAN_MspInit 1 */
@@ -103,6 +105,7 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef * canHandle)
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11 | GPIO_PIN_12);
 
     /* CAN interrupt Deinit */
+    HAL_NVIC_DisableIRQ(CAN_RX0_IRQn);
     HAL_NVIC_DisableIRQ(CAN_RX1_IRQn);
     /* USER CODE BEGIN CAN_MspDeInit 1 */
 
@@ -113,32 +116,41 @@ void HAL_CAN_MspDeInit(CAN_HandleTypeDef * canHandle)
 /* USER CODE BEGIN 1 */
 void CAN_Filter_Init(uint16_t board_addr)
 {
-  CAN_FilterTypeDef sFilterConfig;
-  sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
-  sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
+  CAN_FilterTypeDef sFilterConfig = {0};
+  uint16_t speed_base = (uint16_t)(0x100U + board_addr * 2U);
+
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
   sFilterConfig.FilterActivation = ENABLE;
 
   sFilterConfig.FilterBank = 0;
-  sFilterConfig.FilterIdHigh = (0x100 + board_addr * 2) << 5;  //speed
-  sFilterConfig.FilterIdLow = (0x310) << 5;                    //motor calib
-  sFilterConfig.FilterMaskIdHigh = (0x000) << 5;               // emg stop
-  sFilterConfig.FilterMaskIdLow = (0x001) << 5;                // error report
+  sFilterConfig.FilterIdHigh = speed_base << 5;       // speed M0/M1
+  sFilterConfig.FilterIdLow = 0U;
+  sFilterConfig.FilterMaskIdHigh = 0x7FEU << 5;       // ignore motor select bit
+  sFilterConfig.FilterMaskIdLow = 0U;
   sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.SlaveStartFilterBank = 14U;
 
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
     Error_Handler();
   }
 
-  sFilterConfig.FilterIdHigh = (0x110) << 5;                       // kick
-  sFilterConfig.FilterIdLow = (0x010) << 5;                        // power enable
-  sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;  //speed
-  sFilterConfig.FilterMaskIdLow = (0x320) << 5;                    // notused
-  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDLIST;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_16BIT;
   sFilterConfig.FilterBank = 1;
+  sFilterConfig.FilterIdHigh = 0x110U << 5;         // freewheel/kick command
+  sFilterConfig.FilterIdLow = 0x010U << 5;          // reset command
+  sFilterConfig.FilterMaskIdHigh = 0x320U << 5;     // IO check
+  sFilterConfig.FilterMaskIdLow = 0x000U << 5;      // error/emergency frame
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO1;
 
   if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
     Error_Handler();
   }
+}
+
+void CAN_ActivateRxNotifications(void)
+{
   if (HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK) {
     Error_Handler();
   }

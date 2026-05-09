@@ -64,6 +64,7 @@ void MX_CAN_Init(void);
 /* USER CODE BEGIN Prototypes */
 
 void CAN_Filter_Init(uint16_t board_addr);
+void CAN_ActivateRxNotifications(void);
 void updateCANRXBuffer(void);
 void sendFloatDual(uint32_t can_id, float data1, float data2);
 void sendSpeed(int board_id, int motor, float speed, float angle);

@@ -43,7 +43,7 @@ void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -140,6 +140,31 @@ static inline void deselectAS5047P(bool enc)
   GPIOB->BSRR = enc ? GPIO_PIN_6 : GPIO_PIN_7;
 }
 
+static uint16_t as5047pEvenParity(uint16_t value)
+{
+  value ^= value >> 8;
+  value ^= value >> 4;
+  value ^= value >> 2;
+  value ^= value >> 1;
+  return value & 1U;
+}
+
+static uint16_t makeAS5047PReadCommand(uint16_t reg_address)
+{
+  uint16_t command = (reg_address & 0x3FFFU) | 0x4000U;
+  if (as5047pEvenParity(command) != 0U) {
+    command |= 0x8000U;
+  }
+  return command;
+}
+
+static inline void as5047pCsSettle(void)
+{
+  for (uint8_t i = 0U; i < 64U; i++) {
+    __NOP();
+  }
+}
+
 static uint16_t transferAS5047P(uint16_t tx)
 {
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_TXE) == RESET) {
@@ -156,12 +181,32 @@ static uint16_t transferAS5047P(uint16_t tx)
 uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
 {
   selectAS5047P(enc);
-
-  const uint16_t rx = transferAS5047P(reg_address | (1 << 14));
-
+  as5047pCsSettle();
+  (void)transferAS5047P(makeAS5047PReadCommand(reg_address));
   deselectAS5047P(enc);
-  // 14 bit registor
+
+  as5047pCsSettle();
+  selectAS5047P(enc);
+  as5047pCsSettle();
+  const uint16_t rx = transferAS5047P(0xFFFFU);
+  deselectAS5047P(enc);
+
   return (rx & 0x3FFF);
+}
+
+void updateAS5047PDiagnostics(bool motor)
+{
+  const uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  as5047p[motor].reg.error = readRegisterAS5047P(motor, 0x0001U);
+  as5047p[motor].reg.prog = readRegisterAS5047P(motor, 0x0003U);
+  as5047p[motor].reg.diagagc = readRegisterAS5047P(motor, 0x3FFCU);
+  as5047p[motor].reg.mag = readRegisterAS5047P(motor, 0x3FFDU);
+  as5047p[motor].reg.angleenc = readRegisterAS5047P(motor, 0x3FFEU);
+  as5047p[motor].reg.anglecom = readRegisterAS5047P(motor, 0x3FFFU);
+  if (primask == 0U) {
+    __enable_irq();
+  }
 }
 
 static inline void updateAS5047P_Common(as5047p_t * enc)
@@ -185,6 +230,7 @@ void updateAS5047P(bool motor)
 {
   if (motor == 0) {
     selectAS5047P(0);
+    as5047pCsSettle();
 
     updateAS5047P_Common(&as5047p[0]);
     updateDiff(0);
@@ -192,6 +238,7 @@ void updateAS5047P(bool motor)
     deselectAS5047P(0);
   } else {
     selectAS5047P(1);
+    as5047pCsSettle();
 
     updateAS5047P_Common(&as5047p[1]);
     updateDiff(1);

@@ -57,6 +57,8 @@
 #define APP_SWITCH_CW_HIGH_RPS (40.0f)
 #define APP_SWITCH_CCW_HIGH_RPS (60.0f)
 #define APP_ALIGN_VOLTAGE (2.0f)
+#define APP_CAL_CURRENT_SCALE (0.5f)
+#define APP_CAL_ALIGN_VOLTAGE (APP_ALIGN_VOLTAGE * APP_CAL_CURRENT_SCALE)
 #define APP_ALIGN_MS (1000U)
 #define APP_ALIGN_ELECTRICAL_ANGLE (4.71238898038f)
 #define APP_SENSOR_DIAG_SCAN_MS (1200U)
@@ -359,6 +361,11 @@ static void primeSensors(void)
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6 | GPIO_PIN_7, GPIO_PIN_SET);
   __HAL_SPI_ENABLE(&hspi1);
 
+  updateAS5047PDiagnostics(0);
+  updateAS5047PDiagnostics(1);
+  as5047p[0].spi_error_count = 0U;
+  as5047p[1].spi_error_count = 0U;
+
   for (int i = 0; i < 8; i++) {
     updateADC(0);
     updateADC(1);
@@ -486,22 +493,32 @@ static void updateEstimatedOverloadLoss(uint8_t motor, float estimated_current)
     nextEstimatedOverloadLoss(app.est_overload_loss_j[motor], estimated_current);
 }
 
+static float loadCurrentLimitForState(void)
+{
+  return THR_MOTOR_LOAD_CURRENT_LIMIT;
+}
+
 static float limitVoltageByEstimatedCurrent(uint8_t motor, float command_v)
 {
+  if (app.param_calib.active) {
+    app.motor[motor].estimated_current = 0.0f;
+    app.motor[motor].current_limited = false;
+    updateEstimatedOverloadLoss(motor, 0.0f);
+    return command_v;
+  }
+
   const float expected_voltage =
     fabsf(app.motor[motor].measured_rps_ave) * app.motor[motor].voltage_per_rps +
     app.motor[motor].voltage_offset;
+  const float load_current_limit = loadCurrentLimitForState();
   const float allowed_voltage = expected_voltage +
-    THR_MOTOR_LOAD_CURRENT_LIMIT * APP_EST_CURRENT_RESISTANCE_OHM;
+    load_current_limit * APP_EST_CURRENT_RESISTANCE_OHM;
   const float limited_v = clampFloat(command_v, allowed_voltage);
 
-  const float requested_current = estimateCurrentFromVoltage(motor, command_v);
-  app.motor[motor].estimated_current = requested_current;
-  updateEstimatedOverloadLoss(motor, requested_current);
+  const float limited_current = estimateCurrentFromVoltage(motor, limited_v);
+  app.motor[motor].estimated_current = limited_current;
+  updateEstimatedOverloadLoss(motor, limited_current);
   app.motor[motor].current_limited = (limited_v != command_v);
-  if (app.motor[motor].current_limited) {
-    app.motor[motor].estimated_current = requested_current;
-  }
   return limited_v;
 }
 
@@ -645,17 +662,22 @@ static void applyProtection(void)
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     const float current = fabsf(getCurrentMotor(m));
-    if (current > THR_MOTOR_OVER_CURRENT) {
-      if (++app.over_current_ms[m] >= APP_PROTECT_DEBOUNCE_MS) {
-        bldcAppForceFault(BLDC_OVER_LOAD, m, current);
+    if (app.param_calib.active) {
+      app.over_current_ms[m] = 0U;
+      updateEstimatedOverloadLoss(m, 0.0f);
+    } else {
+      if (current > THR_MOTOR_OVER_CURRENT) {
+        if (++app.over_current_ms[m] >= APP_PROTECT_DEBOUNCE_MS) {
+          bldcAppForceFault(BLDC_OVER_LOAD, m, current);
+          return;
+        }
+      } else {
+        app.over_current_ms[m] = 0U;
+      }
+      if (app.est_overload_loss_j[m] >= APP_EST_OVERLOAD_ENERGY_J) {
+        bldcAppForceFault(BLDC_OVER_LOAD, m, app.motor[m].estimated_current);
         return;
       }
-    } else {
-      app.over_current_ms[m] = 0U;
-    }
-    if (app.est_overload_loss_j[m] >= APP_EST_OVERLOAD_ENERGY_J) {
-      bldcAppForceFault(BLDC_OVER_LOAD, m, app.motor[m].estimated_current);
-      return;
     }
     const int motor_temp = getTempMotor(m);
     const int fet_temp = getTempFET(m);
@@ -698,7 +720,7 @@ static void applyPwmInIsr(uint8_t motor)
   if (app.param_calib.active) {
     if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE ||
         app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SAMPLE) {
-      focDriverApplySineVoltage(motor, 0.0f, APP_ALIGN_VOLTAGE, app.param_calib.electrical_angle, adcBatteryVoltageFast());
+      focDriverApplySineVoltage(motor, 0.0f, APP_CAL_ALIGN_VOLTAGE, app.param_calib.electrical_angle, adcBatteryVoltageFast());
       return;
     }
 
@@ -739,6 +761,13 @@ static void applyPwmInIsr(uint8_t motor)
   if (app.mode != BLDC_APP_MODE_RUN || app.freewheel_ms > 0U) {
     foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
     focDriverSetPwmCompare(motor, center);
+    return;
+  }
+
+  if (app.motor[motor].voltage_q == 0.0f) {
+    foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
+    focDriverSetPwmCompare(motor, center);
+    app.open_loop_cycle[motor] = cycleNow();
     return;
   }
 
@@ -1132,6 +1161,11 @@ static void initOpenLoopAnglesFromSensor(void)
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     const float mech = encoderRawToMechanicalRad(as5047p[m].enc_raw);
     app.motor[m].open_loop_electrical_angle = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[m].zero_electric_angle, APP_SENSOR_DIRECTION);
+    app.motor[m].pre_raw = as5047p[m].enc_raw;
+    app.motor[m].measured_rps = 0.0f;
+    app.speed_glitch_count[m] = 0U;
+    app.speed_glitch_rps[m] = 0.0f;
+    app.speed_glitch_diff[m] = 0;
     app.open_loop_cycle[m] = now;
     app.speed_cycle[m] = now;
   }
@@ -1441,7 +1475,11 @@ static void updateParamCalibration(void)
 
     const uint8_t point = paramCalibPointForPass(app.param_calib.pass_index, app.param_calib.point_index);
     for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+      const int raw = as5047p[m].enc_raw;
+      const float shaft = encoderRawToMechanicalRad(raw);
       float point_zero = 0.0f;
+      float hysteresis = -1.0f;
+      bool zero_used = false;
       if (app.param_calib.point_zero_count[m] > 0U &&
           (fabsf(app.param_calib.point_zero_sin_sum[m]) >= 0.0001f ||
            fabsf(app.param_calib.point_zero_cos_sum[m]) >= 0.0001f)) {
@@ -1451,7 +1489,7 @@ static void updateParamCalibration(void)
       if (app.param_calib.pass_index == 0U) {
         app.param_calib.forward_zero[m][point] = point_zero;
       } else {
-        const float hysteresis = angleDiffAbs(point_zero, app.param_calib.forward_zero[m][point]);
+        hysteresis = angleDiffAbs(point_zero, app.param_calib.forward_zero[m][point]);
         if (hysteresis <= APP_CAL_ENC_HYST_REJECT_RAD) {
           const float pair_sin = sinf(point_zero) + sinf(app.param_calib.forward_zero[m][point]);
           const float pair_cos = cosf(point_zero) + cosf(app.param_calib.forward_zero[m][point]);
@@ -1459,6 +1497,7 @@ static void updateParamCalibration(void)
           app.param_calib.zero_sin_sum[m] += sinf(pair_zero);
           app.param_calib.zero_cos_sum[m] += cosf(pair_zero);
           app.param_calib.zero_used_count[m]++;
+          zero_used = true;
         } else {
           app.param_calib.zero_rejected_count[m]++;
         }
@@ -1466,6 +1505,25 @@ static void updateParamCalibration(void)
         if (hysteresis > app.param_calib.zero_hyst_max[m]) {
           app.param_calib.zero_hyst_max[m] = hysteresis;
         }
+      }
+      if (app.param_calib.pass_index == 0U) {
+        p("param cal enc pass %u point %2u M%u raw %5d mech %+7.2f deg zero %+7.2f deg\n",
+          app.param_calib.pass_index,
+          point,
+          m,
+          raw,
+          shaft * APP_RAD_TO_DEG,
+          point_zero * APP_RAD_TO_DEG);
+      } else {
+        p("param cal enc pass %u point %2u M%u raw %5d mech %+7.2f deg zero %+7.2f deg hyst %+5.2f deg %s\n",
+          app.param_calib.pass_index,
+          point,
+          m,
+          raw,
+          shaft * APP_RAD_TO_DEG,
+          point_zero * APP_RAD_TO_DEG,
+          hysteresis * APP_RAD_TO_DEG,
+          zero_used ? "used" : "reject");
       }
       app.param_calib.zero_count[m]++;
     }
@@ -1624,6 +1682,9 @@ static void handleUartCommand(uint8_t cmd)
     case '3':
       requestDebugPrint(2U);
       break;
+    case '4':
+      focDriverPrintState();
+      break;
     case 'w':
       setTarget(0, app.motor[0].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
       setTarget(1, app.motor[1].command_rps + APP_SERIAL_SPEED_STEP_RPS, 0xFFFFU);
@@ -1770,6 +1831,7 @@ void bldcAppInit(void)
   CAN_Filter_Init((uint16_t)flash.board_id);
   if (HAL_CAN_Start(&hcan) == HAL_OK) {
     app.can_started = true;
+    CAN_ActivateRxNotifications();
   }
 
   HAL_UART_Receive_IT(&huart1, &app.uart_rx_byte, 1);
@@ -1802,6 +1864,7 @@ void bldcAppTick1kHz(void)
   const uint32_t loop_start = cycleNow();
 
   pollUart();
+  adcUpdateTemperatureFilters();
 
   updateSpeed(0);
   updateSpeed(1);
@@ -1839,9 +1902,7 @@ void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
   app.pwm_irq_count++;
   motor_select ^= 1U;
 
-  setLedBlue(false);
   applyPwmInIsr(motor_select);
-  setLedBlue(true);
   app.isr_cycles = cycleDelta(isr_start, cycleNow());
   if (app.isr_cycles > app.isr_cycles_max) {
     app.isr_cycles_max = app.isr_cycles;
@@ -1876,10 +1937,9 @@ void bldcAppEnableRun(void)
     return;
   }
   app.freewheel_ms = 0U;
-  app.zero_output_ms = 0U;
+  app.zero_output_ms = APP_ZERO_SLEEP_MS;
   initOpenLoopAnglesFromSensor();
   setPwmAll(TIM_PWM_CENTER);
-  resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
 }
 
@@ -1939,7 +1999,8 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan_arg)
 {
   CAN_RxHeaderTypeDef header;
   can_msg_buf_t msg;
-  if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &header, msg.data) == HAL_OK) {
+  while (HAL_CAN_GetRxFifoFillLevel(hcan_arg, CAN_RX_FIFO0) > 0U &&
+         HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO0, &header, msg.data) == HAL_OK) {
     handleCanMessage(&header, &msg);
   }
 }
@@ -1948,7 +2009,8 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef * hcan_arg)
 {
   CAN_RxHeaderTypeDef header;
   can_msg_buf_t msg;
-  if (HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO1, &header, msg.data) == HAL_OK) {
+  while (HAL_CAN_GetRxFifoFillLevel(hcan_arg, CAN_RX_FIFO1) > 0U &&
+         HAL_CAN_GetRxMessage(hcan_arg, CAN_RX_FIFO1, &header, msg.data) == HAL_OK) {
     handleCanMessage(&header, &msg);
   }
 }

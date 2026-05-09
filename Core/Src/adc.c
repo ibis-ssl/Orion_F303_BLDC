@@ -23,7 +23,16 @@
 /* USER CODE BEGIN 0 */
 #include <stdbool.h>
 
+#define ADC_TEMP_FILTER_ALPHA (0.02f)
+#define ADC_TEMP_VALID_MIN_C (-20.0f)
+#define ADC_TEMP_VALID_MAX_C (119.0f)
+
 adc_raw_t adc_raw;
+
+static float adc_temp_fet_filtered[2] = {25.0f, 25.0f};
+static float adc_temp_motor_filtered[2] = {25.0f, 25.0f};
+static bool adc_temp_fet_valid[2] = {false, false};
+static bool adc_temp_motor_valid[2] = {false, false};
 /* USER CODE END 0 */
 
 ADC_HandleTypeDef hadc1;
@@ -479,13 +488,52 @@ inline float getCurrentMotor(bool motor)
 {
   return (adc_raw.cs_motor[motor] - adc_raw.cs_adc_offset) * 3.3 / 4096 * 8;
 }
+
+static float adcTempFromRaw(int raw)
+{
+  return (-((float)raw * 3.3f / 4096.0f) + 1.5f) * 70.0f + 25.0f;
+}
+
+static int adcTempToInt(float temp)
+{
+  if (temp >= 0.0f) {
+    return (int)(temp + 0.5f);
+  }
+  return (int)(temp - 0.5f);
+}
+
+static void adcUpdateTempFilter(float * filtered, bool * valid, float sample)
+{
+  if (sample < ADC_TEMP_VALID_MIN_C || sample > ADC_TEMP_VALID_MAX_C) {
+    return;
+  }
+  if (!(*valid)) {
+    *filtered = sample;
+    *valid = true;
+    return;
+  }
+  *filtered += (sample - *filtered) * ADC_TEMP_FILTER_ALPHA;
+}
+
+void adcUpdateTemperatureFilters(void)
+{
+  for (uint8_t motor = 0U; motor < 2U; motor++) {
+    adcUpdateTempFilter(&adc_temp_fet_filtered[motor],
+                        &adc_temp_fet_valid[motor],
+                        adcTempFromRaw(adc_raw.temp_fet[motor]));
+    adcUpdateTempFilter(&adc_temp_motor_filtered[motor],
+                        &adc_temp_motor_valid[motor],
+                        adcTempFromRaw(adc_raw.temp_motor[motor]));
+  }
+}
+
 inline int getTempFET(bool motor)
 {
-  return (-((float)adc_raw.temp_fet[motor] * 3.3 / 4096) + 1.5) * 70 + 25;
+  return adcTempToInt(adc_temp_fet_filtered[motor]);
 }
 inline int getTempMotor(bool motor)
 {
-  return (-((float)adc_raw.temp_motor[motor] * 3.3 / 4096) + 1.5) * 70 + 25;
+  return adcTempToInt(adc_temp_motor_filtered[motor]);
 }
 
 inline void updateADC(bool motor)

@@ -49,7 +49,7 @@ typedef struct
   uint16_t last_frame;
   struct
   {
-    uint8_t error, prog, diagagc, mag, angleenc, anglecom;
+    uint16_t error, prog, diagagc, mag, angleenc, anglecom;
   } reg;
 } as5047p_t;
 
@@ -63,6 +63,7 @@ extern as5047p_t as5047p[2];
 
 uint16_t readRegisterAS5047P(bool enc, uint16_t address);
 void updateAS5047P(bool motor);
+void updateAS5047PDiagnostics(bool motor);
 
 /* USER CODE END Prototypes */
 
