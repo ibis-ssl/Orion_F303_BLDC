@@ -300,3 +300,42 @@ CANableを使ったCAN入出力デバッグCLIの設計方針は [canable_debug_
 - 異常時は `space` で目標速度0とフリーウィールへ戻す。
 - 電流制限は電源ライン電流に対する保護であり、相電流制御の代替ではない。
 - `K` はFlashへ保存するため、保存前に `k` でRAM校正結果を確認する。
+
+## 2026-05-10 キャリブレーション開始直後の停止対策
+
+`k` / `K` 実行後に `param cal start multi-point save 0/1` だけが表示され、最初の強制励磁角でロックしたまま進まない場合は、過去ログの温度 Fault ではなく、キャリブレーション状態のメインループ更新が PWM ISR へ確実に見えていない可能性を優先して確認する。
+
+`app.param_calib.active`、`stage`、`electrical_angle` は 1kHz メインループで更新し、TIM1 PWM ISR で参照する共有状態であるため `volatile` として扱う。これにより `-Ofast` 最適化時でも ISR が古い励磁角を読み続けることを避ける。
+
+開始直後の `param cal start ...` と `param cal enc both ...` ログは出さない。開始直後の UART DMA 連続送信と float printf の負荷を下げるため、進捗ログはエンコーダサンプル完了後の短い `cal enc ...` 行から出す。
+
+性能確認は UART 診断ページ 0 の `loop current/max us`、`slack`、`isr current/max us` を見る。`slack` が正なら 1kHz メイン周期内に収まっている。
+
+## 2026-05-11 キャリブレーション5秒タイムアウト
+
+`param cal enc both pass 0 point 0/72 angle_mrad +0` から進まない現象を切り分けるため、キャリブレーション各ステージに監視タイマを追加した。ゼロ電気角の強制励磁ステージは 5秒でタイムアウトし、PWM をフリーウィールへ戻す。
+
+タイムアウト時の UART 出力例:
+
+```text
+param cal TIMEOUT stage 1 motor 0 pass 0 point 0/72 elapsed 5000ms total 5000ms angle_mrad +0
+param cal timeout perf loop 10/120 us slack 880 us OK isr 3/8 us slack 17 us OK
+```
+
+`stage` は `APP_PARAM_CAL_STAGE_*` の値で、`1` は `ENC_SETTLE`、`2` は `ENC_SAMPLE` を示す。`perf` 行では 1kHz メインループの最大時間を 1000us 予算、PWM ISR の最大時間を 25us 予算で判定する。両方が `OK` なら処理時間には余裕があり、進行停止の原因は時間不足ではなく、状態更新、割り込み、PWM 出力、または UART 出力経路を疑う。
+
+速度測定の `SPEED_SETTLE` は仕様上 6000ms かかるため、ここだけは 7000ms をタイムアウト値にする。その他のステージは 5000ms で判定する。
+
+## 2026-05-11 実機キャリブレーション停止原因と性能確認
+
+実機で `param cal enc both pass 0 point 0/72 angle_mrad +0` のまま進まない状態を確認した。ST-Linkで停止中のPCを読むと `Core/Src/foc_math.c` の `focPhaseVoltageToCompare()` に入っており、PWM ISR内で固定角の SinePWM 計算を毎周期繰り返していた。診断ログでも `isr 22/23 us` と25us周期にほぼ張り付き、メインループ最大時間が大きく悪化していた。
+
+キャリブレーションの強制励磁角は `ENC_SETTLE` / `ENC_SAMPLE` 中に変わらないため、ステージ開始時に `focDriverApplySineVoltage()` を1回だけ実行し、ISRではADC/エンコーダ/速度更新だけを行う。これにより25us周期のISRから三角関数とCCR変換の繰り返しを外した。
+
+実機確認ではキャリブレーションが `cal enc p0 i00 ...` 以降へ進行し、診断値は次の範囲に収まった。
+
+```text
+Mode 3 ... loop 101/805 us slack 195 us isr 15/18 us
+```
+
+1kHzメインループの最大805usは1000us予算内、PWM ISRの最大18usは25us予算内であり、今回の停止原因は処理時間不足そのものではなく、固定角強制励磁の計算をISRで毎回実行していたことによるISR占有だった。

@@ -76,6 +76,11 @@
 #define APP_CAL_MIN_FIT_RPS (8.0f)
 #define APP_CAL_MODEL_MARGIN (1.05f)
 #define APP_CAL_MAX_OFFSET_V (3.00f)
+#define APP_CAL_STAGE_TIMEOUT_MS (5000U)
+#define APP_MAIN_LOOP_BUDGET_US (1000U)
+#define APP_PWM_ISR_BUDGET_US (25U)
+#define APP_MAIN_WAIT_TIMEOUT_US (2000U)
+#define APP_MDEG_SCALE (57295.7795131f)
 
 /*
  * "Positive" phase advance is the mathematical electrical-angle direction.
@@ -114,14 +119,18 @@ typedef enum
 
 typedef struct
 {
-  bool active;
+  volatile bool active;
   bool save_to_flash;
-  app_param_calib_stage_t stage;
+  volatile app_param_calib_stage_t stage;
   uint8_t motor;
   uint8_t point_index;
   uint8_t pass_index;
   uint16_t elapsed_ms;
-  float electrical_angle;
+  uint16_t stage_watchdog_ms;
+  uint32_t total_elapsed_ms;
+  uint32_t stage_start_tick;
+  uint32_t total_start_tick;
+  volatile float electrical_angle;
   float test_rps;
   float speed_sum;
   uint16_t speed_count;
@@ -190,6 +199,8 @@ typedef struct
   volatile uint32_t uart_rx_overrun;
   uint32_t loop_busy_cycles;
   uint32_t loop_busy_cycles_max;
+  uint32_t main_wait_timeout_count;
+  uint32_t main_wait_last_irq_count;
   uint32_t isr_cycles;
   uint32_t isr_cycles_max;
   uint32_t open_loop_cycle[APP_MOTOR_COUNT];
@@ -228,6 +239,39 @@ static uint32_t cyclesToUs(uint32_t cycles)
     return 0U;
   }
   return cycles / cycles_per_us;
+}
+
+static void printPerformanceCheck(const char * label)
+{
+  const uint32_t loop_us = cyclesToUs(app.loop_busy_cycles);
+  const uint32_t loop_max_us = cyclesToUs(app.loop_busy_cycles_max);
+  const uint32_t isr_us = cyclesToUs(app.isr_cycles);
+  const uint32_t isr_max_us = cyclesToUs(app.isr_cycles_max);
+  const long loop_slack_us = (long)APP_MAIN_LOOP_BUDGET_US - (long)loop_max_us;
+  const long isr_slack_us = (long)APP_PWM_ISR_BUDGET_US - (long)isr_max_us;
+
+  p("%s perf loop %lu/%lu us slack %ld us %s isr %lu/%lu us slack %ld us %s\n",
+    label,
+    loop_us,
+    loop_max_us,
+    loop_slack_us,
+    (loop_slack_us > 0L) ? "OK" : "NG",
+    isr_us,
+    isr_max_us,
+    isr_slack_us,
+    (isr_slack_us > 0L) ? "OK" : "NG");
+  p("%s sync wait_timeout %lu last_irq_count %lu\n",
+    label,
+    app.main_wait_timeout_count,
+    app.main_wait_last_irq_count);
+}
+
+static int floatToMilli(float value)
+{
+  if (value >= 0.0f) {
+    return (int)(value * 1000.0f + 0.5f);
+  }
+  return (int)(value * 1000.0f - 0.5f);
 }
 
 static void enableCycleCounter(void)
@@ -720,7 +764,6 @@ static void applyPwmInIsr(uint8_t motor)
   if (app.param_calib.active) {
     if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE ||
         app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SAMPLE) {
-      focDriverApplySineVoltage(motor, 0.0f, APP_CAL_ALIGN_VOLTAGE, app.param_calib.electrical_angle, adcBatteryVoltageFast());
       return;
     }
 
@@ -1339,19 +1382,18 @@ static uint8_t paramCalibPointForPass(uint8_t pass_index, uint8_t point_index)
 static void startParamCalibEncSettle(void)
 {
   const uint8_t point = paramCalibPointForPass(app.param_calib.pass_index, app.param_calib.point_index);
+  const float electrical_angle = paramCalibElectricalAngle(point);
   app.param_calib.stage = APP_PARAM_CAL_STAGE_ENC_SETTLE;
   app.param_calib.elapsed_ms = 0U;
-  app.param_calib.electrical_angle = paramCalibElectricalAngle(point);
+  app.param_calib.stage_watchdog_ms = 0U;
+  app.param_calib.stage_start_tick = HAL_GetTick();
+  app.param_calib.electrical_angle = electrical_angle;
   for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
     app.param_calib.point_zero_sin_sum[m] = 0.0f;
     app.param_calib.point_zero_cos_sum[m] = 0.0f;
     app.param_calib.point_zero_count[m] = 0U;
+    focDriverApplySineVoltage(m, 0.0f, APP_CAL_ALIGN_VOLTAGE, electrical_angle, adcBatteryVoltageFast());
   }
-  p("param cal enc both pass %u point %u/%u angle %+5.2f\n",
-    app.param_calib.pass_index,
-    point,
-    APP_CAL_ENC_POINTS,
-    app.param_calib.electrical_angle);
 }
 
 static void startParamCalibSpeedSettle(void)
@@ -1364,6 +1406,8 @@ static void startParamCalibSpeedSettle(void)
   }
   app.param_calib.stage = APP_PARAM_CAL_STAGE_SPEED_SETTLE;
   app.param_calib.elapsed_ms = 0U;
+  app.param_calib.stage_watchdog_ms = 0U;
+  app.param_calib.stage_start_tick = HAL_GetTick();
   app.param_calib.test_rps = target_rps;
   app.param_calib.speed_sum = 0.0f;
   app.param_calib.speed_count = 0U;
@@ -1423,6 +1467,46 @@ static void finishParamCalibration(void)
     rps_per_v0,
     rps_per_v1,
     save ? 1U : 0U);
+  p("param cal time total %lums\n", app.param_calib.total_elapsed_ms);
+  printPerformanceCheck("param cal done");
+}
+
+static void abortParamCalibrationTimeout(void)
+{
+  const uint8_t point = paramCalibPointForPass(app.param_calib.pass_index, app.param_calib.point_index);
+  const int angle_mrad = floatToMilli(app.param_calib.electrical_angle);
+  const app_param_calib_stage_t stage = app.param_calib.stage;
+
+  app.param_calib.active = false;
+  app.param_calib.stage = APP_PARAM_CAL_STAGE_IDLE;
+  app.motor[0].command_rps = 0.0f;
+  app.motor[1].command_rps = 0.0f;
+  app.motor[0].target_rps = 0.0f;
+  app.motor[1].target_rps = 0.0f;
+  app.motor[0].voltage_q = 0.0f;
+  app.motor[1].voltage_q = 0.0f;
+  setPwmAll(TIM_PWM_CENTER);
+  setPwmOutPutFreeWheel();
+  app.mode = BLDC_APP_MODE_FREEWHEEL;
+
+  p("param cal TIMEOUT stage %u motor %u pass %u point %u/%u elapsed %ums total %lums angle_mrad %+d\n",
+    (unsigned int)stage,
+    app.param_calib.motor,
+    app.param_calib.pass_index,
+    point,
+    APP_CAL_ENC_POINTS,
+    app.param_calib.stage_watchdog_ms,
+    app.param_calib.total_elapsed_ms,
+    angle_mrad);
+  printPerformanceCheck("param cal timeout");
+}
+
+static uint16_t paramCalibrationStageTimeoutMs(void)
+{
+  if (app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SETTLE) {
+    return (uint16_t)(APP_CAL_SPEED_SETTLE_MS + 1000U);
+  }
+  return APP_CAL_STAGE_TIMEOUT_MS;
 }
 
 static void advanceParamCalibrationMotor(void)
@@ -1450,12 +1534,21 @@ static void updateParamCalibration(void)
     return;
   }
 
+  app.param_calib.total_elapsed_ms = HAL_GetTick() - app.param_calib.total_start_tick;
+  app.param_calib.stage_watchdog_ms = (uint16_t)(HAL_GetTick() - app.param_calib.stage_start_tick);
+  if (app.param_calib.stage_watchdog_ms >= paramCalibrationStageTimeoutMs()) {
+    abortParamCalibrationTimeout();
+    return;
+  }
+
   if (app.param_calib.stage == APP_PARAM_CAL_STAGE_ENC_SETTLE) {
     if (app.param_calib.elapsed_ms++ < APP_CAL_ENC_SETTLE_MS) {
       return;
     }
     app.param_calib.stage = APP_PARAM_CAL_STAGE_ENC_SAMPLE;
     app.param_calib.elapsed_ms = 0U;
+    app.param_calib.stage_watchdog_ms = 0U;
+    app.param_calib.stage_start_tick = HAL_GetTick();
     return;
   }
 
@@ -1474,12 +1567,14 @@ static void updateParamCalibration(void)
     }
 
     const uint8_t point = paramCalibPointForPass(app.param_calib.pass_index, app.param_calib.point_index);
+    int raw_log[APP_MOTOR_COUNT];
+    int zero_mdeg_log[APP_MOTOR_COUNT];
+    int hyst_mdeg_log[APP_MOTOR_COUNT];
+    uint8_t used_mask = 0U;
     for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
       const int raw = as5047p[m].enc_raw;
-      const float shaft = encoderRawToMechanicalRad(raw);
       float point_zero = 0.0f;
       float hysteresis = -1.0f;
-      bool zero_used = false;
       if (app.param_calib.point_zero_count[m] > 0U &&
           (fabsf(app.param_calib.point_zero_sin_sum[m]) >= 0.0001f ||
            fabsf(app.param_calib.point_zero_cos_sum[m]) >= 0.0001f)) {
@@ -1497,7 +1592,7 @@ static void updateParamCalibration(void)
           app.param_calib.zero_sin_sum[m] += sinf(pair_zero);
           app.param_calib.zero_cos_sum[m] += cosf(pair_zero);
           app.param_calib.zero_used_count[m]++;
-          zero_used = true;
+          used_mask |= (uint8_t)(1U << m);
         } else {
           app.param_calib.zero_rejected_count[m]++;
         }
@@ -1506,26 +1601,31 @@ static void updateParamCalibration(void)
           app.param_calib.zero_hyst_max[m] = hysteresis;
         }
       }
-      if (app.param_calib.pass_index == 0U) {
-        p("param cal enc pass %u point %2u M%u raw %5d mech %+7.2f deg zero %+7.2f deg\n",
-          app.param_calib.pass_index,
-          point,
-          m,
-          raw,
-          shaft * APP_RAD_TO_DEG,
-          point_zero * APP_RAD_TO_DEG);
-      } else {
-        p("param cal enc pass %u point %2u M%u raw %5d mech %+7.2f deg zero %+7.2f deg hyst %+5.2f deg %s\n",
-          app.param_calib.pass_index,
-          point,
-          m,
-          raw,
-          shaft * APP_RAD_TO_DEG,
-          point_zero * APP_RAD_TO_DEG,
-          hysteresis * APP_RAD_TO_DEG,
-          zero_used ? "used" : "reject");
-      }
+      raw_log[m] = raw;
+      zero_mdeg_log[m] = (int)(point_zero * APP_MDEG_SCALE);
+      hyst_mdeg_log[m] = (hysteresis < 0.0f) ? -1 : (int)(hysteresis * APP_MDEG_SCALE);
       app.param_calib.zero_count[m]++;
+    }
+
+    if (app.param_calib.pass_index == 0U) {
+      p("cal enc p%u i%02u raw %d/%d zero_mdeg %+d/%+d\n",
+        app.param_calib.pass_index,
+        point,
+        raw_log[0],
+        raw_log[1],
+        zero_mdeg_log[0],
+        zero_mdeg_log[1]);
+    } else {
+      p("cal enc p%u i%02u raw %d/%d zero_mdeg %+d/%+d hyst %+d/%+d used %02x\n",
+        app.param_calib.pass_index,
+        point,
+        raw_log[0],
+        raw_log[1],
+        zero_mdeg_log[0],
+        zero_mdeg_log[1],
+        hyst_mdeg_log[0],
+        hyst_mdeg_log[1],
+        used_mask);
     }
 
     app.param_calib.point_index++;
@@ -1573,6 +1673,8 @@ static void updateParamCalibration(void)
     }
     app.param_calib.stage = APP_PARAM_CAL_STAGE_SPEED_SAMPLE;
     app.param_calib.elapsed_ms = 0U;
+    app.param_calib.stage_watchdog_ms = 0U;
+    app.param_calib.stage_start_tick = HAL_GetTick();
     app.param_calib.speed_sum = 0.0f;
     app.param_calib.speed_count = 0U;
     app.motor[motor].measured_rps_ave = 0.0f;
@@ -1627,6 +1729,11 @@ static void startParamCalibration(bool save_to_flash)
   app.param_calib.motor = 0U;
   app.param_calib.point_index = 0U;
   app.param_calib.pass_index = 0U;
+  app.param_calib.elapsed_ms = 0U;
+  app.param_calib.stage_watchdog_ms = 0U;
+  app.param_calib.total_elapsed_ms = 0U;
+  app.param_calib.stage_start_tick = HAL_GetTick();
+  app.param_calib.total_start_tick = app.param_calib.stage_start_tick;
   app.param_calib.voltage_per_rps[0] = app.motor[0].voltage_per_rps;
   app.param_calib.voltage_per_rps[1] = app.motor[1].voltage_per_rps;
   app.param_calib.zero_electric_angle[0] = app.motor[0].zero_electric_angle;
@@ -1637,7 +1744,10 @@ static void startParamCalibration(bool save_to_flash)
   setPwmAll(TIM_PWM_CENTER);
   resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
-  p("param cal start multi-point save %u\n", save_to_flash ? 1U : 0U);
+  app.loop_busy_cycles_max = 0U;
+  app.isr_cycles_max = 0U;
+  app.main_wait_timeout_count = 0U;
+  app.main_wait_last_irq_count = 0U;
   resetParamZeroCalibration();
   resetParamSpeedFit(0U);
   startParamCalibEncSettle();
@@ -1799,7 +1909,14 @@ static void handleCanMessage(CAN_RxHeaderTypeDef * header, can_msg_buf_t * msg)
 
 static void waitForNextMainCycle(void)
 {
+  const uint32_t wait_start_ms = HAL_GetTick();
+  const uint32_t wait_timeout_ms = (APP_MAIN_WAIT_TIMEOUT_US + 999U) / 1000U;
   while (app.pwm_irq_count < APP_PWM_ISR_PER_1MS) {
+    if ((HAL_GetTick() - wait_start_ms) >= wait_timeout_ms) {
+      app.main_wait_timeout_count++;
+      app.main_wait_last_irq_count = app.pwm_irq_count;
+      break;
+    }
   }
   app.pwm_irq_count = 0;
 }
