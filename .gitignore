@@ -41,6 +41,7 @@
 *.map
 *.elf
 *.bin
+*.pyc
 
 # log
 *.txt

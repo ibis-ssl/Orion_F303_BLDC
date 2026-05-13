@@ -375,3 +375,21 @@ AS5047Pの角度はPWM ISR内で取得し、その同じISRで電気角へ変換
 ISR高速化として、オープンループ角更新はDWT差分ではなく40kHz交互更新から決まる固定dtで進める。センサ角はrawから電気角へ直接変換し、FOCのsin/cosテーブル参照は正規化を1回に削減した。AS5047P通常角度更新は診断レジスタ読取とは別の高速パスを使い、SPIは `SPI_BAUDRATEPRESCALER_4` とする。
 
 実機確認では、AS5047PをISR内に戻した40kHzのsensor-angle RUN中で `loop 127/149 slack 851 OK isr 14/15 slack 10 OK fault 0x0000` まで改善した。停止後は `mode 1`、`loop 50/56 slack 944 OK isr 2/2 slack 23 OK`。FOC mathセルフテストも `FOC math self-test OK` を確認した。
+
+## 2026-05-13 開発用CAN CLI
+
+PCからCANable/candleLight経由でモーター速度指令を送る開発用CLIを `tools/orion_can` に追加した。既存の `Script/canable_cli.py` にある gs_usb 低レベル通信を再利用し、上位のモーター操作だけを `tools/orion_can/cli.py`、CAN ID とペイロード生成を `tools/orion_can/protocol.py`、周期送信と停止処理を `tools/orion_can/controller.py` に分離している。
+
+基本操作は次の通り。
+
+```powershell
+python -m tools.orion_can.cli run --board 1 --m0 5.0 --m1 5.0 --rate 50
+python -m tools.orion_can.cli stop --board 1
+python -m tools.orion_can.cli freewheel --ms 100
+python -m tools.orion_can.cli reset
+powershell -ExecutionPolicy Bypass -File .\Script\orion_motor_cli.ps1 run --board 1 --m0 5.0 --m1 5.0
+```
+
+`run` はファームウェア側のCAN指令タイムアウト100msより十分短い周期で送るため、既定で50Hzの周期送信にしている。終了時やCtrl+C時は既定でM0/M1へ0rpsを複数回送信する。実機に接続せずCANフレームだけ確認する場合は `--dry-run` を使う。
+
+現在のファームウェアは速度指令処理が `0x100` から `0x103` に固定されているため、CLI側も `--board 0` と `--board 1` のみ許可している。複数boardを本格的に使う場合は、ファームウェア側の `handleCanMessage()` も `flash.board_id` から計算したIDで処理するように合わせて修正する。
