@@ -16,4 +16,5 @@ void writeCanBoardID(uint32_t board_id);
 void writeEncCalibrationValue(float calib_m0, float calib_m1);
 void writeMotorCalibrationValue(float calib_m0, float calib_m1);
 void writeMotorModelValue(float rps_per_v_m0, float rps_per_v_m1, float offset_m0, float offset_m1);
+void writeFullCalibrationValue(float calib_m0, float calib_m1, float rps_per_v_m0, float rps_per_v_m1, float offset_m0, float offset_m1);
 void loadFlashData(void);

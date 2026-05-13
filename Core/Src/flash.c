@@ -73,6 +73,10 @@ void writeMotorModelValue(float rps_per_v_m0, float rps_per_v_m1, float offset_m
 {
     writeFlash(flash.board_id, flash.calib[0], flash.calib[1], rps_per_v_m0, rps_per_v_m1, offset_m0, offset_m1);
 }
+void writeFullCalibrationValue(float calib_m0, float calib_m1, float rps_per_v_m0, float rps_per_v_m1, float offset_m0, float offset_m1)
+{
+    writeFlash(flash.board_id, calib_m0, calib_m1, rps_per_v_m0, rps_per_v_m1, offset_m0, offset_m1);
+}
 
 void loadFlashData(void){
     memcpy(&flash.board_id, (uint32_t *)FLASH_ADDR_CAN_ID, 4);

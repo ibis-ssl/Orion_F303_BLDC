@@ -2,8 +2,7 @@
 /**
  ******************************************************************************
  * @file    usart.c
- * @brief   This file provides code for the configuration
- *          of the USART instances.
+ * @brief   Configures USART1 and provides the small DMA-backed UART printf queue used by diagnostics.
  ******************************************************************************
  * @attention
  *
@@ -185,6 +184,27 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   }
 }
 
+static int appendFormatted(char *buf, volatile int *buf_len, const char *format, va_list ap)
+{
+  const int remaining = UART_TEMP_BUF_SIZE - *buf_len;
+  if (remaining <= 1) {
+    return 0;
+  }
+
+  int written = vsnprintf(buf + *buf_len, (size_t)remaining, format, ap);
+  if (written <= 0) {
+    return 0;
+  }
+  if (written >= remaining) {
+    *buf_len = UART_TEMP_BUF_SIZE - 1;
+    buf[*buf_len] = '\0';
+    return 0;
+  }
+
+  *buf_len += written;
+  return written;
+}
+
 void p(const char *format, ...)
 {
   va_list ap;
@@ -193,12 +213,7 @@ void p(const char *format, ...)
 
   if (sending_first_buf)
   {
-    if (second_buf_len > UART_TEMP_BUF_SIZE / 2)
-    {
-      is_in_printf_func = false;
-      return;
-    }
-    second_buf_len += vsprintf(second_buf + second_buf_len, format, ap);
+    appendFormatted(second_buf, &second_buf_len, format, ap);
     va_end(ap);
     if (sending_first_buf == false)
     {
@@ -208,14 +223,7 @@ void p(const char *format, ...)
   }
   else if (sending_second_buf)
   {
-    if (first_buf_len > UART_TEMP_BUF_SIZE / 2)
-    {
-
-      is_in_printf_func = false;
-      return;
-    }
-
-    first_buf_len += vsprintf(first_buf + first_buf_len, format, ap);
+    appendFormatted(first_buf, &first_buf_len, format, ap);
     va_end(ap);
 
     if (sending_second_buf == false)
@@ -227,11 +235,16 @@ void p(const char *format, ...)
   else
   {
     // start !!
-    first_buf_len = vsprintf(first_buf, format, ap);
+    first_buf_len = 0;
+    appendFormatted(first_buf, &first_buf_len, format, ap);
     va_end(ap);
+    if (first_buf_len <= 0)
+    {
+      is_in_printf_func = false;
+      return;
+    }
     sending_first_buf = true;
     HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, first_buf_len); // 2ms
-    first_buf_len = (int)strlen(first_buf);
     first_buf_len = 0;
     second_buf_len = 0;
   }

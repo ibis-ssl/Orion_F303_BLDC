@@ -201,6 +201,7 @@ typedef struct
   uint32_t loop_busy_cycles_max;
   uint32_t main_wait_timeout_count;
   uint32_t main_wait_last_irq_count;
+  bool skip_loop_perf_sample;
   uint32_t isr_cycles;
   uint32_t isr_cycles_max;
   uint32_t open_loop_cycle[APP_MOTOR_COUNT];
@@ -250,7 +251,7 @@ static void printPerformanceCheck(const char * label)
   const long loop_slack_us = (long)APP_MAIN_LOOP_BUDGET_US - (long)loop_max_us;
   const long isr_slack_us = (long)APP_PWM_ISR_BUDGET_US - (long)isr_max_us;
 
-  p("%s perf loop %lu/%lu us slack %ld us %s isr %lu/%lu us slack %ld us %s\n",
+  p("%s perf loop %lu/%lu slack %ld %s isr %lu/%lu slack %ld %s wait %lu irq %lu\n",
     label,
     loop_us,
     loop_max_us,
@@ -259,9 +260,7 @@ static void printPerformanceCheck(const char * label)
     isr_us,
     isr_max_us,
     isr_slack_us,
-    (isr_slack_us > 0L) ? "OK" : "NG");
-  p("%s sync wait_timeout %lu last_irq_count %lu\n",
-    label,
+    (isr_slack_us > 0L) ? "OK" : "NG",
     app.main_wait_timeout_count,
     app.main_wait_last_irq_count);
 }
@@ -706,7 +705,7 @@ static void applyProtection(void)
 
   for (uint8_t m = 0; m < APP_MOTOR_COUNT; m++) {
     const float current = fabsf(getCurrentMotor(m));
-    if (app.param_calib.active) {
+    if (app.param_calib.active || app.mode != BLDC_APP_MODE_RUN || app.freewheel_ms > 0U) {
       app.over_current_ms[m] = 0U;
       updateEstimatedOverloadLoss(m, 0.0f);
     } else {
@@ -740,7 +739,9 @@ static void applyPwmInIsr(uint8_t motor)
 {
   adcUpdateFast(motor);
   const float current = fabsf(adcCurrentMotorFast(motor));
-  if (current > THR_MOTOR_SHORT_CURRENT && app.mode == BLDC_APP_MODE_RUN) {
+  if (current > THR_MOTOR_SHORT_CURRENT &&
+      app.mode == BLDC_APP_MODE_RUN &&
+      app.freewheel_ms == 0U) {
     app.short_current_count[motor]++;
     if (current > app.short_current_peak[motor]) {
       app.short_current_peak[motor] = current;
@@ -1206,7 +1207,9 @@ static void initOpenLoopAnglesFromSensor(void)
     app.motor[m].open_loop_electrical_angle = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[m].zero_electric_angle, APP_SENSOR_DIRECTION);
     app.motor[m].pre_raw = as5047p[m].enc_raw;
     app.motor[m].measured_rps = 0.0f;
+    app.motor[m].measured_rps_ave = 0.0f;
     app.speed_glitch_count[m] = 0U;
+    app.speed_glitch_streak[m] = 0U;
     app.speed_glitch_rps[m] = 0.0f;
     app.speed_glitch_diff[m] = 0;
     app.open_loop_cycle[m] = now;
@@ -1412,7 +1415,9 @@ static void startParamCalibSpeedSettle(void)
   app.param_calib.speed_sum = 0.0f;
   app.param_calib.speed_count = 0U;
   app.motor[app.param_calib.motor].measured_rps_ave = 0.0f;
-  p("param cal M%u speed target %+5.1f rps\n", app.param_calib.motor, target_rps);
+  p("param cal M%u speed target_mrps %+d\n",
+    app.param_calib.motor,
+    floatToMilli(target_rps));
 }
 
 static bool fitParamCalibMotor(uint8_t motor)
@@ -1429,9 +1434,9 @@ static bool fitParamCalibMotor(uint8_t motor)
   }
 
   app.param_calib.voltage_per_rps[motor] = voltage_per_rps * APP_CAL_MODEL_MARGIN;
-  p("param cal M%u model v/rps %+6.3f points %u\n",
+  p("param cal M%u model mv/rps %+d points %u\n",
     motor,
-    app.param_calib.voltage_per_rps[motor],
+    floatToMilli(app.param_calib.voltage_per_rps[motor]),
     app.param_calib.fit_count);
   return true;
 }
@@ -1441,6 +1446,11 @@ static void finishParamCalibration(void)
   const float rps_per_v0 = 1.0f / app.param_calib.voltage_per_rps[0];
   const float rps_per_v1 = 1.0f / app.param_calib.voltage_per_rps[1];
   const bool save = app.param_calib.save_to_flash;
+  const uint32_t runtime_loop_max_us = cyclesToUs(app.loop_busy_cycles_max);
+  const uint32_t runtime_isr_max_us = cyclesToUs(app.isr_cycles_max);
+  const long runtime_loop_slack_us = (long)APP_MAIN_LOOP_BUDGET_US - (long)runtime_loop_max_us;
+  const long runtime_isr_slack_us = (long)APP_PWM_ISR_BUDGET_US - (long)runtime_isr_max_us;
+  uint32_t save_ms = 0U;
 
   app.motor[0].voltage_per_rps = app.param_calib.voltage_per_rps[0];
   app.motor[1].voltage_per_rps = app.param_calib.voltage_per_rps[1];
@@ -1451,24 +1461,58 @@ static void finishParamCalibration(void)
   app.param_calib.active = false;
   app.param_calib.stage = APP_PARAM_CAL_STAGE_IDLE;
   app.open_loop_velocity = true;
+  app.motor[0].command_rps = 0.0f;
+  app.motor[1].command_rps = 0.0f;
+  app.motor[0].target_rps = 0.0f;
+  app.motor[1].target_rps = 0.0f;
+  app.motor[0].voltage_q = 0.0f;
+  app.motor[1].voltage_q = 0.0f;
+  app.motor[0].command_timeout_ms = 0U;
+  app.motor[1].command_timeout_ms = 0U;
+  app.freewheel_ms = 0U;
+  setPwmAll(TIM_PWM_CENTER);
+  setPwmOutPutFreeWheel();
+  app.mode = BLDC_APP_MODE_READY;
+  app.fault_id = 0U;
+  app.fault_info = 0U;
+  app.fault_value = 0.0f;
+  for (uint8_t m = 0U; m < APP_MOTOR_COUNT; m++) {
+    app.over_current_ms[m] = 0U;
+    app.short_current_count[m] = 0U;
+    app.short_current_peak[m] = 0.0f;
+    updateEstimatedOverloadLoss(m, 0.0f);
+  }
   initOpenLoopAnglesFromSensor();
-  bldcAppSetFreewheelMs(60000U);
 
   if (save) {
-    writeEncCalibrationValue(app.motor[0].zero_electric_angle, app.motor[1].zero_electric_angle);
-    writeMotorModelValue(rps_per_v0, rps_per_v1, 0.0f, 0.0f);
+    const uint32_t save_start = HAL_GetTick();
+    writeFullCalibrationValue(app.motor[0].zero_electric_angle, app.motor[1].zero_electric_angle, rps_per_v0, rps_per_v1, 0.0f, 0.0f);
+    save_ms = HAL_GetTick() - save_start;
   }
 
-  p("param cal done zero %+6.3f %+6.3f v/rps %+6.3f %+6.3f rps/v %+6.3f %+6.3f save %u\n",
-    app.motor[0].zero_electric_angle,
-    app.motor[1].zero_electric_angle,
-    app.motor[0].voltage_per_rps,
-    app.motor[1].voltage_per_rps,
-    rps_per_v0,
-    rps_per_v1,
-    save ? 1U : 0U);
-  p("param cal time total %lums\n", app.param_calib.total_elapsed_ms);
-  printPerformanceCheck("param cal done");
+  p("param cal done zero_mrad %+d/%+d mv_rps %+d/%+d mrps_v %+d/%+d save %u total %lums\n",
+    floatToMilli(app.motor[0].zero_electric_angle),
+    floatToMilli(app.motor[1].zero_electric_angle),
+    floatToMilli(app.motor[0].voltage_per_rps),
+    floatToMilli(app.motor[1].voltage_per_rps),
+    floatToMilli(rps_per_v0),
+    floatToMilli(rps_per_v1),
+    save ? 1U : 0U,
+    app.param_calib.total_elapsed_ms);
+  p("param cal done perf loop_max %lu slack %ld %s isr_max %lu slack %ld %s save_ms %lu wait %lu irq %lu\n",
+    runtime_loop_max_us,
+    runtime_loop_slack_us,
+    (runtime_loop_slack_us > 0L) ? "OK" : "NG",
+    runtime_isr_max_us,
+    runtime_isr_slack_us,
+    (runtime_isr_slack_us > 0L) ? "OK" : "NG",
+    save_ms,
+    app.main_wait_timeout_count,
+    app.main_wait_last_irq_count);
+  app.loop_busy_cycles = 0U;
+  app.loop_busy_cycles_max = 0U;
+  app.isr_cycles = 0U;
+  app.isr_cycles_max = 0U;
 }
 
 static void abortParamCalibrationTimeout(void)
@@ -1649,13 +1693,13 @@ static void updateParamCalibration(void)
       }
       app.motor[m].zero_electric_angle = app.param_calib.zero_electric_angle[m];
       const float hyst_avg = (APP_CAL_ENC_POINTS == 0U) ? 0.0f : app.param_calib.zero_hyst_sum[m] / (float)APP_CAL_ENC_POINTS;
-      p("param cal M%u zero %+6.3f pairs used/rej %u/%u hyst avg/max %+4.1f/%+4.1f deg samples %u\n",
+      p("param cal M%u zero_mrad %+d pairs used/rej %u/%u hyst_mdeg avg/max %+d/%+d samples %u\n",
         m,
-        app.motor[m].zero_electric_angle,
+        floatToMilli(app.motor[m].zero_electric_angle),
         app.param_calib.zero_used_count[m],
         app.param_calib.zero_rejected_count[m],
-        hyst_avg * APP_RAD_TO_DEG,
-        app.param_calib.zero_hyst_max[m] * APP_RAD_TO_DEG,
+        floatToMilli(hyst_avg),
+        floatToMilli(app.param_calib.zero_hyst_max[m]),
         app.param_calib.zero_count[m] * APP_CAL_ENC_SAMPLE_MS);
     }
     app.param_calib.motor = 0U;
@@ -1696,11 +1740,11 @@ static void updateParamCalibration(void)
   const float count = (app.param_calib.speed_count == 0U) ? 1.0f : (float)app.param_calib.speed_count;
   const float measured = app.param_calib.speed_sum / count;
   const float measured_voltage = fabsf(app.motor[motor].voltage_q);
-  p("param cal M%u point target %+5.1f rps vq %+4.2f rps %+6.3f\n",
+  p("param cal M%u point target_mrps %+d vq_mv %+d mrps %+d\n",
     motor,
-    app.param_calib.test_rps,
-    measured_voltage,
-    measured);
+    floatToMilli(app.param_calib.test_rps),
+    floatToMilli(measured_voltage),
+    floatToMilli(measured));
 
   if (measured >= APP_CAL_MIN_FIT_RPS) {
     app.param_calib.fit_sum_x += measured;
