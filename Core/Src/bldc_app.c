@@ -82,6 +82,13 @@
 #define APP_MAIN_WAIT_TIMEOUT_US (2000U)
 #define APP_PERF_LOG_INTERVAL_MS (100U)
 #define APP_MDEG_SCALE (57295.7795131f)
+#define APP_ENCODER_RAW_TO_MECH_RAD (2.0f * (float)M_PI / (float)ENC_CNT_MAX)
+#define APP_ENCODER_RAW_TO_ELEC_RAD (APP_ENCODER_RAW_TO_MECH_RAD * (float)APP_POLE_PAIRS)
+#define APP_MOTOR_PWM_UPDATE_DT_S (2.0f / ((float)APP_PWM_ISR_PER_1MS * 1000.0f))
+#define APP_OPEN_LOOP_ELEC_RAD_PER_RPS \
+  ((APP_OPEN_LOOP_DIRECTION < 0) ? \
+   -(2.0f * (float)M_PI * (float)APP_POLE_PAIRS * APP_MOTOR_PWM_UPDATE_DT_S) : \
+    (2.0f * (float)M_PI * (float)APP_POLE_PAIRS * APP_MOTOR_PWM_UPDATE_DT_S))
 
 /*
  * "Positive" phase advance is the mathematical electrical-angle direction.
@@ -227,6 +234,9 @@ typedef struct
 
 static app_state_t app;
 
+static void setTarget(uint8_t motor, float rps, uint16_t timeout_ms);
+static bool latchFaultState(uint16_t id, uint16_t info, float value);
+
 static uint32_t cycleNow(void)
 {
   return DWT->CYCCNT;
@@ -367,7 +377,13 @@ static float angleDiffAbs(float a, float b)
 
 static float encoderRawToMechanicalRad(int raw)
 {
-  return (float)raw * (2.0f * (float)M_PI / (float)ENC_CNT_MAX);
+  return (float)raw * APP_ENCODER_RAW_TO_MECH_RAD;
+}
+
+static float encoderRawToElectricalRad(int raw, float zero_electric_angle)
+{
+  const float direction = (APP_SENSOR_DIRECTION < 0) ? -1.0f : 1.0f;
+  return direction * (float)raw * APP_ENCODER_RAW_TO_ELEC_RAD - zero_electric_angle;
 }
 
 static int encoderRawDiff(int from_raw, int to_raw)
@@ -557,7 +573,12 @@ static void updateSpeedFromEncoder(uint8_t motor)
 
 static void updateSpeed(uint8_t motor)
 {
-  updateAS5047P(motor);
+  if (app.mode != BLDC_APP_MODE_RUN &&
+      !app.align_active &&
+      !app.sensor_diag.active &&
+      !app.param_calib.active) {
+    updateAS5047P(motor);
+  }
   updateSpeedFromEncoder(motor);
 }
 
@@ -722,14 +743,7 @@ static void updateOpenLoopVelocityInIsr(uint8_t motor)
     app.open_loop_cycle[motor] = cycleNow();
     return;
   }
-  const uint32_t now = cycleNow();
-  const uint32_t elapsed_cycles = cycleDelta(app.open_loop_cycle[motor], now);
-  app.open_loop_cycle[motor] = now;
-
-  const float direction = (APP_OPEN_LOOP_DIRECTION < 0) ? -1.0f : 1.0f;
-  const float motor_period_s = (float)elapsed_cycles * app.cycle_to_s;
-  const float delta =
-    direction * app.motor[motor].target_rps * (2.0f * (float)M_PI) * (float)APP_POLE_PAIRS * motor_period_s;
+  const float delta = app.motor[motor].target_rps * APP_OPEN_LOOP_ELEC_RAD_PER_RPS;
   app.motor[motor].open_loop_electrical_angle = focNormalizeAngle(app.motor[motor].open_loop_electrical_angle + delta);
 }
 
@@ -794,6 +808,14 @@ static void applyProtection(void)
 static void applyPwmInIsr(uint8_t motor)
 {
   adcUpdateFast(motor);
+
+  if (app.mode == BLDC_APP_MODE_RUN ||
+      app.align_active ||
+      app.sensor_diag.active ||
+      app.param_calib.active) {
+    updateAS5047P(motor);
+  }
+
   const float current = fabsf(adcCurrentMotorFast(motor));
   if (current > THR_MOTOR_SHORT_CURRENT &&
       app.mode == BLDC_APP_MODE_RUN &&
@@ -802,7 +824,7 @@ static void applyPwmInIsr(uint8_t motor)
     if (current > app.short_current_peak[motor]) {
       app.short_current_peak[motor] = current;
     }
-    bldcAppForceFault(BLDC_OVER_CURRENT, motor, current);
+    (void)latchFaultState(BLDC_OVER_CURRENT, motor, current);
     return;
   }
   if (app.sensor_diag.active) {
@@ -829,13 +851,12 @@ static void applyPwmInIsr(uint8_t motor)
 
     if (app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SETTLE ||
         app.param_calib.stage == APP_PARAM_CAL_STAGE_SPEED_SAMPLE) {
-      const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
-      float electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
+      float electrical = encoderRawToElectricalRad(as5047p[motor].enc_raw, app.motor[motor].zero_electric_angle);
       const float phase_advance = phaseAdvanceForTarget(app.motor[motor].target_rps);
       const float advance = (app.motor[motor].target_rps < 0.0f) ? -phase_advance : phase_advance;
       const float voltage_cmd = app.motor[motor].voltage_q;
       const float voltage_q = APP_SENSOR_TORQUE_DIRECTION * voltage_cmd;
-      electrical = focNormalizeAngle(electrical + advance);
+      electrical += advance;
       focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical, adcBatteryVoltageFast());
       return;
     }
@@ -872,12 +893,11 @@ static void applyPwmInIsr(uint8_t motor)
   updateOpenLoopVelocityInIsr(motor);
   float electrical = app.motor[motor].open_loop_electrical_angle;
   if (!app.open_loop_velocity) {
-    const float mech = encoderRawToMechanicalRad(as5047p[motor].enc_raw);
-    electrical = focElectricalAngle(mech, APP_POLE_PAIRS, app.motor[motor].zero_electric_angle, APP_SENSOR_DIRECTION);
+    electrical = encoderRawToElectricalRad(as5047p[motor].enc_raw, app.motor[motor].zero_electric_angle);
     /* Apply signed phase advance after sensor zero-angle conversion. */
     const float phase_advance = phaseAdvanceForTarget(app.motor[motor].target_rps);
     const float advance = (app.motor[motor].target_rps < 0.0f) ? -phase_advance : phase_advance;
-    electrical = focNormalizeAngle(electrical + advance);
+    electrical += advance;
   }
   /* Sensor-angle Vq torque sign is intentionally independent from sensor direction. */
   const float voltage_q = app.open_loop_velocity ? app.motor[motor].voltage_q :
@@ -1317,8 +1337,7 @@ static void finishSensorDiagMotor(void)
 
   app.sensor_diag.active = false;
   app.sensor_diag.stage = APP_SENSOR_DIAG_STAGE_IDLE;
-  app.open_loop_velocity = true;
-  initOpenLoopAnglesFromSensor();
+  app.open_loop_velocity = false;
   bldcAppSetFreewheelMs(60000U);
   p("sensor diag done\n");
 }
@@ -1515,7 +1534,7 @@ static void finishParamCalibration(void)
   app.motor[1].zero_electric_angle = app.param_calib.zero_electric_angle[1];
   app.param_calib.active = false;
   app.param_calib.stage = APP_PARAM_CAL_STAGE_IDLE;
-  app.open_loop_velocity = true;
+  app.open_loop_velocity = false;
   app.motor[0].command_rps = 0.0f;
   app.motor[1].command_rps = 0.0f;
   app.motor[0].target_rps = 0.0f;
@@ -2047,7 +2066,7 @@ void bldcAppInit(void)
   startAdcInjected();
   primeSensors();
   initMotorParameters();
-  app.open_loop_velocity = true;
+  app.open_loop_velocity = false;
   startPwmOutputsFreewheel();
 
   CAN_Filter_Init((uint16_t)flash.board_id);
@@ -2132,7 +2151,7 @@ void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
     app.isr_cycles_window_max = app.isr_cycles;
   }
   if (app.mode == BLDC_APP_MODE_RUN && app.isr_cycles > usToCycles(APP_PWM_ISR_BUDGET_US)) {
-    bldcAppForceFault(BLDC_ISR_OVERRUN, motor_select, (float)cyclesToUs(app.isr_cycles));
+    (void)latchFaultState(BLDC_ISR_OVERRUN, motor_select, (float)cyclesToUs(app.isr_cycles));
   }
 }
 
@@ -2170,10 +2189,10 @@ void bldcAppEnableRun(void)
   app.mode = BLDC_APP_MODE_RUN;
 }
 
-void bldcAppForceFault(uint16_t id, uint16_t info, float value)
+static bool latchFaultState(uint16_t id, uint16_t info, float value)
 {
   if (app.mode == BLDC_APP_MODE_FAULT) {
-    return;
+    return false;
   }
   app.fault_id = id;
   app.fault_info = info;
@@ -2186,6 +2205,14 @@ void bldcAppForceFault(uint16_t id, uint16_t info, float value)
   setTarget(1, 0.0f, 0U);
   setPwmAll(TIM_PWM_CENTER);
   setPwmOutPutFreeWheel();
+  return true;
+}
+
+void bldcAppForceFault(uint16_t id, uint16_t info, float value)
+{
+  if (!latchFaultState(id, info, value)) {
+    return;
+  }
   sendError(id, info, value);
   p("FAULT 0x%04x info %u value %+6.2f\n", id, info, value);
 }

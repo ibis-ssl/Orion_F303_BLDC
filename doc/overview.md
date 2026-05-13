@@ -369,3 +369,9 @@ PWM ISRから `updateAS5047P()` と速度計算を外し、既存の1kHz `update
 実機確認では待機中が `loop 61/67 slack 933 OK isr 2/2 slack 23 OK`、`n` 後に `w` でRUNへ入れた状態が `loop 77/82 slack 918 OK isr 10/10 slack 15 OK` で安定した。停止コマンド後は `mode 1` に戻り、Faultは `0x0000` のままだった。RUN中ISRが25us予算に張り付く状態は解消した。
 
 その後、PWM/TIM周期は元の40kHz設定へ戻した。`TIM1/TIM8 Period 899`、`TIM_PWM_CENTER 450`、1ms同期待ち `APP_PWM_ISR_PER_1MS 40` とする。ISR制御周期を超過したままRUNを継続するとメインループやUARTが止まって危険なため、RUN中にPWM ISR時間が25us予算を超えた場合は `BLDC_ISR_OVERRUN` (`0x0080`) でFaultへ落とし、PWMをフリーウィールにする。
+
+AS5047Pの角度はPWM ISR内で取得し、その同じISRで電気角へ変換してPWM CCRへ反映する。通常RUNはsensor-angle動作をデフォルトにし、`o` コマンドを使った明示的な診断時だけopen-loopへ切り替える。RUN、センサ診断、アライメント、パラメータ校正中はISRがSPIを所有し、1kHz側は取得済みrawから速度推定だけを行う。これによりSPIの二重読みによる競合を避ける。
+
+ISR高速化として、オープンループ角更新はDWT差分ではなく40kHz交互更新から決まる固定dtで進める。センサ角はrawから電気角へ直接変換し、FOCのsin/cosテーブル参照は正規化を1回に削減した。AS5047P通常角度更新は診断レジスタ読取とは別の高速パスを使い、SPIは `SPI_BAUDRATEPRESCALER_4` とする。
+
+実機確認では、AS5047PをISR内に戻した40kHzのsensor-angle RUN中で `loop 127/149 slack 851 OK isr 14/15 slack 10 OK fault 0x0000` まで改善した。停止後は `mode 1`、`loop 50/56 slack 944 OK isr 2/2 slack 23 OK`。FOC mathセルフテストも `FOC math self-test OK` を確認した。

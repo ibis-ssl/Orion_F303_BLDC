@@ -43,7 +43,7 @@ void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -165,6 +165,13 @@ static inline void as5047pCsSettle(void)
   }
 }
 
+static inline void as5047pCsSettleFast(void)
+{
+  for (uint8_t i = 0U; i < 16U; i++) {
+    __NOP();
+  }
+}
+
 static uint16_t transferAS5047P(uint16_t tx)
 {
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_TXE) == RESET) {
@@ -176,6 +183,16 @@ static uint16_t transferAS5047P(uint16_t tx)
   while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_BSY) != RESET) {
   }
   return rx;
+}
+
+static inline uint16_t transferAS5047PFast(uint16_t tx)
+{
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_TXE) == RESET) {
+  }
+  hspi1.Instance->DR = tx;
+  while (__HAL_SPI_GET_FLAG(&hspi1, SPI_FLAG_RXNE) == RESET) {
+  }
+  return (uint16_t)hspi1.Instance->DR;
 }
 
 uint16_t readRegisterAS5047P(bool enc, uint16_t reg_address)
@@ -216,7 +233,7 @@ static inline void updateAS5047P_Common(as5047p_t * enc)
   // addr 0x3FFF & 1 << 14 (read) & parity
   // 0x3FFE : without dynamic errro compensation
   // 0x3FFF : with dynamic errro compensation
-  const uint16_t frame = transferAS5047P(0xFFFF);
+  const uint16_t frame = transferAS5047PFast(0xFFFFU);
   enc->last_frame = frame;
   if ((frame & 0x4000U) != 0U) {
     enc->spi_error_count++;
@@ -230,7 +247,7 @@ void updateAS5047P(bool motor)
 {
   if (motor == 0) {
     selectAS5047P(0);
-    as5047pCsSettle();
+    as5047pCsSettleFast();
 
     updateAS5047P_Common(&as5047p[0]);
     updateDiff(0);
@@ -238,7 +255,7 @@ void updateAS5047P(bool motor)
     deselectAS5047P(0);
   } else {
     selectAS5047P(1);
-    as5047pCsSettle();
+    as5047pCsSettleFast();
 
     updateAS5047P_Common(&as5047p[1]);
     updateDiff(1);

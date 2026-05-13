@@ -16,6 +16,7 @@
 #define FOC_SIN_TABLE_BITS (10U)
 #define FOC_SIN_TABLE_SIZE (1U << FOC_SIN_TABLE_BITS)
 #define FOC_SIN_TABLE_MASK (FOC_SIN_TABLE_SIZE - 1U)
+#define FOC_SIN_TABLE_QUARTER (FOC_SIN_TABLE_SIZE / 4U)
 #define FOC_ANGLE_TO_INDEX ((float)FOC_SIN_TABLE_SIZE / FOC_TWO_PI)
 
 static float sin_table[FOC_SIN_TABLE_SIZE];
@@ -41,9 +42,8 @@ float focNormalizeAngle(float angle)
   return angle;
 }
 
-static float focFastSinNormalized(float angle)
+static float focFastSinIndex(float index_f)
 {
-  const float index_f = angle * FOC_ANGLE_TO_INDEX;
   const uint16_t index = (uint16_t)index_f & FOC_SIN_TABLE_MASK;
   const uint16_t next = (uint16_t)(index + 1U) & FOC_SIN_TABLE_MASK;
   const float frac = index_f - (float)((uint16_t)index_f);
@@ -60,8 +60,9 @@ static void focFastSinCos(float angle, float * sin_out, float * cos_out)
     return;
   }
 
-  *sin_out = focFastSinNormalized(angle);
-  *cos_out = focFastSinNormalized(focNormalizeAngle(angle + (0.5f * (float)M_PI)));
+  const float index_f = angle * FOC_ANGLE_TO_INDEX;
+  *sin_out = focFastSinIndex(index_f);
+  *cos_out = focFastSinIndex(index_f + (float)FOC_SIN_TABLE_QUARTER);
 }
 
 float focElectricalAngle(float shaft_angle, int pole_pairs, float zero_electric_angle, int sensor_direction)
@@ -124,20 +125,36 @@ foc_pwm_compare_t focPhaseVoltageToCompare(foc_phase_voltage_t phase, float volt
     return cmp;
   }
 
-  float phases[3] = {phase.ua, phase.ub, phase.uc};
-  uint16_t * outputs[3] = {&cmp.a, &cmp.b, &cmp.c};
-
-  for (int i = 0; i < 3; i++) {
-    float v = phases[i];
-    if (v < 0.0f) {
-      v = 0.0f;
-      cmp.limited = true;
-    } else if (v > voltage_power_supply) {
-      v = voltage_power_supply;
-      cmp.limited = true;
-    }
-    *outputs[i] = (uint16_t)((v / voltage_power_supply) * (float)pwm_period);
+  const float scale = (float)pwm_period / voltage_power_supply;
+  float v = phase.ua;
+  if (v < 0.0f) {
+    v = 0.0f;
+    cmp.limited = true;
+  } else if (v > voltage_power_supply) {
+    v = voltage_power_supply;
+    cmp.limited = true;
   }
+  cmp.a = (uint16_t)(v * scale);
+
+  v = phase.ub;
+  if (v < 0.0f) {
+    v = 0.0f;
+    cmp.limited = true;
+  } else if (v > voltage_power_supply) {
+    v = voltage_power_supply;
+    cmp.limited = true;
+  }
+  cmp.b = (uint16_t)(v * scale);
+
+  v = phase.uc;
+  if (v < 0.0f) {
+    v = 0.0f;
+    cmp.limited = true;
+  } else if (v > voltage_power_supply) {
+    v = voltage_power_supply;
+    cmp.limited = true;
+  }
+  cmp.c = (uint16_t)(v * scale);
 
   return cmp;
 }
