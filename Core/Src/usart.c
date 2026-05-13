@@ -156,6 +156,12 @@ static char second_buf[UART_TEMP_BUF_SIZE];
 volatile int second_buf_len = 0, first_buf_len = 0;
 volatile bool sending_second_buf = false, sending_first_buf = false;
 volatile bool is_in_printf_func = false;
+static volatile uint32_t uart_printf_count = 0U;
+
+uint32_t uartGetPrintfCount(void)
+{
+  return uart_printf_count;
+}
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
@@ -208,6 +214,7 @@ static int appendFormatted(char *buf, volatile int *buf_len, const char *format,
 void p(const char *format, ...)
 {
   va_list ap;
+  uart_printf_count++;
   va_start(ap, format);
   is_in_printf_func = true;
 

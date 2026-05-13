@@ -55,6 +55,7 @@ enum {
   BLDC_ENC_ERROR = 0x0010,
   BLDC_OVER_VOLTAGE = 0x0020,
   BLDC_FET_OVER_HEAT = 0x0040,
+  BLDC_ISR_OVERRUN = 0x0080,
 };
 
 // by manual tuned

@@ -347,3 +347,25 @@ Mode 3 ... loop 101/805 us slack 195 us isr 15/18 us
 校正ログは1kHzループ時間へ直接入るため、速度測定と完了サマリはfloat printfを避け、`target_mrps`、`vq_mv`、`zero_mrad`、`mv_rps` の整数ログにする。UART送信キューは `vsnprintf()` で境界チェックし、完了時の連続ログでバッファ末尾を壊さない。
 
 実機確認では `k` が完了し、完了後診断で `Mode 1`、`Free` 残あり、`Fault 0x0000` を確認した。再書き込み直後の診断では `loop 124/149 us`、`isr 16/17 us` で、通常待機時の処理時間は予算内に収まっている。
+
+## 2026-05-13 100ms制御余裕ログ
+
+制御時間の余裕確認用に、100msごとに `ctrl 100ms ...` ログを出す。ログ行は直近100msの1kHzメイン処理最大時間とPWM ISR最大時間を表示し、`loop` は1000us予算、`isr` は25us予算で `slack` を判定する。UARTログを出したtickは制御時間の最大値集計から外し、文字出力自体の時間を制御処理余裕へ混ぜない。
+
+待機中の実機確認では `ctrl 100ms mode 1 loop 125/149 slack 851 OK isr 17/18 slack 7 OK fault 0x0000` 程度で安定した。一方、UART `w` でRUNへ入れるとコマンドはRAM上で反映されるが、UARTログが読めなくなる。RUN中のPWM ISR負荷またはUART DMA送信経路の余裕不足が残っているため、RUN中の連続ログ確認は未完了。
+
+## 2026-05-13 PWM/ISR周期を半分に落とした動作確認
+
+RUN中に100msログが読めなくなる切り分けとして、TIM1/TIM8のPWM周期を `Period 899` から `1799`、`TIM_PWM_CENTER` を `450` から `900`、1ms同期待ちを `APP_PWM_ISR_PER_1MS 40` から `20` へ変更した。これによりPWM/ISR頻度を半分に落とす。
+
+実機確認では待機中が `loop 27/52 slack 948 OK isr 16/17 slack 8 OK`、`w` によるRUN中が `loop 63/68 slack 932 OK isr 25/25 slack 0 NG` 程度だった。メインループは十分余裕があり、RUN中もUARTログは継続して読めるようになった。PWM ISRは25us予算ちょうどで余裕0のため、次の改善対象はRUN中ISR処理の削減である。
+
+## 2026-05-13 PWM ISR処理の整理
+
+`main` ブランチの構成では速度推定を1kHzメインループ側で行い、PWM ISRはADC更新、エンコーダ更新、PWM CCR更新に限定している。現行ブランチは通常RUNでオープンループ電気角を使うため、ブロッキングSPIのAS5047P読取もPWM ISR内で毎回行う必要はない。
+
+PWM ISRから `updateAS5047P()` と速度計算を外し、既存の1kHz `updateSpeed()` へ移した。ISRに残す処理はADC高速更新、RUN中かつフリーウィール解除済みの場合の瞬間過電流判定、必要なPWM CCR更新、処理時間計測だけにする。センサ角制御や校正中の角度計算は、1kHz側で更新された最新エンコーダ値を参照する。
+
+実機確認では待機中が `loop 61/67 slack 933 OK isr 2/2 slack 23 OK`、`n` 後に `w` でRUNへ入れた状態が `loop 77/82 slack 918 OK isr 10/10 slack 15 OK` で安定した。停止コマンド後は `mode 1` に戻り、Faultは `0x0000` のままだった。RUN中ISRが25us予算に張り付く状態は解消した。
+
+その後、PWM/TIM周期は元の40kHz設定へ戻した。`TIM1/TIM8 Period 899`、`TIM_PWM_CENTER 450`、1ms同期待ち `APP_PWM_ISR_PER_1MS 40` とする。ISR制御周期を超過したままRUNを継続するとメインループやUARTが止まって危険なため、RUN中にPWM ISR時間が25us予算を超えた場合は `BLDC_ISR_OVERRUN` (`0x0080`) でFaultへ落とし、PWMをフリーウィールにする。

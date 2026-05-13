@@ -80,6 +80,7 @@
 #define APP_MAIN_LOOP_BUDGET_US (1000U)
 #define APP_PWM_ISR_BUDGET_US (25U)
 #define APP_MAIN_WAIT_TIMEOUT_US (2000U)
+#define APP_PERF_LOG_INTERVAL_MS (100U)
 #define APP_MDEG_SCALE (57295.7795131f)
 
 /*
@@ -199,11 +200,14 @@ typedef struct
   volatile uint32_t uart_rx_overrun;
   uint32_t loop_busy_cycles;
   uint32_t loop_busy_cycles_max;
+  uint32_t loop_busy_cycles_window_max;
   uint32_t main_wait_timeout_count;
   uint32_t main_wait_last_irq_count;
   bool skip_loop_perf_sample;
+  uint32_t perf_log_tick;
   uint32_t isr_cycles;
   uint32_t isr_cycles_max;
+  uint32_t isr_cycles_window_max;
   uint32_t open_loop_cycle[APP_MOTOR_COUNT];
   uint32_t speed_cycle[APP_MOTOR_COUNT];
   uint32_t speed_glitch_count[APP_MOTOR_COUNT];
@@ -242,6 +246,11 @@ static uint32_t cyclesToUs(uint32_t cycles)
   return cycles / cycles_per_us;
 }
 
+static uint32_t usToCycles(uint32_t us)
+{
+  return us * (SystemCoreClock / 1000000U);
+}
+
 static void printPerformanceCheck(const char * label)
 {
   const uint32_t loop_us = cyclesToUs(app.loop_busy_cycles);
@@ -271,6 +280,52 @@ static int floatToMilli(float value)
     return (int)(value * 1000.0f + 0.5f);
   }
   return (int)(value * 1000.0f - 0.5f);
+}
+
+static void updateLoopPerformance(uint32_t loop_cycles, bool has_printf)
+{
+  app.loop_busy_cycles = loop_cycles;
+  if (has_printf || app.skip_loop_perf_sample) {
+    app.skip_loop_perf_sample = false;
+    return;
+  }
+  if (loop_cycles > app.loop_busy_cycles_max) {
+    app.loop_busy_cycles_max = loop_cycles;
+  }
+  if (loop_cycles > app.loop_busy_cycles_window_max) {
+    app.loop_busy_cycles_window_max = loop_cycles;
+  }
+}
+
+static void printPeriodicControlSlack(void)
+{
+  const uint32_t now = HAL_GetTick();
+  if ((now - app.perf_log_tick) < APP_PERF_LOG_INTERVAL_MS) {
+    return;
+  }
+  app.perf_log_tick = now;
+
+  const uint32_t loop_us = cyclesToUs(app.loop_busy_cycles);
+  const uint32_t loop_max_us = cyclesToUs(app.loop_busy_cycles_window_max);
+  const uint32_t isr_us = cyclesToUs(app.isr_cycles);
+  const uint32_t isr_max_us = cyclesToUs(app.isr_cycles_window_max);
+  const long loop_slack_us = (long)APP_MAIN_LOOP_BUDGET_US - (long)loop_max_us;
+  const long isr_slack_us = (long)APP_PWM_ISR_BUDGET_US - (long)isr_max_us;
+
+  p("ctrl 100ms mode %d loop %lu/%lu slack %ld %s isr %lu/%lu slack %ld %s fault 0x%04x\n",
+    app.mode,
+    loop_us,
+    loop_max_us,
+    loop_slack_us,
+    (loop_slack_us > 0L) ? "OK" : "NG",
+    isr_us,
+    isr_max_us,
+    isr_slack_us,
+    (isr_slack_us > 0L) ? "OK" : "NG",
+    app.fault_id);
+
+  app.loop_busy_cycles_window_max = app.loop_busy_cycles;
+  app.isr_cycles_window_max = app.isr_cycles;
 }
 
 static void enableCycleCounter(void)
@@ -474,7 +529,7 @@ static void initMotorParameters(void)
   }
 }
 
-static void updateSpeedInIsr(uint8_t motor)
+static void updateSpeedFromEncoder(uint8_t motor)
 {
   const uint32_t now = cycleNow();
   const uint32_t elapsed_cycles = cycleDelta(app.speed_cycle[motor], now);
@@ -502,7 +557,8 @@ static void updateSpeedInIsr(uint8_t motor)
 
 static void updateSpeed(uint8_t motor)
 {
-  (void)motor;
+  updateAS5047P(motor);
+  updateSpeedFromEncoder(motor);
 }
 
 static float estimateCurrentFromVoltage(uint8_t motor, float voltage_q)
@@ -749,9 +805,6 @@ static void applyPwmInIsr(uint8_t motor)
     bldcAppForceFault(BLDC_OVER_CURRENT, motor, current);
     return;
   }
-  updateAS5047P(motor);
-  updateSpeedInIsr(motor);
-
   if (app.sensor_diag.active) {
     if (motor == app.sensor_diag.motor) {
       focDriverApplySineVoltage(motor, 0.0f, APP_ALIGN_VOLTAGE, app.sensor_diag.electrical_angle, adcBatteryVoltageFast());
@@ -906,7 +959,9 @@ static void printDiagnostics(void)
         cyclesToUs(app.isr_cycles),
         cyclesToUs(app.isr_cycles_max));
       app.loop_busy_cycles_max = app.loop_busy_cycles;
+      app.loop_busy_cycles_window_max = app.loop_busy_cycles;
       app.isr_cycles_max = app.isr_cycles;
+      app.isr_cycles_window_max = app.isr_cycles;
       break;
     case 1:
       p("M0 cmd %+6.2f tgt %+6.2f rps %+6.2f vq %+5.2f est %+4.2f ej %+4.2f lim %u enc %5d cur %+5.2f tmp %3d/%3d glitch %lu %+6.1f d %+6d spi %lu\n",
@@ -1511,8 +1566,11 @@ static void finishParamCalibration(void)
     app.main_wait_last_irq_count);
   app.loop_busy_cycles = 0U;
   app.loop_busy_cycles_max = 0U;
+  app.loop_busy_cycles_window_max = 0U;
   app.isr_cycles = 0U;
   app.isr_cycles_max = 0U;
+  app.isr_cycles_window_max = 0U;
+  app.perf_log_tick = HAL_GetTick();
 }
 
 static void abortParamCalibrationTimeout(void)
@@ -1789,7 +1847,10 @@ static void startParamCalibration(bool save_to_flash)
   resumePwmOutput();
   app.mode = BLDC_APP_MODE_RUN;
   app.loop_busy_cycles_max = 0U;
+  app.loop_busy_cycles_window_max = 0U;
   app.isr_cycles_max = 0U;
+  app.isr_cycles_window_max = 0U;
+  app.perf_log_tick = HAL_GetTick();
   app.main_wait_timeout_count = 0U;
   app.main_wait_last_irq_count = 0U;
   resetParamZeroCalibration();
@@ -2023,6 +2084,7 @@ void bldcAppInit(void)
 void bldcAppTick1kHz(void)
 {
   const uint32_t loop_start = cycleNow();
+  const uint32_t printf_start = uartGetPrintfCount();
 
   pollUart();
   adcUpdateTemperatureFilters();
@@ -2040,10 +2102,8 @@ void bldcAppTick1kHz(void)
   updateZeroOutputSleep();
   sendTelemetry();
 
-  app.loop_busy_cycles = cycleDelta(loop_start, cycleNow());
-  if (app.loop_busy_cycles > app.loop_busy_cycles_max) {
-    app.loop_busy_cycles_max = app.loop_busy_cycles;
-  }
+  updateLoopPerformance(cycleDelta(loop_start, cycleNow()), uartGetPrintfCount() != printf_start);
+  printPeriodicControlSlack();
 
   processDeferredDebugOutput();
 
@@ -2067,6 +2127,12 @@ void bldcAppOnTimerElapsed(TIM_HandleTypeDef * htim)
   app.isr_cycles = cycleDelta(isr_start, cycleNow());
   if (app.isr_cycles > app.isr_cycles_max) {
     app.isr_cycles_max = app.isr_cycles;
+  }
+  if (app.isr_cycles > app.isr_cycles_window_max) {
+    app.isr_cycles_window_max = app.isr_cycles;
+  }
+  if (app.mode == BLDC_APP_MODE_RUN && app.isr_cycles > usToCycles(APP_PWM_ISR_BUDGET_US)) {
+    bldcAppForceFault(BLDC_ISR_OVERRUN, motor_select, (float)cyclesToUs(app.isr_cycles));
   }
 }
 
