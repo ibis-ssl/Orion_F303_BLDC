@@ -84,6 +84,26 @@ enc cal done zero +5796/+3067 mrad
 - 共有状態は `app_context.h` 経由で参照し、`extern` の散在を防ぐ。
 - モードや校正段階は `enum` で明示する。
 
+## 現行の出力制御経路
+通常走行時の出力制御は、現時点では次の順に処理する。
+
+```text
+cmd.speed
+  -> speedToOutputVoltage()
+  -> cmd.out_v
+  -> setFinalOutputVoltage()
+  -> cmd.out_v_final / enc_offset.final
+  -> as5047p.output_radian + enc_offset.final
+  -> setOutputRadianMotor()
+  -> PWM CCR
+```
+
+`motor.c` は速度指令から出力電圧とエンコーダ電気角オフセットを作る。`tim.c` は電気角と電圧から三相PWMのCCR値を作る。今回の整理では制御式は変更せず、legacy仕様に名前を付けて分割した。
+
+現行仕様では、正逆転の意味はPWM振幅の符号ではなく、`getLegacyTorqueOffsetRadian()` が返す電気角オフセットで表現している。`setOutputRadianMotor()` は負の出力電圧を絶対値に変換してからPWM振幅へ使う。また、出力電圧が `output_voltage_limit` を超えた場合は飽和ではなく0Vに落とす。これらは左右回転差の原因候補だが、今回の整理では挙動維持を優先して変更していない。
+
+周期ログでは `TrqOff` として、M0/M1それぞれで選択されたlegacy電気角オフセットを出力する。左右回転の比較では、`cmd.speed`, `motor_real.rps`, `cmd.out_v`, `cmd.out_v_final`, `pid.eff_voltage`, `pid.output_voltage_limitting`, `TrqOff`, `enc_offset.final` を合わせて見る。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 

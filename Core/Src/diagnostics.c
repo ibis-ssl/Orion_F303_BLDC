@@ -163,7 +163,12 @@ void printRuntimeDiagnostics(void)
       ex_can_send_fail_cnt = 0;
       break;
     case 7:
-      p("Offset %+4.2f RPS %+6.1f %+6.1f ", sys.manual_offset_radian, motor_real[0].rps_ave, motor_real[1].rps_ave);
+      p("Offset %+4.2f TrqOff %+4.2f %+4.2f RPS %+6.1f %+6.1f ",
+        sys.manual_offset_radian,
+        getLegacyTorqueOffsetRadian(cmd[0].out_v_final),
+        getLegacyTorqueOffsetRadian(cmd[1].out_v_final),
+        motor_real[0].rps_ave,
+        motor_real[1].rps_ave);
       //p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:

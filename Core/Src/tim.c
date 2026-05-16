@@ -319,26 +319,49 @@ inline float fast_sin(float rad)
 #define BATTERY_VOLTAGE_BOTTOM (18)
 #define X2_PER_R3 (1.154)
 
-inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
+static inline float legacyClampBatteryVoltage(float battery_voltage)
 {
-  int voltage_propotional_cnt;
-
   if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
-    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
+    return BATTERY_VOLTAGE_BOTTOM;
   }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
+  return battery_voltage;
+}
 
-  uint16_t rad_to_cnt = (uint16_t)(((out_rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f)) + 1023) & SIN_TABLE_MASK;
-  uint16_t output_ccr_cnt[3];
+static inline float legacyAbsOutputVoltage(float output_voltage)
+{
+  if (output_voltage < 0) {
+    return -output_voltage;
+  }
+  return output_voltage;
+}
+
+static inline float legacyDropOutputOnOverLimit(float output_voltage, float output_voltage_limit)
+{
+  if (output_voltage > output_voltage_limit) {
+    return 0;
+  }
+  return output_voltage;
+}
+
+static inline int calcLegacyVoltageProportionalCount(float output_voltage, float battery_voltage)
+{
+  return output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
+}
+
+static inline uint16_t calcLegacySinTableIndex(float out_rad)
+{
+  return (uint16_t)(((out_rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f)) + 1023) & SIN_TABLE_MASK;
+}
+
+static inline void calcLegacyThreePhaseCcr(uint16_t rad_to_cnt, int voltage_propotional_cnt, uint16_t output_ccr_cnt[3])
+{
   output_ccr_cnt[0] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
   output_ccr_cnt[1] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[SIN_OFFSET_120 + rad_to_cnt];  // +1/3 rev
   output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[SIN_OFFSET_240 + rad_to_cnt];  // -1/3 rev
+}
+
+static inline void writeThreePhasePwm(bool motor, const uint16_t output_ccr_cnt[3])
+{
   if (motor == 0) {
     htim1.Instance->CCR1 = output_ccr_cnt[0];
     htim1.Instance->CCR2 = output_ccr_cnt[1];
@@ -348,6 +371,20 @@ inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage
     htim8.Instance->CCR2 = output_ccr_cnt[1];
     htim8.Instance->CCR3 = output_ccr_cnt[2];
   }
+}
+
+inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
+{
+  uint16_t output_ccr_cnt[3];
+
+  battery_voltage = legacyClampBatteryVoltage(battery_voltage);
+  output_voltage = legacyAbsOutputVoltage(output_voltage);
+  output_voltage = legacyDropOutputOnOverLimit(output_voltage, output_voltage_limit);
+
+  int voltage_propotional_cnt = calcLegacyVoltageProportionalCount(output_voltage, battery_voltage);
+  uint16_t rad_to_cnt = calcLegacySinTableIndex(out_rad);
+  calcLegacyThreePhaseCcr(rad_to_cnt, voltage_propotional_cnt, output_ccr_cnt);
+  writeThreePhasePwm(motor, output_ccr_cnt);
 }
 
 void setPwmAll(uint32_t pwm_cnt)
