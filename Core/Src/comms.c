@@ -13,6 +13,7 @@
 #include "calibration.h"
 #include "can.h"
 #include "control_mode.h"
+#include "diagnostics.h"
 #include "flash.h"
 #include "motor.h"
 #include "tim.h"
@@ -134,6 +135,9 @@ void receiveUserSerialCommand(void)
     uart_rx_flag = false;
     HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
     switch (uart_rx_buf[0]) {
+      case 'i':
+        runIoCheckOnce();
+        break;
       case 'c':
         p("\n\nstart calib mode!\n\n");
         startCalibrationMode();
@@ -216,7 +220,7 @@ void receiveUserSerialCommand(void)
         if (sys.print_idx > 2) {
           sys.print_idx = 0;
         }
-        p("\nprint idx : %d\n");
+        p("\nprint idx : %d\n", sys.print_idx);
         break;
     }
   }

@@ -84,6 +84,15 @@ enc cal done zero +5796/+3067 mrad
 - 共有状態は `app_context.h` 経由で参照し、`extern` の散在を防ぐ。
 - モードや校正段階は `enum` で明示する。
 
+## 診断と安全チェック
+UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
+
+UART出力関数 `p()` は `vsnprintf()` でバッファ境界を確認する。キャリブレーションやI/Oチェックの連続ログでUART DMA用バッファを壊さないことを優先する。
+
+AS5047Pは通常角度更新とは別に `updateAS5047PDiagnostics()` で診断レジスタを読む。診断読み出し中は短時間だけ割り込みを止め、PWM ISR側のSPIアクセスと競合しないようにする。通常更新では最終フレーム `last_frame` とエラーフレーム数 `spi_error_count` を保持する。
+
+電流センス安全確認の `isNotZeroCurrent()` はM0/M1の両方を見る。温度はADC rawから直接返さず、有効範囲内の値だけを一次ローパスに通したフィルタ値を `getTempFET()` / `getTempMotor()` で返す。
+
 ## 改善項目（完了）
 1. ファイル分割（通信・起動・診断）
 - `comms.c`, `startup_sequence.c`, `diagnostics.c` を追加。

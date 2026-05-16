@@ -282,6 +282,7 @@ int main(void)
     receiveUserSerialCommand();
 
     updateMotorSpeedEstimate();
+    adcUpdateTemperatureFilters();
     sendCanData();
 
     system_exec_time_stamp[0] = interrupt_timer_cnt;
