@@ -55,6 +55,29 @@
 
 従来の数値ステップを enum に置き換えて、状態遷移の意図を明確化している。
 
+## キャリブレーション手順
+UART `c`、CAN `0x310`、起動時SW4でキャリブレーションを開始する。校正中はCAN速度指令を無視し、エンコーダ校正が完了してから速度係数校正へ自動で進む。
+
+ゼロ電気角校正は `dev/simple_foc` ブランチで実機精度が良かった多点固定角方式を使う。
+- 固定電気角は `6点/電気周期 * 12極対 = 72点`。
+- 正順と逆順の2パスを測定する。
+- 各点は250ms整定、100msサンプル。
+- 各点で `fixed_angle - encoder_electrical_angle` を計算し、sin/cosの円周平均でゼロ角を求める。
+- 2パス目では正順とのヒステリシスを計算し、8degを超える点はゼロ角平均から除外する。
+- 完了時に `enc_offset[].zero_calib` とFlashのエンコーダ校正値を更新する。
+
+校正ログは1kHz側のステージ完了時に出す。代表ログは次の形式である。
+
+```text
+enc cal start points 72 pass 2 settle 250 sample 100 voltage_mV +2000
+cal enc p0 i00 raw 12345/23456 zero_mdeg +5796/+3067
+cal enc p1 i00 raw 12340/23460 zero_mdeg +5797/+3068 hyst +1/+1 used 03
+enc cal M0 zero_mrad +5796 pairs used/rej 72/0 hyst_mdeg avg/max +1/+4 samples 14400
+enc cal done zero +5796/+3067 mrad
+```
+
+速度係数校正は従来どおり `+3V`, `-3V`, `+5V`, `-5V` の順にM0/M1同時に測定し、5V正転側の `rps_per_v` をFlashへ保存する。ゼロ電気角の精度を優先するため、速度係数校正の最後にCW/CCW速度差からエンコーダオフセットを再補正する処理は行わない。
+
 ## 設計ルール
 - ISR と 1kHz ループの fast path では分岐/処理を増やしすぎない。
 - ロジック変更を伴う最適化は、必ず計測値（周期余裕・CPU負荷）で確認する。
