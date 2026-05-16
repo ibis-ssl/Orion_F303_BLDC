@@ -65,6 +65,7 @@ float getCurrentMotor(bool motor);
 int getTempFET(bool motor);
 int getTempMotor(bool motor);
 void updateADC(bool motor);
+void adcUpdateTemperatureFilters(void);
 
 /* USER CODE END Prototypes */
 
