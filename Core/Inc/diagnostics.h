@@ -3,5 +3,6 @@
 
 void printRuntimeDiagnostics(void);
 void runIoCheckOnce(void);
+void runFocMathCheckOnce(void);
 
 #endif /* INC_DIAGNOSTICS_H_ */

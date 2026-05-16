@@ -61,6 +61,7 @@ void speedToOutputVoltage(motor_pid_control_t * pid, motor_real_t * real, motor_
 }
 
 // Legacy control represents voltage sign by selecting an electrical-angle offset.
+// This offset was tuned experimentally and compensates more than ideal q-axis phase.
 #define LEGACY_MINUS_TORQUE_OFFSET_RADIAN (2 * M_PI - ROTATION_OFFSET_RADIAN)
 #define LEGACY_PLUS_TORQUE_OFFSET_RADIAN (ROTATION_OFFSET_RADIAN)
 

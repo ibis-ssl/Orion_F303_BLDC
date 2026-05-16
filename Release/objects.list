@@ -6,6 +6,8 @@
 "./Core/Src/diagnostics.o"
 "./Core/Src/dma.o"
 "./Core/Src/flash.o"
+"./Core/Src/foc_driver_hal.o"
+"./Core/Src/foc_math.o"
 "./Core/Src/gpio.o"
 "./Core/Src/main.o"
 "./Core/Src/motor.o"

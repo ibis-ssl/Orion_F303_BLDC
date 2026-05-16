@@ -100,9 +100,20 @@ cmd.speed
 
 `motor.c` は速度指令から出力電圧とエンコーダ電気角オフセットを作る。`tim.c` は電気角と電圧から三相PWMのCCR値を作る。今回の整理では制御式は変更せず、legacy仕様に名前を付けて分割した。
 
-現行仕様では、正逆転の意味はPWM振幅の符号ではなく、`getLegacyTorqueOffsetRadian()` が返す電気角オフセットで表現している。`setOutputRadianMotor()` は負の出力電圧を絶対値に変換してからPWM振幅へ使う。また、出力電圧が `output_voltage_limit` を超えた場合は飽和ではなく0Vに落とす。これらは左右回転差の原因候補だが、今回の整理では挙動維持を優先して変更していない。
+現行仕様では、正逆転の意味はPWM振幅の符号ではなく、`getLegacyTorqueOffsetRadian()` が返す電気角オフセットで表現している。`setOutputRadianMotor()` は負の出力電圧を絶対値に変換してからPWM振幅へ使う。また、出力電圧が `output_voltage_limit` を超えた場合は飽和ではなく0Vに落とす。
+
+左右回転差の切り分けとして、負方向トルクのlegacy電気角オフセットを正方向から厳密に `pi rad` 離す実験を行ったが、速度係数校正時の正逆回転差が大きくなり、校正エラーになることを確認した。`ROTATION_OFFSET_RADIAN = 2.00 rad` は理想q軸とは一致しないが、現行のPWM位相、エンコーダ符号、モータ配線、または速度推定符号を含むlegacy経路全体に対する実験的補償として効いている可能性が高い。そのため現時点では `2 * pi - ROTATION_OFFSET_RADIAN` の負方向オフセットを維持する。
 
 周期ログでは `TrqOff` として、M0/M1それぞれで選択されたlegacy電気角オフセットを出力する。左右回転の比較では、`cmd.speed`, `motor_real.rps`, `cmd.out_v`, `cmd.out_v_final`, `pid.eff_voltage`, `pid.output_voltage_limitting`, `TrqOff`, `enc_offset.final` を合わせて見る。
+
+## FOC/SinePWM診断経路
+`dev/simple_foc` ブランチの実装を参考に、SimpleFOC相当の電圧FOC計算をCで追加した。通常RUNとキャリブレーション出力はまだlegacy経路のままで、今回追加したFOC経路は比較・診断用である。
+
+- `Core/Src/foc_math.c`: 角度正規化、電気角計算、逆Park/Clarke、相電圧からPWM CCRへの変換。
+- `Core/Src/foc_driver_hal.c`: FOC計算結果をTIM1/TIM8 CCRへ反映するHALブリッジ。
+- `runStartupSequence()` で `focMathInit()` を呼ぶ。ただし現ブランチではRAM節約のためFOC専用sinテーブルは持たず、診断用として `sinf()` / `cosf()` を直接使う。
+
+UART `v` でFOC計算チェックを実行する。これはPWM出力を変更せず、FOC mathセルフテスト、現在のエンコーダraw、legacy電気角、rawから直接計算したFOC電気角、`Uq=+/-2V` 相当のCCR候補をログ出力する。実機を回さず、legacy経路とFOC経路の符号・相順を比較するための前段診断である。
 
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。

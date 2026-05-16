@@ -5,12 +5,16 @@
 
 #include "diagnostics.h"
 
+#include <math.h>
+
 #include "adc.h"
 #include "app_context.h"
 #include "can.h"
 #include "comms.h"
 #include "control_mode.h"
 #include "flash.h"
+#include "foc_driver_hal.h"
+#include "foc_math.h"
 #include "gpio.h"
 #include "motor.h"
 #include "spi.h"
@@ -18,6 +22,12 @@
 #include "usart.h"
 
 extern uint32_t ex_can_send_fail_cnt;
+
+#define DIAG_POLE_PAIRS (12)
+#define DIAG_SENSOR_DIRECTION (1)
+#define DIAG_SENSOR_TORQUE_DIRECTION (-1.0f)
+#define DIAG_ENCODER_RAW_TO_MECH_RAD (2.0f * (float)M_PI / (float)ENC_CNT_MAX)
+#define DIAG_FOC_SAMPLE_VOLTAGE (2.0f)
 
 static void waitPrintDrain(void)
 {
@@ -115,6 +125,48 @@ void runIoCheckOnce(void)
     flash.rps_per_v_cw[0],
     flash.rps_per_v_cw[1]);
   p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
+  waitPrintDrain();
+}
+
+void runFocMathCheckOnce(void)
+{
+  foc_pwm_compare_t sample;
+  const bool self_test_ok = focRunMathSelfTest(&sample);
+
+  p("\n[FOC CHECK] math %s sample %4u %4u %4u limited %u\n",
+    self_test_ok ? "OK" : "NG",
+    sample.a,
+    sample.b,
+    sample.c,
+    sample.limited ? 1U : 0U);
+  waitPrintDrain();
+
+  for (uint8_t i = 0U; i < 2U; i++) {
+    updateAS5047P(i);
+
+    const float mech = (float)as5047p[i].enc_raw * DIAG_ENCODER_RAW_TO_MECH_RAD;
+    const float foc_raw_el = focElectricalAngle(mech, DIAG_POLE_PAIRS, 0.0f, DIAG_SENSOR_DIRECTION);
+    const float legacy_el = as5047p[i].output_radian + enc_offset[i].zero_calib;
+    const float uq_pos = DIAG_SENSOR_TORQUE_DIRECTION * DIAG_FOC_SAMPLE_VOLTAGE;
+    const float uq_neg = -uq_pos;
+    const foc_pwm_compare_t pos = focDriverBuildSinePwm(uq_pos, 0.0f, legacy_el, getBatteryVoltage());
+    const foc_pwm_compare_t neg = focDriverBuildSinePwm(uq_neg, 0.0f, legacy_el, getBatteryVoltage());
+
+    p("[FOC CHECK] M%u raw %5d legacy %+6.3f raw_el %+6.3f uq+ %4u %4u %4u uq- %4u %4u %4u\n",
+      i,
+      as5047p[i].enc_raw,
+      legacy_el,
+      foc_raw_el,
+      pos.a,
+      pos.b,
+      pos.c,
+      neg.a,
+      neg.b,
+      neg.c);
+    waitPrintDrain();
+  }
+
+  p("[FOC CHECK] no PWM output changed\n\n");
   waitPrintDrain();
 }
 

@@ -138,6 +138,9 @@ void receiveUserSerialCommand(void)
       case 'i':
         runIoCheckOnce();
         break;
+      case 'v':
+        runFocMathCheckOnce();
+        break;
       case 'c':
         p("\n\nstart calib mode!\n\n");
         startCalibrationMode();

@@ -15,6 +15,7 @@
 #include "control_mode.h"
 #include "control_limits.h"
 #include "flash.h"
+#include "foc_math.h"
 #include "gpio.h"
 #include "motor.h"
 #include "spi.h"
@@ -30,6 +31,7 @@ void waitPowerOnTimeout(void);
 void runStartupSequence(void)
 {
   initFirstSin();
+  focMathInit();
   clearFaultMode();
 
   // LED
