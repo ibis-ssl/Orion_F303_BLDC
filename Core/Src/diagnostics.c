@@ -10,11 +10,113 @@
 #include "can.h"
 #include "comms.h"
 #include "control_mode.h"
+#include "flash.h"
+#include "gpio.h"
 #include "motor.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 
 extern uint32_t ex_can_send_fail_cnt;
+
+static void waitPrintDrain(void)
+{
+  HAL_Delay(3);
+}
+
+void runIoCheckOnce(void)
+{
+  p("\n[IO CHECK] non-rotating check start\n");
+  waitPrintDrain();
+
+  cmd[0].speed = 0.0f;
+  cmd[1].speed = 0.0f;
+  cmd[0].out_v = 0.0f;
+  cmd[1].out_v = 0.0f;
+  cmd[0].out_v_final = 0.0f;
+  cmd[1].out_v_final = 0.0f;
+  sys.free_wheel_cnt = 60000U;
+  setPwmAll(TIM_PWM_CENTER);
+  setPwmOutPutFreeWheel();
+
+  updateADC(0);
+  updateADC(1);
+  adcUpdateTemperatureFilters();
+  updateAS5047P(0);
+  updateAS5047P(1);
+
+  p("SW 1:%d 2:%d 3:%d 4:%d\n", isPushedSW1(), isPushedSW2(), isPushedSW3(), isPushedSW4());
+  waitPrintDrain();
+
+  p("ADC raw CS %4d %4d Batt %4d GD %4d FET %4d %4d MotorT %4d %4d Off %4d\n",
+    adc_raw.cs_motor[0],
+    adc_raw.cs_motor[1],
+    adc_raw.batt_v,
+    adc_raw.gd_dcdc_v,
+    adc_raw.temp_fet[0],
+    adc_raw.temp_fet[1],
+    adc_raw.temp_motor[0],
+    adc_raw.temp_motor[1],
+    adc_raw.cs_adc_offset);
+  p("ADC val CS %+6.3f %+6.3f Batt %5.2f GD %5.2f FET %3d %3d MotorT %3d %3d\n",
+    getCurrentMotor(0),
+    getCurrentMotor(1),
+    getBatteryVoltage(),
+    getGateDriverDCDCVoltage(),
+    getTempFET(0),
+    getTempFET(1),
+    getTempMotor(0),
+    getTempMotor(1));
+  waitPrintDrain();
+
+  for (int i = 0; i < 2; i++) {
+    updateAS5047PDiagnostics(i);
+    p("ENC M%d raw %5d elec %5d rad %+6.3f diff %+6d min %+6d max %+6d frame 0x%04x spierr %lu\n",
+      i,
+      as5047p[i].enc_raw,
+      as5047p[i].enc_elec_raw,
+      as5047p[i].output_radian,
+      as5047p[i].diff_enc,
+      as5047p[i].diff_min,
+      as5047p[i].diff_max,
+      as5047p[i].last_frame,
+      as5047p[i].spi_error_count);
+    p("ENC M%d reg err 0x%02x prog 0x%02x diag 0x%03x mag 0x%03x enc 0x%03x com 0x%03x\n",
+      i,
+      as5047p[i].reg.error,
+      as5047p[i].reg.prog,
+      as5047p[i].reg.diagagc,
+      as5047p[i].reg.mag,
+      as5047p[i].reg.angleenc,
+      as5047p[i].reg.anglecom);
+    waitPrintDrain();
+  }
+
+  p("PWM TIM1 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n",
+    htim1.Instance->CCR1,
+    htim1.Instance->CCR2,
+    htim1.Instance->CCR3,
+    htim1.Instance->CCER,
+    htim1.Instance->BDTR);
+  p("PWM TIM8 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n",
+    htim8.Instance->CCR1,
+    htim8.Instance->CCR2,
+    htim8.Instance->CCR3,
+    htim8.Instance->CCER,
+    htim8.Instance->BDTR);
+  waitPrintDrain();
+
+  p("CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n",
+    getCanRxCount(),
+    getCanError(),
+    flash.board_id,
+    flash.calib[0],
+    flash.calib[1],
+    flash.rps_per_v_cw[0],
+    flash.rps_per_v_cw[1]);
+  p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
+  waitPrintDrain();
+}
 
 void printRuntimeDiagnostics(void)
 {
