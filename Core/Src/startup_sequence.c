@@ -14,6 +14,7 @@
 #include "comms.h"
 #include "control_mode.h"
 #include "control_limits.h"
+#include "diagnostics.h"
 #include "flash.h"
 #include "foc_math.h"
 #include "gpio.h"
@@ -32,6 +33,9 @@ void runStartupSequence(void)
 {
   initFirstSin();
   focMathInit();
+  foc_pwm_compare_t foc_sample;
+  const bool foc_ok = focRunMathSelfTest(&foc_sample);
+  setFocMathSelfTestResult(foc_ok, foc_sample.a, foc_sample.b, foc_sample.c, foc_sample.limited);
   clearFaultMode();
 
   // LED

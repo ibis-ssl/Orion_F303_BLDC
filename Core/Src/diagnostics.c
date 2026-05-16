@@ -41,6 +41,18 @@ static void waitPrintDrain(void)
   HAL_Delay(3);
 }
 
+static bool foc_self_test_ok;
+static foc_pwm_compare_t foc_self_test_sample;
+
+void setFocMathSelfTestResult(bool ok, uint16_t a, uint16_t b, uint16_t c, bool limited)
+{
+  foc_self_test_ok = ok;
+  foc_self_test_sample.a = a;
+  foc_self_test_sample.b = b;
+  foc_self_test_sample.c = c;
+  foc_self_test_sample.limited = limited;
+}
+
 void runIoCheckOnce(void)
 {
   p("\n[IO CHECK] non-rotating check start\n");
@@ -138,8 +150,6 @@ void runIoCheckOnce(void)
 void runFocMathCheckOnce(void)
 {
   foc_diag_snapshot_t snapshot[2];
-  foc_pwm_compare_t sample;
-  const bool self_test_ok = focRunMathSelfTest(&sample);
 
   __disable_irq();
   for (uint8_t i = 0U; i < 2U; i++) {
@@ -150,12 +160,11 @@ void runFocMathCheckOnce(void)
   __enable_irq();
 
   p("\n[FOC CHECK] math %s sample %4u %4u %4u limited %u\n",
-    self_test_ok ? "OK" : "NG",
-    sample.a,
-    sample.b,
-    sample.c,
-    sample.limited ? 1U : 0U);
-  waitPrintDrain();
+    foc_self_test_ok ? "OK" : "NG",
+    foc_self_test_sample.a,
+    foc_self_test_sample.b,
+    foc_self_test_sample.c,
+    foc_self_test_sample.limited ? 1U : 0U);
 
   for (uint8_t i = 0U; i < 2U; i++) {
     const float mech = (float)snapshot[i].raw * DIAG_ENCODER_RAW_TO_MECH_RAD;
@@ -179,11 +188,9 @@ void runFocMathCheckOnce(void)
       neg.a,
       neg.b,
       neg.c);
-    waitPrintDrain();
   }
 
   p("[FOC CHECK] snapshot only, no SPI update, no PWM output changed\n\n");
-  waitPrintDrain();
 }
 
 void printRuntimeDiagnostics(void)

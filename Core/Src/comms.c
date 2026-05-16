@@ -15,6 +15,7 @@
 #include "control_mode.h"
 #include "diagnostics.h"
 #include "flash.h"
+#include "foc_diagnostic.h"
 #include "motor.h"
 #include "tim.h"
 #include "usart.h"
@@ -61,7 +62,7 @@ void initComms(void)
 static void can_rx_callback(void)
 {
   // Ignore command updates while any calibration is active.
-  if (isAnyCalibrationActive()) {
+  if (isAnyCalibrationActive() || isFocDiagnosticActive()) {
     return;
   }
 
@@ -140,6 +141,9 @@ void receiveUserSerialCommand(void)
         break;
       case 'v':
         runFocMathCheckOnce();
+        break;
+      case 'V':
+        toggleFocDiagnosticMode();
         break;
       case 'c':
         p("\n\nstart calib mode!\n\n");

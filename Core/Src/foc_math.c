@@ -7,6 +7,8 @@
 
 #include <math.h>
 
+#include "tim.h"
+
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
 #endif
@@ -18,8 +20,8 @@ void focMathInit(void)
 {
   /*
    * No local sine table is allocated in this branch. tim.c already owns a large
-   * legacy table, and RAM is tight on STM32F303RBTx. The FOC path is diagnostic
-   * only for now, so direct libm calls keep memory usage low.
+   * legacy table, and RAM is tight on STM32F303RBTx. FOC sine/cosine lookup uses
+   * that table through fast_sin().
    */
 }
 
@@ -37,8 +39,8 @@ float focNormalizeAngle(float angle)
 static void focFastSinCos(float angle, float * sin_out, float * cos_out)
 {
   angle = focNormalizeAngle(angle);
-  *sin_out = sinf(angle);
-  *cos_out = cosf(angle);
+  *sin_out = fast_sin(angle);
+  *cos_out = fast_sin(angle + (float)M_PI * 0.5f);
 }
 
 float focElectricalAngle(float shaft_angle, int pole_pairs, float zero_electric_angle, int sensor_direction)

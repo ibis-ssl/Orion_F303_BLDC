@@ -29,6 +29,7 @@
 #include "control_mode.h"
 #include "diagnostics.h"
 #include "dma.h"
+#include "foc_diagnostic.h"
 #include "gpio.h"
 #include "protect.h"
 #include "spi.h"
@@ -139,6 +140,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   setLedBlue(false);
   if (isEncoderCalibrationActive()) {
     calibrationProcess_itr(motor_select_toggle);
+  } else if (isFocDiagnosticActive()) {
+    focDiagnosticProcess_itr(motor_select_toggle);
   } else {
     motorProcess_itr(motor_select_toggle);
   }
