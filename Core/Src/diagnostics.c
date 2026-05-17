@@ -121,6 +121,10 @@ void runFocMathCheckOnce(void)
     const float mech = (float)snapshot[i].raw * DIAG_ENCODER_RAW_TO_MECH_RAD;
     const float foc_raw_el_pos = focElectricalAngle(mech, DIAG_POLE_PAIRS, 0.0f, +1);
     const float foc_raw_el_neg = focElectricalAngle(mech, DIAG_POLE_PAIRS, 0.0f, -1);
+    const float raw_pos_zero_add = focNormalizeAngle(foc_raw_el_pos + snapshot[i].zero_calib);
+    const float raw_pos_zero_sub = focNormalizeAngle(foc_raw_el_pos - snapshot[i].zero_calib);
+    const float raw_neg_zero_add = focNormalizeAngle(foc_raw_el_neg + snapshot[i].zero_calib);
+    const float raw_neg_zero_sub = focNormalizeAngle(foc_raw_el_neg - snapshot[i].zero_calib);
     const float legacy_el = snapshot[i].legacy_output_radian + snapshot[i].zero_calib;
     const float uq_pos = DIAG_SENSOR_TORQUE_DIRECTION * DIAG_FOC_SAMPLE_VOLTAGE;
     const float uq_neg = -uq_pos;
@@ -129,6 +133,13 @@ void runFocMathCheckOnce(void)
 
     p("[FOC CHECK] M%u raw %5d legacy %+6.3f raw+ %+6.3f raw- %+6.3f uq+ %4u %4u %4u uq- %4u %4u %4u\n", i, snapshot[i].raw, legacy_el, foc_raw_el_pos, foc_raw_el_neg, pos.a, pos.b, pos.c, neg.a,
       neg.b, neg.c);
+    p("[FOC CHECK] M%u zero %+6.3f raw+z+ %+6.3f raw+z- %+6.3f raw-z+ %+6.3f raw-z- %+6.3f\n",
+      i,
+      snapshot[i].zero_calib,
+      raw_pos_zero_add,
+      raw_pos_zero_sub,
+      raw_neg_zero_add,
+      raw_neg_zero_sub);
   }
 
   p("[FOC CHECK] snapshot only, no SPI update, no PWM output changed\n\n");

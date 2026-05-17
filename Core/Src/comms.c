@@ -148,8 +148,29 @@ void receiveUserSerialCommand(void)
       case 'B':
         cycleFocDiagnosticAngleSource();
         break;
+      case 'X':
+        cycleFocDiagnosticAngleSourceMotor(false);
+        break;
+      case 'Z':
+        cycleFocDiagnosticAngleSourceMotor(true);
+        break;
       case 'T':
         toggleFocDiagnosticTorqueSign();
+        break;
+      case 'Y':
+        toggleFocDiagnosticTorqueSignMotor(false);
+        break;
+      case 'H':
+        toggleFocDiagnosticTorqueSignMotor(true);
+        break;
+      case '[':
+        adjustFocDiagnosticPhaseAdvance(-0.01745329252f);
+        break;
+      case ']':
+        adjustFocDiagnosticPhaseAdvance(0.01745329252f);
+        break;
+      case 'P':
+        resetFocDiagnosticPhaseAdvance();
         break;
       case 'c':
         p("\n\nstart calib mode!\n\n");
