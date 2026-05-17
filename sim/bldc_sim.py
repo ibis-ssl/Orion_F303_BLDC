@@ -113,7 +113,8 @@ class MotorSimConfig:
     ld_h: float = 80.0e-6
     lq_h: float = 80.0e-6
     flux_wb: float = 0.006
-    inertia: float = 2.0e-4
+    # Solid cylinder load, diameter 10cm and mass 1kg: J = 1/2*m*r^2.
+    inertia: float = 1.25e-3
     damping: float = 1.0e-5
     coulomb_friction: float = 0.001
     kt_per_volt: float = 0.03

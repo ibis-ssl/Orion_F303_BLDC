@@ -43,6 +43,7 @@ class SimGui(tk.Tk):
         self.minsize(1000, 640)
 
         self.vars: dict[str, tk.StringVar] = {}
+        self.last_rows: list[dict[str, float]] = []
         self._make_vars()
         self._build_ui()
         self._refresh_cli()
@@ -70,6 +71,8 @@ class SimGui(tk.Tk):
             "pwm_period": "1800",
             "initial_theta_m0": "0.3",
             "initial_theta_m1": "0.6",
+            "plot_m0": "1",
+            "plot_m1": "1",
         }
         for key, value in defaults.items():
             var = tk.StringVar(value=value)
@@ -89,10 +92,12 @@ class SimGui(tk.Tk):
         right.columnconfigure(0, weight=1)
         right.rowconfigure(1, weight=1)
         right.rowconfigure(2, weight=1)
+        right.rowconfigure(3, weight=1)
 
         self._build_settings(left)
         self._build_actions(right)
         self._build_result_table(right)
+        self._build_plots(right)
         self._build_log(right)
 
     def _build_settings(self, parent: ttk.Frame) -> None:
@@ -172,7 +177,7 @@ class SimGui(tk.Tk):
 
     def _build_log(self, parent: ttk.Frame) -> None:
         log_frame = ttk.LabelFrame(parent, text="Log / CLI")
-        log_frame.grid(row=2, column=0, sticky="nsew", pady=(4, 0))
+        log_frame.grid(row=3, column=0, sticky="nsew", pady=(4, 0))
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
         self.log = tk.Text(log_frame, height=12, wrap="none")
@@ -180,6 +185,26 @@ class SimGui(tk.Tk):
         yscroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log.yview)
         yscroll.grid(row=0, column=1, sticky="ns")
         self.log.configure(yscrollcommand=yscroll.set)
+
+    def _build_plots(self, parent: ttk.Frame) -> None:
+        plot_frame = ttk.LabelFrame(parent, text="Plots")
+        plot_frame.grid(row=2, column=0, sticky="nsew", pady=4)
+        plot_frame.columnconfigure(0, weight=3)
+        plot_frame.columnconfigure(1, weight=1)
+        plot_frame.rowconfigure(1, weight=1)
+
+        controls = ttk.Frame(plot_frame)
+        controls.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        ttk.Checkbutton(controls, text="M0", variable=self.vars["plot_m0"], command=self._draw_plots).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(controls, text="M1", variable=self.vars["plot_m1"], command=self._draw_plots).grid(row=0, column=1, sticky="w", padx=(8, 16))
+        ttk.Button(controls, text="Redraw", command=self._draw_plots).grid(row=0, column=2)
+
+        self.plot_canvas = tk.Canvas(plot_frame, height=280, background="white")
+        self.plot_canvas.grid(row=1, column=0, sticky="nsew", padx=(0, 4))
+        self.dq_canvas = tk.Canvas(plot_frame, height=280, width=240, background="white")
+        self.dq_canvas.grid(row=1, column=1, sticky="nsew")
+        self.plot_canvas.bind("<Configure>", lambda _event: self._draw_plots())
+        self.dq_canvas.bind("<Configure>", lambda _event: self._draw_plots())
 
     def build_args(self) -> argparse.Namespace:
         return argparse.Namespace(
@@ -231,6 +256,7 @@ class SimGui(tk.Tk):
             with contextlib.redirect_stdout(buffer):
                 rc = bldc_sim.run_self_test()
             output = buffer.getvalue()
+            self.last_rows = []
             self._show_output(output)
             if rc != 0:
                 messagebox.showwarning("Self Test", "Self test failed.")
@@ -239,20 +265,30 @@ class SimGui(tk.Tk):
             self._append_log(f"\nERROR: {exc}\n")
 
     def _capture_run(self, args: argparse.Namespace) -> str:
+        self.last_rows = []
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             if args.scenario == "snapshot":
                 bldc_sim.run_snapshot(args)
             elif args.scenario == "realtime":
                 bldc_sim.run_realtime(args)
+                self.last_rows = bldc_sim.simulate_realtime(args)
             elif args.scenario == "step":
                 bldc_sim.run_step(args)
+                cfg = bldc_sim.MotorSimConfig(
+                    zero_electric_angle=args.zero,
+                    encoder_direction=args.encoder_direction,
+                    encoder_delay_steps=args.encoder_delay_steps,
+                    phase_advance_trim_rad=math.radians(args.phase_trim_deg),
+                )
+                self.last_rows = bldc_sim.simulate_step(cfg, args.angle_mode, args.speed_rps, args.duration_s, args.model)
             else:
                 bldc_sim.run_conventions(args)
         return buffer.getvalue()
 
     def _show_output(self, output: str) -> None:
         self._populate_table(output)
+        self._draw_plots()
         self._append_log("\n" + self.build_cli_command() + "\n" + output)
 
     def _populate_table(self, output: str) -> None:
@@ -280,6 +316,160 @@ class SimGui(tk.Tk):
     def _append_log(self, text: str) -> None:
         self.log.insert("end", text)
         self.log.see("end")
+
+    def _draw_plots(self) -> None:
+        if not hasattr(self, "plot_canvas"):
+            return
+        self._draw_time_plot()
+        self._draw_dq_plot()
+
+    def _draw_time_plot(self) -> None:
+        canvas = self.plot_canvas
+        canvas.delete("all")
+        width = max(10, canvas.winfo_width())
+        height = max(10, canvas.winfo_height())
+        metrics = ["speed_rps", "uq_eff_v", "iq_a", "torque_nm"]
+        margin_l = 62
+        margin_r = 12
+        margin_t = 18
+        margin_b = 24
+        gap = 12
+        plot_w = max(1, width - margin_l - margin_r)
+        slot_h = max(24, (height - margin_t - margin_b - gap * (len(metrics) - 1)) / len(metrics))
+
+        if not self.last_rows:
+            canvas.create_text(width / 2, height / 2, text="Run step or realtime scenario to plot", fill="#666666")
+            return
+
+        selected_motors = self._selected_plot_motors()
+        colors = {0: "#1f77b4", 1: "#d62728", -1: "#1f77b4"}
+        for idx, metric in enumerate(metrics):
+            top = margin_t + idx * (slot_h + gap)
+            self._draw_metric_slot(canvas, metric, selected_motors, colors, margin_l, top, plot_w, slot_h)
+
+    def _draw_metric_slot(
+        self,
+        canvas: tk.Canvas,
+        metric: str,
+        selected_motors: set[int],
+        colors: dict[int, str],
+        margin_l: float,
+        top: float,
+        plot_w: float,
+        plot_h: float,
+    ) -> None:
+        canvas.create_rectangle(margin_l, top, margin_l + plot_w, top + plot_h, outline="#c8c8c8")
+        canvas.create_text(margin_l + 4, top + 2, text=metric, anchor="nw", fill="#202020")
+
+        if metric not in self.last_rows[0]:
+            return
+
+        series = self._series_by_motor(metric, selected_motors)
+        all_points = [point for points in series.values() for point in points]
+        if len(all_points) < 2:
+            return
+
+        x_min = min(p[0] for p in all_points)
+        x_max = max(p[0] for p in all_points)
+        y_min = min(p[1] for p in all_points)
+        y_max = max(p[1] for p in all_points)
+        if abs(x_max - x_min) < 1.0e-12:
+            x_max = x_min + 1.0
+        if abs(y_max - y_min) < 1.0e-12:
+            y_min -= 1.0
+            y_max += 1.0
+        pad = (y_max - y_min) * 0.08
+        y_min -= pad
+        y_max += pad
+
+        def sx(x: float) -> float:
+            return margin_l + (x - x_min) * plot_w / (x_max - x_min)
+
+        def sy(y: float) -> float:
+            return top + plot_h - (y - y_min) * plot_h / (y_max - y_min)
+
+        canvas.create_text(4, top + 2, text=f"{y_max:+.3g}", anchor="nw", fill="#555555")
+        canvas.create_text(4, top + plot_h - 2, text=f"{y_min:+.3g}", anchor="sw", fill="#555555")
+        if top + plot_h + 18 <= canvas.winfo_height():
+            canvas.create_text(margin_l, top + plot_h + 2, text=f"{x_min:.3f}s", anchor="nw", fill="#555555")
+            canvas.create_text(margin_l + plot_w, top + plot_h + 2, text=f"{x_max:.3f}s", anchor="ne", fill="#555555")
+
+        for motor, points in series.items():
+            if len(points) < 2:
+                continue
+            coords: list[float] = []
+            for x, y in points:
+                coords.extend([sx(x), sy(y)])
+            canvas.create_line(*coords, fill=colors.get(motor, "#1f77b4"), width=2)
+            label = "step" if motor < 0 else f"M{motor}"
+            label_x = margin_l + plot_w - 48 + max(0, motor) * 34
+            canvas.create_text(label_x, top + 12, text=label, anchor="w", fill=colors.get(motor, "#1f77b4"))
+
+    def _series_by_motor(self, metric: str, selected_motors: set[int]) -> dict[int, list[tuple[float, float]]]:
+        series: dict[int, list[tuple[float, float]]] = {}
+        for row in self.last_rows:
+            motor = int(row.get("motor", -1))
+            if motor >= 0 and motor not in selected_motors:
+                continue
+            series.setdefault(motor, []).append((float(row["time_s"]), float(row[metric])))
+        return series
+
+    def _draw_dq_plot(self) -> None:
+        canvas = self.dq_canvas
+        canvas.delete("all")
+        width = max(10, canvas.winfo_width())
+        height = max(10, canvas.winfo_height())
+        cx = width * 0.5
+        cy = height * 0.55
+        radius = min(width, height) * 0.36
+        canvas.create_text(8, 6, text="dq current", anchor="nw", fill="#202020")
+        canvas.create_line(cx - radius, cy, cx + radius, cy, fill="#b0b0b0")
+        canvas.create_line(cx, cy + radius, cx, cy - radius, fill="#b0b0b0")
+        canvas.create_text(cx + radius + 4, cy, text="d", anchor="w", fill="#555555")
+        canvas.create_text(cx, cy - radius - 4, text="q", anchor="s", fill="#555555")
+        canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline="#d0d0d0")
+
+        latest = self._latest_rows_by_motor()
+        if not latest:
+            canvas.create_text(cx, cy, text="no dq data", fill="#666666")
+            return
+
+        max_abs = max(max(abs(float(row.get("id_a", 0.0))), abs(float(row.get("iq_a", 0.0)))) for row in latest.values())
+        if max_abs < 1.0e-6:
+            max_abs = 1.0
+        scale = radius / max_abs
+        colors = {0: "#1f77b4", 1: "#d62728", -1: "#1f77b4"}
+        y = height - 34
+        for motor, row in latest.items():
+            id_a = float(row.get("id_a", 0.0))
+            iq_a = float(row.get("iq_a", 0.0))
+            x2 = cx + id_a * scale
+            y2 = cy - iq_a * scale
+            color = colors.get(motor, "#1f77b4")
+            canvas.create_line(cx, cy, x2, y2, fill=color, width=3, arrow="last")
+            label = "step" if motor < 0 else f"M{motor}"
+            canvas.create_text(8, y, text=f"{label} Id {id_a:+.3f} Iq {iq_a:+.3f}", anchor="w", fill=color)
+            y += 16
+
+    def _latest_rows_by_motor(self) -> dict[int, dict[str, float]]:
+        latest: dict[int, dict[str, float]] = {}
+        selected = self._selected_plot_motors()
+        for row in self.last_rows:
+            motor = int(row.get("motor", -1))
+            if motor >= 0 and motor not in selected:
+                continue
+            latest[motor] = row
+        return latest
+
+    def _selected_plot_motors(self) -> set[int]:
+        selected: set[int] = set()
+        if self.vars["plot_m0"].get() == "1":
+            selected.add(0)
+        if self.vars["plot_m1"].get() == "1":
+            selected.add(1)
+        if not selected:
+            selected.update({0, 1})
+        return selected
 
     def _browse_csv(self) -> None:
         path = filedialog.asksaveasfilename(
