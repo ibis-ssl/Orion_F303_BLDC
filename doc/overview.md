@@ -133,6 +133,21 @@ FOC診断モードでは、dev/simple_focと同じ速度比例の位相進角モ
 
 M0/M1は同じ構成で符号も一致する前提だが、切り分け用として角度ソースとトルク符号はモーター別に保持する。通常は両モーターとも `raw- / -1` のまま使い、必要な場合だけ `X` / `Y` / `Z` / `H` で片側を一時的に切り替える。
 
+## FOCシミュレーション
+実機だけでFOCの角度規約や速度依存の崩れを切り分けるのは難しいため、`sim/` にPC用の簡易BLDC + エンコーダシミュレータを置く。最初の目的は高精度なモータ同定ではなく、FOC数式、三相電圧、エンコーダraw、ゼロ角規約、位相進角の関係を確認することである。
+
+`sim/bldc_sim.py` は、既存 `foc_math.c` と同じ逆Park/Clarke式で `Uq/Ud` から三相電圧を作り、実ロータ電気角でdq変換し直した `uq_effective` をトルク相当値として簡易機械モデルへ入力する。エンコーダは機械角から `0..65535` のAS5047P raw相当値を生成する。
+
+実行例:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -SelfTest
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario conventions
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario step -AngleMode raw_neg_add -OutputCsv sim\out\step_raw_neg_add.csv
+```
+
+角度モードは `raw_pos_add`、`raw_pos_sub`、`raw_neg_add`、`raw_neg_sub`、`legacy` を比較できる。CSVには `time_s`、実機械角、実電気角、エンコーダraw、指令電気角、速度、`uq_cmd_v`、`ud_eff_v`、`uq_eff_v`、三相電圧を出す。実機投入前に、正しい規約で `uq_eff` が期待方向に出ること、誤った規約でトルクが落ちること、位相進角トリムで傾向が変わることを確認する。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 
