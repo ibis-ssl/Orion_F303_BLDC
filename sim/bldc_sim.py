@@ -13,6 +13,33 @@ TWO_PI = 2.0 * math.pi
 SQRT3_2 = 0.8660254037844386
 ENC_COUNT = 65536
 POLE_PAIRS = 12
+MAD_4006_CUSTOM_KV_RPM_PER_V = 200.0
+MAD_4006_STANDARD_KV_RPM_PER_V = 320.0
+MAD_4006_STANDARD_RESISTANCE_LL_OHM = 0.280
+MAD_4006_STANDARD_L_PHASE_H = 80.0e-6
+
+
+def scale_by_turns_squared(value: float, source_kv: float, target_kv: float) -> float:
+    turns_ratio = source_kv / target_kv
+    return value * turns_ratio * turns_ratio
+
+
+def flux_linkage_from_kv(kv_rpm_per_v: float, pole_pairs: int) -> float:
+    kt_nm_per_a = 60.0 / (TWO_PI * kv_rpm_per_v)
+    return kt_nm_per_a / (1.5 * float(pole_pairs))
+
+
+MAD_4006_CUSTOM_RESISTANCE_PHASE_OHM = scale_by_turns_squared(
+    MAD_4006_STANDARD_RESISTANCE_LL_OHM * 0.5,
+    MAD_4006_STANDARD_KV_RPM_PER_V,
+    MAD_4006_CUSTOM_KV_RPM_PER_V,
+)
+MAD_4006_CUSTOM_L_PHASE_H = scale_by_turns_squared(
+    MAD_4006_STANDARD_L_PHASE_H,
+    MAD_4006_STANDARD_KV_RPM_PER_V,
+    MAD_4006_CUSTOM_KV_RPM_PER_V,
+)
+MAD_4006_CUSTOM_FLUX_WB = flux_linkage_from_kv(MAD_4006_CUSTOM_KV_RPM_PER_V, POLE_PAIRS)
 
 
 def normalize_angle(angle: float) -> float:
@@ -109,10 +136,10 @@ class MotorSimConfig:
     voltage_supply: float = 24.0
     voltage_per_rps: float = 0.08
     voltage_limit: float = 12.0
-    resistance_ohm: float = 0.28
-    ld_h: float = 80.0e-6
-    lq_h: float = 80.0e-6
-    flux_wb: float = 0.006
+    resistance_ohm: float = MAD_4006_CUSTOM_RESISTANCE_PHASE_OHM
+    ld_h: float = MAD_4006_CUSTOM_L_PHASE_H
+    lq_h: float = MAD_4006_CUSTOM_L_PHASE_H
+    flux_wb: float = MAD_4006_CUSTOM_FLUX_WB
     # Solid cylinder load, diameter 10cm and mass 1kg: J = 1/2*m*r^2.
     inertia: float = 1.25e-3
     damping: float = 1.0e-5
