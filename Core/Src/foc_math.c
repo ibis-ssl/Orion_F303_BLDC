@@ -136,28 +136,3 @@ foc_pwm_compare_t focPhaseVoltageToCompare(foc_phase_voltage_t phase, float volt
 
   return cmp;
 }
-
-bool focRunMathSelfTest(foc_pwm_compare_t * sample_out)
-{
-  const float supply = 24.0f;
-  const uint16_t period = 1800U;
-  const float uq = 3.0f;
-  const float ud = 0.0f;
-  bool ok = true;
-
-  for (int i = 0; i < 12; i++) {
-    const float angle = (float)i * FOC_TWO_PI / 12.0f;
-    foc_phase_voltage_t phase = focSetPhaseVoltageSine(uq, ud, angle, supply);
-    foc_pwm_compare_t cmp = focPhaseVoltageToCompare(phase, supply, period);
-
-    if (cmp.limited || cmp.a > period || cmp.b > period || cmp.c > period) {
-      ok = false;
-    }
-
-    if (i == 3 && sample_out != 0) {
-      *sample_out = cmp;
-    }
-  }
-
-  return ok;
-}

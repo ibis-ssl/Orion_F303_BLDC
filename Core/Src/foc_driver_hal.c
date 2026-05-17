@@ -6,7 +6,6 @@
 #include "foc_driver_hal.h"
 
 #include "tim.h"
-#include "usart.h"
 
 #define FOC_PWM_PERIOD (TIM_PWM_CENTER * 2U)
 
@@ -33,10 +32,4 @@ void focDriverApplySineVoltage(bool motor, float uq, float ud, float angle_el, f
 {
   foc_pwm_compare_t compare = focDriverBuildSinePwm(uq, ud, angle_el, voltage_power_supply);
   focDriverSetPwmCompare(motor, compare);
-}
-
-void focDriverPrintState(void)
-{
-  p("PWM TIM1 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n", htim1.Instance->CCR1, htim1.Instance->CCR2, htim1.Instance->CCR3, htim1.Instance->CCER, htim1.Instance->BDTR);
-  p("PWM TIM8 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n", htim8.Instance->CCR1, htim8.Instance->CCR2, htim8.Instance->CCR3, htim8.Instance->CCER, htim8.Instance->BDTR);
 }

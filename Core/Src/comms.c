@@ -140,28 +140,10 @@ void receiveUserSerialCommand(void)
         runIoCheckOnce();
         break;
       case 'v':
-        runFocMathCheckOnce();
+        printFocDiagnosticAngleState();
         break;
       case 'V':
         toggleFocDiagnosticMode();
-        break;
-      case 'B':
-        cycleFocDiagnosticAngleSource();
-        break;
-      case 'X':
-        cycleFocDiagnosticAngleSourceMotor(false);
-        break;
-      case 'Z':
-        cycleFocDiagnosticAngleSourceMotor(true);
-        break;
-      case 'T':
-        toggleFocDiagnosticTorqueSign();
-        break;
-      case 'Y':
-        toggleFocDiagnosticTorqueSignMotor(false);
-        break;
-      case 'H':
-        toggleFocDiagnosticTorqueSignMotor(true);
         break;
       case '[':
         adjustFocDiagnosticPhaseAdvance(-0.01745329252f);

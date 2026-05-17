@@ -30,6 +30,5 @@ float focElectricalAngle(float shaft_angle, int pole_pairs, float zero_electric_
 float focLimitSymmetric(float value, float limit);
 foc_phase_voltage_t focSetPhaseVoltageSine(float uq, float ud, float angle_el, float voltage_limit);
 foc_pwm_compare_t focPhaseVoltageToCompare(foc_phase_voltage_t phase, float voltage_power_supply, uint16_t pwm_period);
-bool focRunMathSelfTest(foc_pwm_compare_t * sample_out);
 
 #endif /* INC_FOC_MATH_H_ */

@@ -12,6 +12,7 @@
 #include "app_context.h"
 #include "diagnostics.h"
 #include "foc_driver_hal.h"
+#include "foc_math.h"
 #include "gpio.h"
 #include "motor.h"
 #include "spi.h"
@@ -29,23 +30,17 @@
 #define FOC_DIAG_PHASE_ADVANCE_LIMIT_RAD (0.78539816339f)
 #define FOC_DIAG_RAD_TO_DEG (57.2957795131f)
 
-typedef enum
+typedef struct
 {
-  FOC_DIAG_ANGLE_LEGACY = 0,
-  FOC_DIAG_ANGLE_RAW_POS,
-  FOC_DIAG_ANGLE_RAW_NEG,
-  FOC_DIAG_ANGLE_COUNT
-} foc_diag_angle_source_t;
+  int raw;
+  float legacy_output_radian;
+  float zero_calib;
+  float cmd_speed;
+  float real_rps;
+  float out_v_final;
+} foc_diag_angle_snapshot_t;
 
 static volatile bool foc_diag_active;
-static volatile foc_diag_angle_source_t foc_diag_angle_source[2] = {
-  FOC_DIAG_ANGLE_RAW_NEG,
-  FOC_DIAG_ANGLE_RAW_NEG
-};
-static volatile float foc_diag_torque_sign[2] = {
-  FOC_DIAG_DEFAULT_TORQUE_SIGN,
-  FOC_DIAG_DEFAULT_TORQUE_SIGN
-};
 static volatile float foc_diag_phase_advance_trim_rad;
 
 static inline float clampFocDiagVoltage(float voltage)
@@ -75,20 +70,6 @@ bool isFocDiagnosticActive(void)
   return foc_diag_active;
 }
 
-static const char * focDiagAngleSourceName(foc_diag_angle_source_t source)
-{
-  switch (source) {
-    case FOC_DIAG_ANGLE_LEGACY:
-      return "legacy";
-    case FOC_DIAG_ANGLE_RAW_POS:
-      return "raw+";
-    case FOC_DIAG_ANGLE_RAW_NEG:
-      return "raw-";
-    default:
-      return "unknown";
-  }
-}
-
 static inline float rawElectricalAnglePositive(const as5047p_t * enc)
 {
   return (float)(enc->enc_raw % FOC_DIAG_ELEC_CNT) * FOC_DIAG_ELEC_RAW_TO_RAD;
@@ -96,24 +77,18 @@ static inline float rawElectricalAnglePositive(const as5047p_t * enc)
 
 static inline float rawElectricalAngleNegative(const as5047p_t * enc)
 {
-  return 2.0f * (float)M_PI - rawElectricalAnglePositive(enc);
+  return focNormalizeAngle(-rawElectricalAnglePositive(enc));
+}
+
+static inline float selectFocDiagnosticElectricalAngleIndex(uint8_t motor_idx)
+{
+  const float sensor_angle = rawElectricalAngleNegative(&as5047p[motor_idx]);
+  return focNormalizeAngle(sensor_angle + enc_offset[motor_idx].zero_calib + sys.manual_offset_radian);
 }
 
 static inline float selectFocDiagnosticElectricalAngle(bool motor)
 {
-  float sensor_angle;
-  const uint8_t motor_idx = motor ? 1U : 0U;
-  const foc_diag_angle_source_t source = foc_diag_angle_source[motor_idx];
-
-  if (source == FOC_DIAG_ANGLE_RAW_POS) {
-    sensor_angle = rawElectricalAnglePositive(&as5047p[motor_idx]);
-  } else if (source == FOC_DIAG_ANGLE_RAW_NEG) {
-    sensor_angle = rawElectricalAngleNegative(&as5047p[motor_idx]);
-  } else {
-    sensor_angle = as5047p[motor_idx].output_radian;
-  }
-
-  return sensor_angle + enc_offset[motor_idx].zero_calib + sys.manual_offset_radian;
+  return selectFocDiagnosticElectricalAngleIndex(motor ? 1U : 0U);
 }
 
 static inline float focDiagnosticPhaseAdvance(float speed_rps)
@@ -137,12 +112,9 @@ void startFocDiagnosticMode(void)
   cmd[1].timeout_cnt = -1;
   setPwmAll(TIM_PWM_CENTER);
   resumePwmOutput();
-  p("\nFOC diag start limit %+4.1fV M0 %s/%+3.0f M1 %s/%+3.0f adv %+4.1fdeg, w/s cmd, B angle, T tq, [/]/P phase, V stop\n",
+  p("\nFOC diag start limit %+4.1fV angle raw-+zero tq %+3.0f adv %+4.1fdeg, w/s cmd, v angle, [/]/P phase, V stop\n",
     FOC_DIAG_VOLTAGE_LIMIT,
-    focDiagAngleSourceName(foc_diag_angle_source[0]),
-    foc_diag_torque_sign[0],
-    focDiagAngleSourceName(foc_diag_angle_source[1]),
-    foc_diag_torque_sign[1],
+    FOC_DIAG_DEFAULT_TORQUE_SIGN,
     foc_diag_phase_advance_trim_rad * FOC_DIAG_RAD_TO_DEG);
 }
 
@@ -170,33 +142,6 @@ void toggleFocDiagnosticMode(void)
   }
 }
 
-void cycleFocDiagnosticAngleSource(void)
-{
-  cycleFocDiagnosticAngleSourceMotor(false);
-  cycleFocDiagnosticAngleSourceMotor(true);
-}
-
-void cycleFocDiagnosticAngleSourceMotor(bool motor)
-{
-  const uint8_t motor_idx = motor ? 1U : 0U;
-  foc_diag_angle_source[motor_idx] =
-    (foc_diag_angle_source_t)(((int)foc_diag_angle_source[motor_idx] + 1) % (int)FOC_DIAG_ANGLE_COUNT);
-  p("\nFOC diag M%u angle %s\n", motor_idx, focDiagAngleSourceName(foc_diag_angle_source[motor_idx]));
-}
-
-void toggleFocDiagnosticTorqueSign(void)
-{
-  toggleFocDiagnosticTorqueSignMotor(false);
-  toggleFocDiagnosticTorqueSignMotor(true);
-}
-
-void toggleFocDiagnosticTorqueSignMotor(bool motor)
-{
-  const uint8_t motor_idx = motor ? 1U : 0U;
-  foc_diag_torque_sign[motor_idx] = -foc_diag_torque_sign[motor_idx];
-  p("\nFOC diag M%u torque sign %+3.0f\n", motor_idx, foc_diag_torque_sign[motor_idx]);
-}
-
 void adjustFocDiagnosticPhaseAdvance(float delta_rad)
 {
   foc_diag_phase_advance_trim_rad = clampFocDiagPhaseAdvance(foc_diag_phase_advance_trim_rad + delta_rad);
@@ -211,6 +156,52 @@ void resetFocDiagnosticPhaseAdvance(void)
   p("\nFOC diag phase trim %+5.1fdeg model %+6.4frad/rps\n",
     foc_diag_phase_advance_trim_rad * FOC_DIAG_RAD_TO_DEG,
     FOC_DIAG_PHASE_ADVANCE_MODEL_RAD_PER_RPS);
+}
+
+void printFocDiagnosticAngleState(void)
+{
+  foc_diag_angle_snapshot_t snapshot[2];
+
+  __disable_irq();
+  for (uint8_t i = 0U; i < 2U; i++) {
+    snapshot[i].raw = as5047p[i].enc_raw;
+    snapshot[i].legacy_output_radian = as5047p[i].output_radian;
+    snapshot[i].zero_calib = enc_offset[i].zero_calib;
+    snapshot[i].cmd_speed = cmd[i].speed;
+    snapshot[i].real_rps = motor_real[i].rps;
+    snapshot[i].out_v_final = cmd[i].out_v_final;
+  }
+  __enable_irq();
+
+  p("\n[FOC ANG] convention raw- + zero + manual, tq %+3.0f, trim %+5.1fdeg\n",
+    FOC_DIAG_DEFAULT_TORQUE_SIGN,
+    foc_diag_phase_advance_trim_rad * FOC_DIAG_RAD_TO_DEG);
+
+  for (uint8_t i = 0U; i < 2U; i++) {
+    const as5047p_t enc = {.enc_raw = snapshot[i].raw};
+    const float raw_pos = rawElectricalAnglePositive(&enc);
+    const float raw_neg = rawElectricalAngleNegative(&enc);
+    const float foc_base = focNormalizeAngle(raw_neg + snapshot[i].zero_calib + sys.manual_offset_radian);
+    const float phase_model = focDiagnosticPhaseAdvance(snapshot[i].cmd_speed);
+    const float phase_used = (snapshot[i].cmd_speed < 0.0f) ? -phase_model : phase_model;
+    const float foc_used = focNormalizeAngle(foc_base + phase_used);
+    const float legacy = focNormalizeAngle(snapshot[i].legacy_output_radian + snapshot[i].zero_calib + sys.manual_offset_radian);
+    const float voltage_q = FOC_DIAG_DEFAULT_TORQUE_SIGN * snapshot[i].out_v_final;
+
+    p("[FOC ANG] M%u raw %5d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f used %+6.3f adv %+5.1fdeg cmd %+6.1f rps %+6.1f uq %+4.1f\n",
+      i,
+      snapshot[i].raw,
+      raw_pos,
+      raw_neg,
+      snapshot[i].zero_calib,
+      legacy,
+      foc_base,
+      foc_used,
+      phase_used * FOC_DIAG_RAD_TO_DEG,
+      snapshot[i].cmd_speed,
+      snapshot[i].real_rps,
+      voltage_q);
+  }
 }
 
 void focDiagnosticMode(void)
@@ -240,7 +231,7 @@ void focDiagnosticProcess_itr(bool motor)
   updateAS5047P(motor);
 
   const uint8_t motor_idx = motor ? 1U : 0U;
-  const float voltage_q = foc_diag_torque_sign[motor_idx] * cmd[motor_idx].out_v_final;
+  const float voltage_q = FOC_DIAG_DEFAULT_TORQUE_SIGN * cmd[motor_idx].out_v_final;
   if (voltage_q == 0.0f) {
     foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
     focDriverSetPwmCompare(motor, center);

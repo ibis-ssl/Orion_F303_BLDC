@@ -5,16 +5,12 @@
 
 #include "diagnostics.h"
 
-#include <math.h>
-
 #include "adc.h"
 #include "app_context.h"
 #include "can.h"
 #include "comms.h"
 #include "control_mode.h"
 #include "flash.h"
-#include "foc_driver_hal.h"
-#include "foc_math.h"
 #include "gpio.h"
 #include "motor.h"
 #include "spi.h"
@@ -23,34 +19,9 @@
 
 extern uint32_t ex_can_send_fail_cnt;
 
-#define DIAG_POLE_PAIRS (12)
-#define DIAG_SENSOR_DIRECTION (1)
-#define DIAG_SENSOR_TORQUE_DIRECTION (-1.0f)
-#define DIAG_ENCODER_RAW_TO_MECH_RAD (2.0f * (float)M_PI / (float)ENC_CNT_MAX)
-#define DIAG_FOC_SAMPLE_VOLTAGE (2.0f)
-
-typedef struct
-{
-  int raw;
-  float legacy_output_radian;
-  float zero_calib;
-} foc_diag_snapshot_t;
-
 static void waitPrintDrain(void)
 {
   HAL_Delay(3);
-}
-
-static bool foc_self_test_ok;
-static foc_pwm_compare_t foc_self_test_sample;
-
-void setFocMathSelfTestResult(bool ok, uint16_t a, uint16_t b, uint16_t c, bool limited)
-{
-  foc_self_test_ok = ok;
-  foc_self_test_sample.a = a;
-  foc_self_test_sample.b = b;
-  foc_self_test_sample.c = c;
-  foc_self_test_sample.limited = limited;
 }
 
 void runIoCheckOnce(void)
@@ -100,49 +71,6 @@ void runIoCheckOnce(void)
     flash.rps_per_v_cw[1]);
   p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
   waitPrintDrain();
-}
-
-void runFocMathCheckOnce(void)
-{
-  foc_diag_snapshot_t snapshot[2];
-
-  __disable_irq();
-  for (uint8_t i = 0U; i < 2U; i++) {
-    snapshot[i].raw = as5047p[i].enc_raw;
-    snapshot[i].legacy_output_radian = as5047p[i].output_radian;
-    snapshot[i].zero_calib = enc_offset[i].zero_calib;
-  }
-  __enable_irq();
-
-  p("\n[FOC CHECK] math %s sample %4u %4u %4u limited %u\n", foc_self_test_ok ? "OK" : "NG", foc_self_test_sample.a, foc_self_test_sample.b, foc_self_test_sample.c,
-    foc_self_test_sample.limited ? 1U : 0U);
-
-  for (uint8_t i = 0U; i < 2U; i++) {
-    const float mech = (float)snapshot[i].raw * DIAG_ENCODER_RAW_TO_MECH_RAD;
-    const float foc_raw_el_pos = focElectricalAngle(mech, DIAG_POLE_PAIRS, 0.0f, +1);
-    const float foc_raw_el_neg = focElectricalAngle(mech, DIAG_POLE_PAIRS, 0.0f, -1);
-    const float raw_pos_zero_add = focNormalizeAngle(foc_raw_el_pos + snapshot[i].zero_calib);
-    const float raw_pos_zero_sub = focNormalizeAngle(foc_raw_el_pos - snapshot[i].zero_calib);
-    const float raw_neg_zero_add = focNormalizeAngle(foc_raw_el_neg + snapshot[i].zero_calib);
-    const float raw_neg_zero_sub = focNormalizeAngle(foc_raw_el_neg - snapshot[i].zero_calib);
-    const float legacy_el = snapshot[i].legacy_output_radian + snapshot[i].zero_calib;
-    const float uq_pos = DIAG_SENSOR_TORQUE_DIRECTION * DIAG_FOC_SAMPLE_VOLTAGE;
-    const float uq_neg = -uq_pos;
-    const foc_pwm_compare_t pos = focDriverBuildSinePwm(uq_pos, 0.0f, legacy_el, getBatteryVoltage());
-    const foc_pwm_compare_t neg = focDriverBuildSinePwm(uq_neg, 0.0f, legacy_el, getBatteryVoltage());
-
-    p("[FOC CHECK] M%u raw %5d legacy %+6.3f raw+ %+6.3f raw- %+6.3f uq+ %4u %4u %4u uq- %4u %4u %4u\n", i, snapshot[i].raw, legacy_el, foc_raw_el_pos, foc_raw_el_neg, pos.a, pos.b, pos.c, neg.a,
-      neg.b, neg.c);
-    p("[FOC CHECK] M%u zero %+6.3f raw+z+ %+6.3f raw+z- %+6.3f raw-z+ %+6.3f raw-z- %+6.3f\n",
-      i,
-      snapshot[i].zero_calib,
-      raw_pos_zero_add,
-      raw_pos_zero_sub,
-      raw_neg_zero_add,
-      raw_neg_zero_sub);
-  }
-
-  p("[FOC CHECK] snapshot only, no SPI update, no PWM output changed\n\n");
 }
 
 void printRuntimeDiagnostics(void)

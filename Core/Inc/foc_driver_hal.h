@@ -13,6 +13,5 @@
 void focDriverSetPwmCompare(bool motor, foc_pwm_compare_t compare);
 foc_pwm_compare_t focDriverBuildSinePwm(float uq, float ud, float angle_el, float voltage_power_supply);
 void focDriverApplySineVoltage(bool motor, float uq, float ud, float angle_el, float voltage_power_supply);
-void focDriverPrintState(void);
 
 #endif /* INC_FOC_DRIVER_HAL_H_ */
