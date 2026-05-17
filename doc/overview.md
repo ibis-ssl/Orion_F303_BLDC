@@ -155,6 +155,8 @@ powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario snapshot
 
 `-Scenario realtime` では20kHz ISR、1kHz main loop、M0/M1交互PWM更新、PWM出力保持、エンコーダ遅延を模擬する。実機と同じく、片側のモーターは毎ISRではPWM更新されず、前回の三相電圧を保持したまま機械・電気モデルが進む。更新順やセンサ遅延の影響を見る場合はこのシナリオを使う。
 
+GUIで操作する場合は `Script/run_sim_gui.ps1` を使う。GUIはTkinterで実装し、CLIと同じ `bldc_sim.py` のシナリオ関数を呼び出す。GUI上で条件を変えて実行し、必要に応じてCSV保存やCLIコマンドコピーで再現条件を残す。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 

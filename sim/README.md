@@ -106,3 +106,25 @@ powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime
 ```
 
 CSVは1kHz main loop相当のタイミングでM0/M1を2行ずつ出力する。`speed_rps`, `encoder_raw`, `cmd_elec_rad`, `uq_eff_v`, `id_a`, `iq_a`, `torque_nm`, 三相電圧を確認できる。
+
+## GUI
+
+CLIは維持したまま、TkinterベースのGUIを `sim/sim_gui.py` に置く。外部ライブラリは不要で、GUIは `bldc_sim.py` のシナリオ関数を直接呼び出す。
+
+起動:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim_gui.ps1
+```
+
+GUIでできること:
+
+- `conventions` / `step` / `snapshot` / `realtime` の実行
+- `simple` / `dq` モデル切替
+- 角度規約、速度、ゼロ角、エンコーダ遅延、位相トリムの変更
+- Snapshot用のraw/zero/legacy角/Uq/電源電圧の入力
+- 結果サマリのテーブル表示
+- CSV保存先指定
+- 同じ条件を再現するCLIコマンドのコピー
+
+GUIは解析の入口であり、再現性を残す場合は `Copy CLI` でCLIコマンドを保存する。
