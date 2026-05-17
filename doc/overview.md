@@ -151,6 +151,8 @@ powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario snapshot
 
 `snapshot` シナリオは実機の `[FOC CHECK]` ログを入力し、各角度規約の指令電気角、legacy角との差分、CCR候補を出す。`-ActualElec` を指定した場合は、その実ロータ電気角に対する `ud_eff` / `uq_eff` も出力する。実機ログとシミュレータの角度候補が一致することを先に確認してから、機械モデルのステップ応答へ進む。
 
+シミュレーション環境は、実機ではマイコンの制約でデバッグ機能を使いにくく、実時間でしか動作しない問題を回避するためのものとして扱う。そのため、FOC数式だけでなく、モータのdq電気モデル、機械慣性・摩擦・負荷、AS5047P raw量子化・遅延、将来的には20kHz ISR/1kHz main loopの周期差も模擬する。`-Model simple` は符号と角度規約の確認用、`-Model dq` は電流応答、逆起電力、位相進角不足の確認用である。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 

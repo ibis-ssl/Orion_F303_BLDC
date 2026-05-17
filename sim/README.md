@@ -43,3 +43,47 @@ encoder_raw = theta を 0..65535 へ量子化
 ```
 
 このモデルはモータ定数の精密同定ではなく、符号、位相、ゼロ角規約、進角の妥当性確認に使う。
+
+## 実環境模擬の拡張方針
+
+実機ではマイコン上でデバッグ機能を使いにくく、実時間でしか動作しないため、PC上では次の要素を分離して確認できるようにする。
+
+1. FOC数式:
+   - `Uq/Ud` から三相電圧を作る。
+   - 実ロータ電気角でdqへ戻し、指令角と実角のずれを `ud_eff` / `uq_eff` で見る。
+
+2. 電気モデル:
+   - `R`, `Ld`, `Lq`, 永久磁石鎖交磁束 `psi_f` を持つSPMSM相当のdqモデルを使う。
+   - `id` / `iq` を状態量として持ち、逆起電力と電流応答遅れを再現する。
+   - 高速域で電圧が足りない、位相進角が必要になる、という現象を確認する。
+
+3. 機械モデル:
+   - 慣性 `J`, 粘性抵抗 `B`, クーロン摩擦, 負荷トルクを持つ。
+   - M0/M1の個体差は、まず `R/L/psi_f/J/B/friction/load` の差として表現する。
+
+4. エンコーダモデル:
+   - 機械角からAS5047P raw相当の `0..65535` を生成する。
+   - 量子化、センサ方向、サンプル遅延、ノイズを持つ。
+   - raw差分による速度推定や、1サンプル古い角度をFOCへ入れた場合の影響を確認する。
+
+5. 実行周期モデル:
+   - 20kHz PWM ISRと1kHz main loopを別周期として扱う。
+   - 今後、M0/M1交互更新、ADC/SPI更新順、UART診断による遅延を追加する。
+
+## dqモデル
+
+`-Model dq` を指定すると、`uq_effective` 直結トルクではなく、dq電気方程式で `id/iq` を更新する。
+
+```text
+di_d/dt = (u_d - R*i_d + omega_e*Lq*i_q) / Ld
+di_q/dt = (u_q - R*i_q - omega_e*(Ld*i_d + psi_f)) / Lq
+torque = 1.5 * pole_pairs * (psi_f*i_q + (Ld - Lq)*i_d*i_q)
+```
+
+実行例:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario step -Model dq -AngleMode raw_neg_add -SpeedRps 20 -DurationSec 0.5 -OutputCsv sim\out\dq_step.csv
+```
+
+初期パラメータは仮値であり、実機同定値ではない。重要なのは、パラメータを振ったときに症状がどう変わるかを見ることである。

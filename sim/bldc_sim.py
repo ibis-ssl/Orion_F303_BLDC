@@ -109,13 +109,19 @@ class MotorSimConfig:
     voltage_supply: float = 24.0
     voltage_per_rps: float = 0.08
     voltage_limit: float = 12.0
-    inertia: float = 0.002
-    damping: float = 0.01
+    resistance_ohm: float = 0.28
+    ld_h: float = 80.0e-6
+    lq_h: float = 80.0e-6
+    flux_wb: float = 0.006
+    inertia: float = 2.0e-4
+    damping: float = 1.0e-5
+    coulomb_friction: float = 0.001
     kt_per_volt: float = 0.03
     load_torque: float = 0.0
     dt: float = 0.00005
     zero_electric_angle: float = 1.2
     encoder_direction: int = -1
+    encoder_delay_steps: int = 0
     torque_sign: float = -1.0
     phase_advance_model_rad_per_rps: float = -0.003457
     phase_advance_trim_rad: float = 0.0
@@ -125,6 +131,8 @@ class MotorSimConfig:
 class MotorSimState:
     theta_mech: float = 0.0
     omega_rad_s: float = 0.0
+    id_a: float = 0.0
+    iq_a: float = 0.0
 
     @property
     def rps(self) -> float:
@@ -135,9 +143,66 @@ class MotorSimState:
         return normalize_angle(self.theta_mech * POLE_PAIRS)
 
 
+class EncoderSim:
+    def __init__(self, direction: int, delay_steps: int) -> None:
+        self.direction = direction
+        self.delay_steps = max(0, delay_steps)
+        self.queue: list[int] = []
+
+    def sample(self, theta_mech: float) -> int:
+        raw_now = encoder_raw_from_mech(theta_mech, self.direction)
+        self.queue.append(raw_now)
+        if len(self.queue) <= self.delay_steps:
+            return self.queue[0]
+        return self.queue.pop(0)
+
+
 def phase_advance_for_speed(speed_rps: float, cfg: MotorSimConfig) -> float:
     model = cfg.phase_advance_model_rad_per_rps * abs(speed_rps)
     return clamp(model + cfg.phase_advance_trim_rad, math.pi * 0.25)
+
+
+def coulomb_friction_torque(omega_rad_s: float, cfg: MotorSimConfig) -> float:
+    if abs(omega_rad_s) < 1.0e-6:
+        return 0.0
+    return math.copysign(cfg.coulomb_friction, omega_rad_s)
+
+
+def update_simple_motor(state: MotorSimState, cfg: MotorSimConfig, uq_eff: float) -> float:
+    torque = (
+        cfg.kt_per_volt * uq_eff
+        - cfg.damping * state.omega_rad_s
+        - coulomb_friction_torque(state.omega_rad_s, cfg)
+        - cfg.load_torque
+    )
+    state.omega_rad_s += (torque / cfg.inertia) * cfg.dt
+    state.theta_mech = normalize_angle(state.theta_mech + state.omega_rad_s * cfg.dt)
+    return torque
+
+
+def update_dq_motor(state: MotorSimState, cfg: MotorSimConfig, ud_eff: float, uq_eff: float) -> float:
+    omega_e = state.omega_rad_s * POLE_PAIRS
+    did = (ud_eff - cfg.resistance_ohm * state.id_a + omega_e * cfg.lq_h * state.iq_a) / cfg.ld_h
+    diq = (
+        uq_eff
+        - cfg.resistance_ohm * state.iq_a
+        - omega_e * (cfg.ld_h * state.id_a + cfg.flux_wb)
+    ) / cfg.lq_h
+    state.id_a += did * cfg.dt
+    state.iq_a += diq * cfg.dt
+
+    electromagnetic_torque = 1.5 * POLE_PAIRS * (
+        cfg.flux_wb * state.iq_a + (cfg.ld_h - cfg.lq_h) * state.id_a * state.iq_a
+    )
+    shaft_torque = (
+        electromagnetic_torque
+        - cfg.damping * state.omega_rad_s
+        - coulomb_friction_torque(state.omega_rad_s, cfg)
+        - cfg.load_torque
+    )
+    state.omega_rad_s += (shaft_torque / cfg.inertia) * cfg.dt
+    state.theta_mech = normalize_angle(state.theta_mech + state.omega_rad_s * cfg.dt)
+    return electromagnetic_torque
 
 
 def simulate_step(
@@ -145,15 +210,17 @@ def simulate_step(
     angle_mode: str,
     speed_rps: float,
     duration_s: float,
+    model: str,
     initial_theta: float = 0.3,
 ) -> list[dict[str, float]]:
     state = MotorSimState(theta_mech=initial_theta, omega_rad_s=0.0)
+    encoder = EncoderSim(cfg.encoder_direction, cfg.encoder_delay_steps)
     rows: list[dict[str, float]] = []
     steps = int(duration_s / cfg.dt)
     sample_interval = max(1, int(0.001 / cfg.dt))
 
     for step in range(steps):
-        raw = encoder_raw_from_mech(state.theta_mech, cfg.encoder_direction)
+        raw = encoder.sample(state.theta_mech)
         electrical_cmd = select_electrical_angle(raw, cfg.zero_electric_angle, angle_mode)
         advance = phase_advance_for_speed(speed_rps, cfg)
         electrical_cmd = normalize_angle(electrical_cmd + (-advance if speed_rps < 0.0 else advance))
@@ -163,9 +230,10 @@ def simulate_step(
         ua, ub, uc = foc_set_phase_voltage_sine(uq_cmd, 0.0, electrical_cmd, cfg.voltage_supply)
         ud_eff, uq_eff = phase_voltage_to_dq(ua, ub, uc, state.electrical_angle, cfg.voltage_supply)
 
-        torque = cfg.kt_per_volt * uq_eff - cfg.damping * state.omega_rad_s - math.copysign(cfg.load_torque, state.omega_rad_s)
-        state.omega_rad_s += (torque / cfg.inertia) * cfg.dt
-        state.theta_mech = normalize_angle(state.theta_mech + state.omega_rad_s * cfg.dt)
+        if model == "dq":
+            torque = update_dq_motor(state, cfg, ud_eff, uq_eff)
+        else:
+            torque = update_simple_motor(state, cfg, uq_eff)
 
         if step % sample_interval == 0:
             rows.append({
@@ -179,6 +247,9 @@ def simulate_step(
                 "uq_cmd_v": uq_cmd,
                 "ud_eff_v": ud_eff,
                 "uq_eff_v": uq_eff,
+                "id_a": state.id_a,
+                "iq_a": state.iq_a,
+                "torque_nm": torque,
                 "ua_v": ua,
                 "ub_v": ub,
                 "uc_v": uc,
@@ -195,6 +266,8 @@ def summarize_rows(rows: list[dict[str, float]]) -> dict[str, float]:
         "final_rps": rows[-1]["speed_rps"],
         "avg_uq_eff": sum(row["uq_eff_v"] for row in tail) / len(tail),
         "avg_abs_ud_eff": sum(abs(row["ud_eff_v"]) for row in tail) / len(tail),
+        "avg_iq_a": sum(row["iq_a"] for row in tail) / len(tail),
+        "avg_torque_nm": sum(row["torque_nm"] for row in tail) / len(tail),
     }
 
 
@@ -236,14 +309,18 @@ def run_conventions(args: argparse.Namespace) -> int:
     cfg = MotorSimConfig(
         zero_electric_angle=args.zero,
         encoder_direction=args.encoder_direction,
+        encoder_delay_steps=args.encoder_delay_steps,
         phase_advance_trim_rad=math.radians(args.phase_trim_deg),
     )
     modes = ["raw_pos_add", "raw_pos_sub", "raw_neg_add", "raw_neg_sub", "legacy"]
-    print("mode,final_rps,avg_uq_eff,avg_abs_ud_eff")
+    print("mode,final_rps,avg_uq_eff,avg_abs_ud_eff,avg_iq_a,avg_torque_nm")
     for mode in modes:
-        rows = simulate_step(cfg, mode, args.speed_rps, args.duration_s)
+        rows = simulate_step(cfg, mode, args.speed_rps, args.duration_s, args.model)
         summary = summarize_rows(rows)
-        print(f"{mode},{summary['final_rps']:+.4f},{summary['avg_uq_eff']:+.4f},{summary['avg_abs_ud_eff']:+.4f}")
+        print(
+            f"{mode},{summary['final_rps']:+.4f},{summary['avg_uq_eff']:+.4f},"
+            f"{summary['avg_abs_ud_eff']:+.4f},{summary['avg_iq_a']:+.4f},{summary['avg_torque_nm']:+.6f}"
+        )
     return 0
 
 
@@ -251,25 +328,29 @@ def run_step(args: argparse.Namespace) -> int:
     cfg = MotorSimConfig(
         zero_electric_angle=args.zero,
         encoder_direction=args.encoder_direction,
+        encoder_delay_steps=args.encoder_delay_steps,
         phase_advance_trim_rad=math.radians(args.phase_trim_deg),
     )
-    rows = simulate_step(cfg, args.angle_mode, args.speed_rps, args.duration_s)
+    rows = simulate_step(cfg, args.angle_mode, args.speed_rps, args.duration_s, args.model)
     summary = summarize_rows(rows)
     if args.output_csv:
         write_csv(rows, Path(args.output_csv))
     print(
         f"angle_mode {args.angle_mode} final_rps {summary['final_rps']:+.4f} "
-        f"avg_uq_eff {summary['avg_uq_eff']:+.4f} avg_abs_ud_eff {summary['avg_abs_ud_eff']:+.4f}"
+        f"avg_uq_eff {summary['avg_uq_eff']:+.4f} avg_abs_ud_eff {summary['avg_abs_ud_eff']:+.4f} "
+        f"avg_iq {summary['avg_iq_a']:+.4f} avg_torque {summary['avg_torque_nm']:+.6f}"
     )
     return 0
 
 
 def run_self_test() -> int:
-    cfg = MotorSimConfig(zero_electric_angle=0.0, encoder_direction=-1, damping=0.005)
-    rows_ok = simulate_step(cfg, "raw_neg_add", 20.0, 0.8)
-    rows_bad = simulate_step(cfg, "raw_pos_add", 20.0, 0.8)
+    cfg = MotorSimConfig(zero_electric_angle=0.0, encoder_direction=-1, damping=0.005, coulomb_friction=0.0)
+    rows_ok = simulate_step(cfg, "raw_neg_add", 20.0, 0.8, "simple")
+    rows_bad = simulate_step(cfg, "raw_pos_add", 20.0, 0.8, "simple")
+    rows_dq = simulate_step(cfg, "raw_neg_add", 20.0, 0.05, "dq")
     ok = summarize_rows(rows_ok)
     bad = summarize_rows(rows_bad)
+    dq = summarize_rows(rows_dq)
 
     phase = foc_set_phase_voltage_sine(2.0, 0.0, 0.0, 24.0)
     ud_eff, uq_eff = phase_voltage_to_dq(*phase, rotor_angle_el=0.0, voltage_supply=24.0)
@@ -277,6 +358,7 @@ def run_self_test() -> int:
         ("sine_pwm_uq", uq_eff > 1.9 and abs(ud_eff) < 0.01),
         ("angle_mode_expected_response", abs(ok["final_rps"]) > 0.5),
         ("wrong_zero_convention_differs", abs(ok["avg_uq_eff"] - bad["avg_uq_eff"]) > 0.5),
+        ("dq_current_response", abs(dq["avg_iq_a"]) > 0.1),
     ]
     for name, passed in checks:
         print(f"{name}: {'OK' if passed else 'NG'}")
@@ -287,11 +369,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true", help="run built-in simulation checks")
     parser.add_argument("--scenario", choices=["conventions", "step", "snapshot"], default="conventions")
+    parser.add_argument("--model", choices=["simple", "dq"], default="simple")
     parser.add_argument("--angle-mode", choices=["raw_pos_add", "raw_pos_sub", "raw_neg_add", "raw_neg_sub", "legacy"], default="raw_neg_add")
     parser.add_argument("--speed-rps", type=float, default=20.0)
     parser.add_argument("--duration-s", type=float, default=1.0)
     parser.add_argument("--zero", type=float, default=1.2)
     parser.add_argument("--encoder-direction", type=int, choices=[-1, 1], default=-1)
+    parser.add_argument("--encoder-delay-steps", type=int, default=0)
     parser.add_argument("--phase-trim-deg", type=float, default=0.0)
     parser.add_argument("--output-csv", default="")
     parser.add_argument("--raw", type=int, default=0)
