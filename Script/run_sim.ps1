@@ -9,7 +9,7 @@ param(
     [double]$SpeedRpsM0 = 20.0,
     [double]$SpeedRpsM1 = 20.0,
     [double]$DurationSec = 1.0,
-    [double]$Zero = 1.2,
+    [double]$Zero = 0.0,
     [ValidateSet("-1", "1")]
     [string]$EncoderDirection = "-1",
     [int]$EncoderDelaySteps = 0,

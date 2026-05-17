@@ -147,7 +147,7 @@ class MotorSimConfig:
     kt_per_volt: float = 0.03
     load_torque: float = 0.0
     dt: float = 0.00005
-    zero_electric_angle: float = 1.2
+    zero_electric_angle: float = 0.0
     encoder_direction: int = -1
     encoder_delay_steps: int = 0
     torque_sign: float = -1.0
@@ -572,7 +572,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed-rps-m0", type=float, default=20.0)
     parser.add_argument("--speed-rps-m1", type=float, default=20.0)
     parser.add_argument("--duration-s", type=float, default=1.0)
-    parser.add_argument("--zero", type=float, default=1.2)
+    parser.add_argument("--zero", type=float, default=0.0)
     parser.add_argument("--encoder-direction", type=int, choices=[-1, 1], default=-1)
     parser.add_argument("--encoder-delay-steps", type=int, default=0)
     parser.add_argument("--phase-trim-deg", type=float, default=0.0)

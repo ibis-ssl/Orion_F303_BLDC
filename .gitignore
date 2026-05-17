@@ -42,3 +42,4 @@
 *.elf
 *.bin
 *.pyc
+sim/out/

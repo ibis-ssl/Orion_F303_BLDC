@@ -150,3 +150,47 @@ GUIでできること:
 GUIは解析の入口であり、再現性を残す場合は `Copy CLI` でCLIコマンドを保存する。
 
 ライブ実行は、実機20kHz ISR相当の1ステップ `50us` をGUI上で進める。`Live speed %` はシミュレーション時間が実時間に対して何%で進むかを指定する値で、初期値は `0.1%` である。低速設定ではGUI tick間隔を伸ばし、高速設定では1回のGUI tickで複数ステップをまとめて進める。実行中も速度指令、角度規約、ゼロ角、エンコーダ遅延、位相トリムなどの入力値を変更できる。エンコーダは機械角を参照し、M0/M1のPWM出力は前回値を保持したまま物理モデルを進める。GUIでは機械角 `theta_mech_rad` と、極対数を掛けた実ロータ電気角 `theta_elec_actual_rad` を円上のベクトルとして表示する。
+
+## 動作確認条件
+
+シミュレータの動作確認は、角度規約、dq電流モデル、実機相当スケジューラの影響を分けて見る。
+
+標準条件:
+
+- `-Model dq`
+- MAD MOTOR 4006 200kVカスタム推定モデル
+- `-BatteryV 24`
+- `-AngleMode raw_neg_add`
+- `-Zero 0`
+- `-EncoderDirection -1`
+- `-EncoderDelaySteps 1`
+- `-PhaseTrimDeg 0`
+- M0/M1初期角は `0.3rad` / `0.6rad`
+- GUIライブ再生は最初 `0.1%`、確認後に `1%`、`10%` へ上げる
+
+確認する値:
+
+- `speed_rps`: 指令方向と実回転方向、M0/M1差、正逆差を見る。
+- `theta_mech_rad`: 機械角が連続し、エンコーダrawと対応することを見る。
+- `theta_elec_actual_rad`: 機械角の12倍として周期的に回ることを見る。
+- `Id/Iq`: 主に `Iq` が出て、`Id` が不自然に大きくならないことを見る。
+- `uq_eff_v` / `torque_nm`: 指令方向と符号が一致し、速度上昇に伴う逆起電力の影響が出ることを見る。
+
+代表テスト:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -SelfTest
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime -Model dq -AngleMode raw_neg_add -Zero 0 -SpeedRpsM0 5 -SpeedRpsM1 5 -DurationSec 0.2 -EncoderDelaySteps 1 -OutputCsv sim\out\rt_raw_neg_add_z0_p5.csv
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime -Model dq -AngleMode raw_neg_add -Zero 0 -SpeedRpsM0 -5 -SpeedRpsM1 -5 -DurationSec 0.2 -EncoderDelaySteps 1 -OutputCsv sim\out\rt_raw_neg_add_z0_m5.csv
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime -Model dq -AngleMode raw_neg_add -Zero 0 -SpeedRpsM0 20 -SpeedRpsM1 20 -DurationSec 0.2 -EncoderDelaySteps 1 -OutputCsv sim\out\rt_raw_neg_add_z0_p20.csv
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime -Model dq -AngleMode raw_neg_add -Zero 0 -SpeedRpsM0 -20 -SpeedRpsM1 -20 -DurationSec 0.2 -EncoderDelaySteps 1 -OutputCsv sim\out\rt_raw_neg_add_z0_m20.csv
+```
+
+比較テスト:
+
+- 角度規約: `raw_neg_add`、`raw_neg_sub`、`raw_pos_add`、`raw_pos_sub` を同じ速度条件で比較する。
+- エンコーダ遅延: `-EncoderDelaySteps 0`, `1`, `2`, `4` を比較する。
+- 位相進角: `-PhaseTrimDeg -5`, `0`, `5` を比較する。
+- ゼロ角誤差: 標準条件では `-Zero 0` とし、`-Zero 0.1`, `0.5`, `1.2` は正逆差の感度確認として別枠で扱う。
+
+GUI確認では、時系列プロットだけでなく、dq電流ベクトルと機械角/電気角ベクトルを見て、角度遅れ、逆起電力、`Id` 増加の関係を確認する。
