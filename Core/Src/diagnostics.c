@@ -77,71 +77,26 @@ void runIoCheckOnce(void)
   p("SW 1:%d 2:%d 3:%d 4:%d\n", isPushedSW1(), isPushedSW2(), isPushedSW3(), isPushedSW4());
   waitPrintDrain();
 
-  p("ADC raw CS %4d %4d Batt %4d GD %4d FET %4d %4d MotorT %4d %4d Off %4d\n",
-    adc_raw.cs_motor[0],
-    adc_raw.cs_motor[1],
-    adc_raw.batt_v,
-    adc_raw.gd_dcdc_v,
-    adc_raw.temp_fet[0],
-    adc_raw.temp_fet[1],
-    adc_raw.temp_motor[0],
-    adc_raw.temp_motor[1],
-    adc_raw.cs_adc_offset);
-  p("ADC val CS %+6.3f %+6.3f Batt %5.2f GD %5.2f FET %3d %3d MotorT %3d %3d\n",
-    getCurrentMotor(0),
-    getCurrentMotor(1),
-    getBatteryVoltage(),
-    getGateDriverDCDCVoltage(),
-    getTempFET(0),
-    getTempFET(1),
-    getTempMotor(0),
-    getTempMotor(1));
+  p("ADC raw CS %4d %4d Batt %4d GD %4d FET %4d %4d MotorT %4d %4d Off %4d\n", adc_raw.cs_motor[0], adc_raw.cs_motor[1], adc_raw.batt_v, adc_raw.gd_dcdc_v, adc_raw.temp_fet[0], adc_raw.temp_fet[1],
+    adc_raw.temp_motor[0], adc_raw.temp_motor[1], adc_raw.cs_adc_offset);
+  p("ADC val CS %+6.3f %+6.3f Batt %5.2f GD %5.2f FET %3d %3d MotorT %3d %3d\n", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage(), getGateDriverDCDCVoltage(), getTempFET(0), getTempFET(1),
+    getTempMotor(0), getTempMotor(1));
   waitPrintDrain();
 
   for (int i = 0; i < 2; i++) {
     updateAS5047PDiagnostics(i);
-    p("ENC M%d raw %5d elec %5d rad %+6.3f diff %+6d min %+6d max %+6d frame 0x%04x spierr %lu\n",
-      i,
-      as5047p[i].enc_raw,
-      as5047p[i].enc_elec_raw,
-      as5047p[i].output_radian,
-      as5047p[i].diff_enc,
-      as5047p[i].diff_min,
-      as5047p[i].diff_max,
-      as5047p[i].last_frame,
-      as5047p[i].spi_error_count);
-    p("ENC M%d reg err 0x%02x prog 0x%02x diag 0x%03x mag 0x%03x enc 0x%03x com 0x%03x\n",
-      i,
-      as5047p[i].reg.error,
-      as5047p[i].reg.prog,
-      as5047p[i].reg.diagagc,
-      as5047p[i].reg.mag,
-      as5047p[i].reg.angleenc,
-      as5047p[i].reg.anglecom);
+    p("ENC M%d raw %5d elec %5d rad %+6.3f diff %+6d min %+6d max %+6d frame 0x%04x spierr %lu\n", i, as5047p[i].enc_raw, as5047p[i].enc_elec_raw, as5047p[i].output_radian, as5047p[i].diff_enc,
+      as5047p[i].diff_min, as5047p[i].diff_max, as5047p[i].last_frame, as5047p[i].spi_error_count);
+    p("ENC M%d reg err 0x%02x prog 0x%02x diag 0x%03x mag 0x%03x enc 0x%03x com 0x%03x\n", i, as5047p[i].reg.error, as5047p[i].reg.prog, as5047p[i].reg.diagagc, as5047p[i].reg.mag,
+      as5047p[i].reg.angleenc, as5047p[i].reg.anglecom);
     waitPrintDrain();
   }
 
-  p("PWM TIM1 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n",
-    htim1.Instance->CCR1,
-    htim1.Instance->CCR2,
-    htim1.Instance->CCR3,
-    htim1.Instance->CCER,
-    htim1.Instance->BDTR);
-  p("PWM TIM8 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n",
-    htim8.Instance->CCR1,
-    htim8.Instance->CCR2,
-    htim8.Instance->CCR3,
-    htim8.Instance->CCER,
-    htim8.Instance->BDTR);
+  p("PWM TIM1 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n", htim1.Instance->CCR1, htim1.Instance->CCR2, htim1.Instance->CCR3, htim1.Instance->CCER, htim1.Instance->BDTR);
+  p("PWM TIM8 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n", htim8.Instance->CCR1, htim8.Instance->CCR2, htim8.Instance->CCR3, htim8.Instance->CCER, htim8.Instance->BDTR);
   waitPrintDrain();
 
-  p("CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n",
-    getCanRxCount(),
-    getCanError(),
-    flash.board_id,
-    flash.calib[0],
-    flash.calib[1],
-    flash.rps_per_v_cw[0],
+  p("CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n", getCanRxCount(), getCanError(), flash.board_id, flash.calib[0], flash.calib[1], flash.rps_per_v_cw[0],
     flash.rps_per_v_cw[1]);
   p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
   waitPrintDrain();
@@ -159,11 +114,7 @@ void runFocMathCheckOnce(void)
   }
   __enable_irq();
 
-  p("\n[FOC CHECK] math %s sample %4u %4u %4u limited %u\n",
-    foc_self_test_ok ? "OK" : "NG",
-    foc_self_test_sample.a,
-    foc_self_test_sample.b,
-    foc_self_test_sample.c,
+  p("\n[FOC CHECK] math %s sample %4u %4u %4u limited %u\n", foc_self_test_ok ? "OK" : "NG", foc_self_test_sample.a, foc_self_test_sample.b, foc_self_test_sample.c,
     foc_self_test_sample.limited ? 1U : 0U);
 
   for (uint8_t i = 0U; i < 2U; i++) {
@@ -176,18 +127,8 @@ void runFocMathCheckOnce(void)
     const foc_pwm_compare_t pos = focDriverBuildSinePwm(uq_pos, 0.0f, legacy_el, getBatteryVoltage());
     const foc_pwm_compare_t neg = focDriverBuildSinePwm(uq_neg, 0.0f, legacy_el, getBatteryVoltage());
 
-    p("[FOC CHECK] M%u raw %5d legacy %+6.3f raw+ %+6.3f raw- %+6.3f uq+ %4u %4u %4u uq- %4u %4u %4u\n",
-      i,
-      snapshot[i].raw,
-      legacy_el,
-      foc_raw_el_pos,
-      foc_raw_el_neg,
-      pos.a,
-      pos.b,
-      pos.c,
-      neg.a,
-      neg.b,
-      neg.c);
+    p("[FOC CHECK] M%u raw %5d legacy %+6.3f raw+ %+6.3f raw- %+6.3f uq+ %4u %4u %4u uq- %4u %4u %4u\n", i, snapshot[i].raw, legacy_el, foc_raw_el_pos, foc_raw_el_neg, pos.a, pos.b, pos.c, neg.a,
+      neg.b, neg.c);
   }
 
   p("[FOC CHECK] snapshot only, no SPI update, no PWM output changed\n\n");
@@ -238,12 +179,8 @@ void printRuntimeDiagnostics(void)
       ex_can_send_fail_cnt = 0;
       break;
     case 7:
-      p("Offset %+4.2f TrqOff %+4.2f %+4.2f RPS %+6.1f %+6.1f ",
-        sys.manual_offset_radian,
-        getLegacyTorqueOffsetRadian(cmd[0].out_v_final),
-        getLegacyTorqueOffsetRadian(cmd[1].out_v_final),
-        motor_real[0].rps_ave,
-        motor_real[1].rps_ave);
+      p("Offset %+4.2f TrqOff %+4.2f %+4.2f RPS %+6.1f %+6.1f ", sys.manual_offset_radian, getLegacyTorqueOffsetRadian(cmd[0].out_v_final), getLegacyTorqueOffsetRadian(cmd[1].out_v_final),
+        motor_real[0].rps_ave, motor_real[1].rps_ave);
       //p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
@@ -260,9 +197,13 @@ void printRuntimeDiagnostics(void)
       as5047p[1].diff_max = 0;
       as5047p[1].diff_min = 65535;
       break;
-    default:
+    case 9:
       p("\n");
+      break;
+    case 100:
       sys.print_cnt = 0;
+      break;
+    default:
       break;
   }
 }

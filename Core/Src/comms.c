@@ -145,6 +145,12 @@ void receiveUserSerialCommand(void)
       case 'V':
         toggleFocDiagnosticMode();
         break;
+      case 'B':
+        cycleFocDiagnosticAngleSource();
+        break;
+      case 'T':
+        toggleFocDiagnosticTorqueSign();
+        break;
       case 'c':
         p("\n\nstart calib mode!\n\n");
         startCalibrationMode();

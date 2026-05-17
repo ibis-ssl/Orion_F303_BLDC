@@ -12,6 +12,8 @@ bool isFocDiagnosticActive(void);
 void startFocDiagnosticMode(void);
 void stopFocDiagnosticMode(void);
 void toggleFocDiagnosticMode(void);
+void cycleFocDiagnosticAngleSource(void);
+void toggleFocDiagnosticTorqueSign(void);
 void focDiagnosticMode(void);
 void focDiagnosticProcess_itr(bool motor);
 
