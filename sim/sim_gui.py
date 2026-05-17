@@ -17,6 +17,8 @@ import bldc_sim
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+LIVE_BASE_TICK_MS = 20
+LIVE_MAX_STEPS_PER_TICK = 1000
 
 
 def parse_float(value: str, default: float = 0.0) -> float:
@@ -84,6 +86,7 @@ class SimGui(tk.Tk):
             "pwm_period": "1800",
             "initial_theta_m0": "0.3",
             "initial_theta_m1": "0.6",
+            "live_speed_percent": "0.1",
             "plot_m0": "1",
             "plot_m1": "1",
             "live_status": "Live stopped",
@@ -136,6 +139,7 @@ class SimGui(tk.Tk):
         row = self._entry(parent, row, "M1 rps", "speed_rps_m1")
         row = self._entry(parent, row, "M0 theta", "initial_theta_m0")
         row = self._entry(parent, row, "M1 theta", "initial_theta_m1")
+        row = self._entry(parent, row, "Live speed %", "live_speed_percent")
 
         row = self._section(parent, row, "Snapshot")
         row = self._entry(parent, row, "Raw", "raw")
@@ -205,7 +209,7 @@ class SimGui(tk.Tk):
         self.log.configure(yscrollcommand=yscroll.set)
 
     def _build_plots(self, parent: ttk.Frame) -> None:
-        plot_frame = ttk.LabelFrame(parent, text="Plots")
+        plot_frame = ttk.LabelFrame(parent, text="Plots / Vectors")
         plot_frame.grid(row=2, column=0, sticky="nsew", pady=4)
         plot_frame.columnconfigure(0, weight=3)
         plot_frame.columnconfigure(1, weight=1)
@@ -219,10 +223,18 @@ class SimGui(tk.Tk):
 
         self.plot_canvas = tk.Canvas(plot_frame, height=280, background="white")
         self.plot_canvas.grid(row=1, column=0, sticky="nsew", padx=(0, 4))
-        self.dq_canvas = tk.Canvas(plot_frame, height=280, width=240, background="white")
-        self.dq_canvas.grid(row=1, column=1, sticky="nsew")
+        vector_frame = ttk.Frame(plot_frame)
+        vector_frame.grid(row=1, column=1, sticky="nsew")
+        vector_frame.columnconfigure(0, weight=1)
+        vector_frame.rowconfigure(0, weight=1)
+        vector_frame.rowconfigure(1, weight=1)
+        self.dq_canvas = tk.Canvas(vector_frame, height=138, width=260, background="white")
+        self.dq_canvas.grid(row=0, column=0, sticky="nsew", pady=(0, 2))
+        self.angle_canvas = tk.Canvas(vector_frame, height=138, width=260, background="white")
+        self.angle_canvas.grid(row=1, column=0, sticky="nsew", pady=(2, 0))
         self.plot_canvas.bind("<Configure>", lambda _event: self._draw_plots())
         self.dq_canvas.bind("<Configure>", lambda _event: self._draw_plots())
+        self.angle_canvas.bind("<Configure>", lambda _event: self._draw_plots())
 
     def build_args(self) -> argparse.Namespace:
         return argparse.Namespace(
@@ -367,24 +379,47 @@ class SimGui(tk.Tk):
             self.vars["live_status"].set(f"Live stopped, {self.live_time_s:.6f}s sim")
 
     def _schedule_live_tick(self) -> None:
-        # 50us simulation step at 0.1% real-time speed => 50ms wall-clock interval.
-        self.live_after_id = self.after(50, self._live_tick)
+        args = self.build_args()
+        cfg = self._make_live_config(args)
+        speed_ratio = self._live_speed_ratio()
+        one_step_interval_ms = cfg.dt * 1000.0 / speed_ratio
+        delay_ms = int(round(one_step_interval_ms)) if one_step_interval_ms > LIVE_BASE_TICK_MS else LIVE_BASE_TICK_MS
+        self.live_after_id = self.after(max(1, delay_ms), self._live_tick)
 
     def _live_tick(self) -> None:
         if not self.live_running:
             return
         try:
-            self._advance_live_one_step()
+            args = self.build_args()
+            cfg = self._make_live_config(args)
+            step_count = self._live_steps_per_tick(cfg)
+            for _ in range(step_count):
+                self._advance_live_one_step(args, cfg)
         except Exception as exc:
             self.stop_live()
             messagebox.showerror("Live simulation error", str(exc))
             self._append_log(f"\nERROR: {exc}\n")
             return
+        self._draw_plots()
+        self._populate_live_table()
+        self.vars["live_status"].set(
+            f"Live running, {self.live_time_s:.6f}s sim, {self._live_speed_ratio() * 100.0:.3g}%"
+        )
         self._schedule_live_tick()
 
-    def _advance_live_one_step(self) -> None:
-        args = self.build_args()
-        cfg = self._make_live_config(args)
+    def _live_speed_ratio(self) -> float:
+        speed_percent = parse_float(self.vars["live_speed_percent"].get(), 0.1)
+        return max(0.001, speed_percent) / 100.0
+
+    def _live_steps_per_tick(self, cfg: bldc_sim.MotorSimConfig) -> int:
+        speed_ratio = self._live_speed_ratio()
+        one_step_interval_ms = cfg.dt * 1000.0 / speed_ratio
+        if one_step_interval_ms > LIVE_BASE_TICK_MS:
+            return 1
+        steps = int(round((LIVE_BASE_TICK_MS / 1000.0) * speed_ratio / cfg.dt))
+        return max(1, min(LIVE_MAX_STEPS_PER_TICK, steps))
+
+    def _advance_live_one_step(self, args: argparse.Namespace, cfg: bldc_sim.MotorSimConfig) -> None:
         if len(self.live_states) != 2:
             self.reset_live()
             return
@@ -437,16 +472,11 @@ class SimGui(tk.Tk):
         if len(self.last_rows) > 2000:
             self.last_rows = self.last_rows[-2000:]
 
-        if self.live_step % 2 == 0:
-            self._draw_plots()
-            self._populate_live_table()
-            self.vars["live_status"].set(f"Live running, {self.live_time_s:.6f}s sim")
-
     def _populate_live_table(self) -> None:
         latest = self._latest_rows_by_motor()
         for item in self.tree.get_children():
             self.tree.delete(item)
-        header = ["motor", "time_s", "speed_rps", "encoder_raw", "theta_mech_rad", "uq_eff_v", "iq_a", "torque_nm"]
+        header = ["motor", "time_s", "speed_rps", "encoder_raw", "theta_mech_rad", "theta_elec_actual_rad", "uq_eff_v", "iq_a", "torque_nm"]
         self.tree["columns"] = header
         for col in header:
             self.tree.heading(col, text=col)
@@ -459,6 +489,7 @@ class SimGui(tk.Tk):
                 f"{row['speed_rps']:+.4f}",
                 int(row["encoder_raw"]),
                 f"{row['theta_mech_rad']:+.4f}",
+                f"{row['theta_elec_actual_rad']:+.4f}",
                 f"{row['uq_eff_v']:+.4f}",
                 f"{row['iq_a']:+.4f}",
                 f"{row['torque_nm']:+.6f}",
@@ -500,6 +531,7 @@ class SimGui(tk.Tk):
             return
         self._draw_time_plot()
         self._draw_dq_plot()
+        self._draw_angle_plot()
 
     def _draw_time_plot(self) -> None:
         canvas = self.plot_canvas
@@ -513,7 +545,7 @@ class SimGui(tk.Tk):
         margin_b = 24
         gap = 12
         plot_w = max(1, width - margin_l - margin_r)
-        slot_h = max(24, (height - margin_t - margin_b - gap * (len(metrics) - 1)) / len(metrics))
+        slot_h = max(22, (height - margin_t - margin_b - gap * (len(metrics) - 1)) / len(metrics))
 
         if not self.last_rows:
             canvas.create_text(width / 2, height / 2, text="Run step or realtime scenario to plot", fill="#666666")
@@ -628,6 +660,47 @@ class SimGui(tk.Tk):
             label = "step" if motor < 0 else f"M{motor}"
             canvas.create_text(8, y, text=f"{label} Id {id_a:+.3f} Iq {iq_a:+.3f}", anchor="w", fill=color)
             y += 16
+
+    def _draw_angle_plot(self) -> None:
+        canvas = self.angle_canvas
+        canvas.delete("all")
+        width = max(10, canvas.winfo_width())
+        height = max(10, canvas.winfo_height())
+        canvas.create_text(8, 6, text="rotor angle", anchor="nw", fill="#202020")
+
+        latest = self._latest_rows_by_motor()
+        if not latest:
+            canvas.create_text(width / 2, height / 2, text="no angle data", fill="#666666")
+            return
+
+        colors = {0: "#1f77b4", 1: "#d62728", -1: "#1f77b4"}
+        motors = list(latest.items())
+        row_h = max(42.0, (height - 24.0) / max(1, len(motors)))
+        radius = max(12.0, min(22.0, row_h * 0.34, width * 0.09))
+        mech_x = width * 0.36
+        elec_x = width * 0.72
+        canvas.create_text(mech_x, 22, text="mech", anchor="s", fill="#555555")
+        canvas.create_text(elec_x, 22, text="elec", anchor="s", fill="#555555")
+
+        for idx, (motor, row) in enumerate(motors):
+            y = 32.0 + idx * row_h + row_h * 0.45
+            theta_mech = float(row.get("theta_mech_rad", 0.0))
+            theta_elec = float(row.get("theta_elec_actual_rad", 0.0))
+            color = colors.get(motor, "#1f77b4")
+            label = "step" if motor < 0 else f"M{motor}"
+            canvas.create_text(8, y, text=label, anchor="w", fill=color)
+            self._draw_angle_vector(canvas, mech_x, y, radius, theta_mech, color)
+            self._draw_angle_vector(canvas, elec_x, y, radius, theta_elec, color)
+            canvas.create_text(mech_x, y + radius + 11, text=f"{theta_mech:+.3f}", anchor="n", fill=color)
+            canvas.create_text(elec_x, y + radius + 11, text=f"{theta_elec:+.3f}", anchor="n", fill=color)
+
+    def _draw_angle_vector(self, canvas: tk.Canvas, cx: float, cy: float, radius: float, angle_rad: float, color: str) -> None:
+        canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline="#d0d0d0")
+        canvas.create_line(cx - radius, cy, cx + radius, cy, fill="#e0e0e0")
+        canvas.create_line(cx, cy + radius, cx, cy - radius, fill="#e0e0e0")
+        x2 = cx + math.cos(angle_rad) * radius
+        y2 = cy - math.sin(angle_rad) * radius
+        canvas.create_line(cx, cy, x2, y2, fill=color, width=3, arrow="last")
 
     def _latest_rows_by_motor(self) -> dict[int, dict[str, float]]:
         latest: dict[int, dict[str, float]] = {}
