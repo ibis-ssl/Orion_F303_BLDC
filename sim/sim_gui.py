@@ -44,6 +44,19 @@ class SimGui(tk.Tk):
 
         self.vars: dict[str, tk.StringVar] = {}
         self.last_rows: list[dict[str, float]] = []
+        self.live_running = False
+        self.live_after_id: str | None = None
+        self.live_time_s = 0.0
+        self.live_step = 0
+        self.live_motor_select = 0
+        self.live_states: list[bldc_sim.MotorSimState] = []
+        self.live_encoders: list[bldc_sim.EncoderSim] = []
+        self.live_pwms: list[bldc_sim.PwmHold] = []
+        self.live_raw_last = [0, 0]
+        self.live_voltage_cmd = [0.0, 0.0]
+        self.live_ud_last = [0.0, 0.0]
+        self.live_uq_last = [0.0, 0.0]
+        self.live_torque_last = [0.0, 0.0]
         self._make_vars()
         self._build_ui()
         self._refresh_cli()
@@ -73,6 +86,7 @@ class SimGui(tk.Tk):
             "initial_theta_m1": "0.6",
             "plot_m0": "1",
             "plot_m1": "1",
+            "live_status": "Live stopped",
         }
         for key, value in defaults.items():
             var = tk.StringVar(value=value)
@@ -158,8 +172,12 @@ class SimGui(tk.Tk):
         actions.columnconfigure(5, weight=1)
         ttk.Button(actions, text="Run", command=self.run_scenario).grid(row=0, column=0, padx=(0, 4))
         ttk.Button(actions, text="Self Test", command=self.run_self_test).grid(row=0, column=1, padx=4)
-        ttk.Button(actions, text="Copy CLI", command=self.copy_cli).grid(row=0, column=2, padx=4)
-        ttk.Button(actions, text="Open CSV Folder", command=self.open_csv_folder).grid(row=0, column=3, padx=4)
+        ttk.Button(actions, text="Live Start", command=self.start_live).grid(row=0, column=2, padx=4)
+        ttk.Button(actions, text="Live Stop", command=self.stop_live).grid(row=0, column=3, padx=4)
+        ttk.Button(actions, text="Live Reset", command=self.reset_live).grid(row=0, column=4, padx=4)
+        ttk.Button(actions, text="Copy CLI", command=self.copy_cli).grid(row=0, column=5, padx=4)
+        ttk.Button(actions, text="Open CSV Folder", command=self.open_csv_folder).grid(row=0, column=6, padx=4)
+        ttk.Label(actions, textvariable=self.vars["live_status"]).grid(row=0, column=7, sticky="e", padx=(12, 0))
 
     def _build_result_table(self, parent: ttk.Frame) -> None:
         table_frame = ttk.LabelFrame(parent, text="Summary")
@@ -265,6 +283,7 @@ class SimGui(tk.Tk):
             self._append_log(f"\nERROR: {exc}\n")
 
     def _capture_run(self, args: argparse.Namespace) -> str:
+        self.stop_live()
         self.last_rows = []
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
@@ -285,6 +304,165 @@ class SimGui(tk.Tk):
             else:
                 bldc_sim.run_conventions(args)
         return buffer.getvalue()
+
+    def _make_live_config(self, args: argparse.Namespace) -> bldc_sim.MotorSimConfig:
+        return bldc_sim.MotorSimConfig(
+            voltage_supply=args.battery_v,
+            zero_electric_angle=args.zero,
+            encoder_direction=args.encoder_direction,
+            encoder_delay_steps=args.encoder_delay_steps,
+            phase_advance_trim_rad=math.radians(args.phase_trim_deg),
+        )
+
+    def reset_live(self) -> None:
+        self.stop_live()
+        args = self.build_args()
+        cfg = self._make_live_config(args)
+        self.live_time_s = 0.0
+        self.live_step = 0
+        self.live_motor_select = 0
+        self.live_states = [
+            bldc_sim.MotorSimState(theta_mech=args.initial_theta_m0, omega_rad_s=0.0),
+            bldc_sim.MotorSimState(theta_mech=args.initial_theta_m1, omega_rad_s=0.0),
+        ]
+        self.live_encoders = [
+            bldc_sim.EncoderSim(cfg.encoder_direction, cfg.encoder_delay_steps),
+            bldc_sim.EncoderSim(cfg.encoder_direction, cfg.encoder_delay_steps),
+        ]
+        half = cfg.voltage_supply * 0.5
+        self.live_pwms = [
+            bldc_sim.PwmHold(half, half, half),
+            bldc_sim.PwmHold(half, half, half),
+        ]
+        self.live_raw_last = [
+            bldc_sim.encoder_raw_from_mech(self.live_states[0].theta_mech, cfg.encoder_direction),
+            bldc_sim.encoder_raw_from_mech(self.live_states[1].theta_mech, cfg.encoder_direction),
+        ]
+        self.live_voltage_cmd = [0.0, 0.0]
+        self.live_ud_last = [0.0, 0.0]
+        self.live_uq_last = [0.0, 0.0]
+        self.live_torque_last = [0.0, 0.0]
+        self.last_rows = []
+        self.vars["live_status"].set("Live reset, 0.000000s sim")
+        self._draw_plots()
+
+    def start_live(self) -> None:
+        if not self.live_states:
+            self.reset_live()
+        if self.live_running:
+            return
+        self.live_running = True
+        self.vars["live_status"].set(f"Live running, {self.live_time_s:.6f}s sim")
+        self._schedule_live_tick()
+
+    def stop_live(self) -> None:
+        self.live_running = False
+        if self.live_after_id is not None:
+            try:
+                self.after_cancel(self.live_after_id)
+            except tk.TclError:
+                pass
+            self.live_after_id = None
+        if "live_status" in self.vars:
+            self.vars["live_status"].set(f"Live stopped, {self.live_time_s:.6f}s sim")
+
+    def _schedule_live_tick(self) -> None:
+        # 50us simulation step at 0.1% real-time speed => 50ms wall-clock interval.
+        self.live_after_id = self.after(50, self._live_tick)
+
+    def _live_tick(self) -> None:
+        if not self.live_running:
+            return
+        try:
+            self._advance_live_one_step()
+        except Exception as exc:
+            self.stop_live()
+            messagebox.showerror("Live simulation error", str(exc))
+            self._append_log(f"\nERROR: {exc}\n")
+            return
+        self._schedule_live_tick()
+
+    def _advance_live_one_step(self) -> None:
+        args = self.build_args()
+        cfg = self._make_live_config(args)
+        if len(self.live_states) != 2:
+            self.reset_live()
+            return
+
+        for encoder in self.live_encoders:
+            encoder.direction = cfg.encoder_direction
+            encoder.delay_steps = max(0, cfg.encoder_delay_steps)
+
+        isr_per_main = max(1, int(round(0.001 / cfg.dt)))
+        if self.live_step % isr_per_main == 0:
+            self.live_voltage_cmd[0] = bldc_sim.clamp(args.speed_rps_m0 * cfg.voltage_per_rps, cfg.voltage_limit)
+            self.live_voltage_cmd[1] = bldc_sim.clamp(args.speed_rps_m1 * cfg.voltage_per_rps, cfg.voltage_limit)
+
+        target_rps = [args.speed_rps_m0, args.speed_rps_m1]
+        self.live_motor_select ^= 1
+        motor = self.live_motor_select
+        self.live_raw_last[motor] = self.live_encoders[motor].sample(self.live_states[motor].theta_mech)
+        self.live_pwms[motor] = bldc_sim.build_foc_pwm(
+            cfg,
+            self.live_raw_last[motor],
+            args.angle_mode,
+            target_rps[motor],
+            self.live_voltage_cmd[motor],
+        )
+
+        for m in range(2):
+            self.live_ud_last[m], self.live_uq_last[m], self.live_torque_last[m] = bldc_sim.integrate_motor_from_pwm(
+                self.live_states[m],
+                cfg,
+                self.live_pwms[m],
+                args.model,
+            )
+
+        self.live_time_s += cfg.dt
+        self.live_step += 1
+
+        for m in range(2):
+            self.last_rows.append(bldc_sim.make_realtime_row(
+                self.live_time_s,
+                m,
+                self.live_states[m],
+                self.live_raw_last[m],
+                self.live_pwms[m],
+                self.live_ud_last[m],
+                self.live_uq_last[m],
+                self.live_torque_last[m],
+                target_rps[m],
+                self.live_voltage_cmd[m],
+            ))
+        if len(self.last_rows) > 2000:
+            self.last_rows = self.last_rows[-2000:]
+
+        if self.live_step % 2 == 0:
+            self._draw_plots()
+            self._populate_live_table()
+            self.vars["live_status"].set(f"Live running, {self.live_time_s:.6f}s sim")
+
+    def _populate_live_table(self) -> None:
+        latest = self._latest_rows_by_motor()
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        header = ["motor", "time_s", "speed_rps", "encoder_raw", "theta_mech_rad", "uq_eff_v", "iq_a", "torque_nm"]
+        self.tree["columns"] = header
+        for col in header:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=max(90, min(160, len(col) * 10)), anchor="w")
+        for motor in sorted(latest):
+            row = latest[motor]
+            self.tree.insert("", "end", values=(
+                "step" if motor < 0 else f"M{motor}",
+                f"{row['time_s']:.6f}",
+                f"{row['speed_rps']:+.4f}",
+                int(row["encoder_raw"]),
+                f"{row['theta_mech_rad']:+.4f}",
+                f"{row['uq_eff_v']:+.4f}",
+                f"{row['iq_a']:+.4f}",
+                f"{row['torque_nm']:+.6f}",
+            ))
 
     def _show_output(self, output: str) -> None:
         self._populate_table(output)

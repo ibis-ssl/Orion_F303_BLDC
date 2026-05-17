@@ -159,6 +159,8 @@ powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario snapshot
 
 GUIで操作する場合は `Script/run_sim_gui.ps1` を使う。GUIはTkinterで実装し、CLIと同じ `bldc_sim.py` のシナリオ関数を呼び出す。GUI上で条件を変えて実行し、必要に応じてCSV保存やCLIコマンドコピーで再現条件を残す。`step` / `realtime` では速度、`uq_eff`、`iq`、トルクの時系列プロットを同時表示し、M0/M1の表示対象を切り替えられる。dq軸上の `Id/Iq` 電流ベクトルも表示する。
 
+GUIの `Live Start` は、実機20kHz ISR相当の `50us` ステップを `50ms` ごとに1ステップ進める。つまりシミュレーション時間は実時間の `0.1%` で進む。ライブ実行中もGUI入力値を読み直すため、速度指令、角度規約、ゼロ角、エンコーダ遅延、位相トリムを変更しながら回転、電流、dqベクトルの変化を確認できる。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 
