@@ -19,6 +19,13 @@ def normalize_angle(angle: float) -> float:
     return angle % TWO_PI
 
 
+def angle_error(a: float, b: float) -> float:
+    err = normalize_angle(a - b)
+    if err > math.pi:
+        err -= TWO_PI
+    return err
+
+
 def clamp(value: float, limit: float) -> float:
     if value > limit:
         return limit
@@ -201,6 +208,30 @@ def write_csv(rows: list[dict[str, float]], path: Path) -> None:
       writer.writerows(rows)
 
 
+def run_snapshot(args: argparse.Namespace) -> int:
+    modes = ["raw_pos_add", "raw_pos_sub", "raw_neg_add", "raw_neg_sub", "legacy"]
+    actual_el = None if math.isnan(args.actual_elec) else normalize_angle(args.actual_elec)
+    legacy_el = None if math.isnan(args.legacy_elec) else normalize_angle(args.legacy_elec)
+
+    print("mode,cmd_elec_rad,err_to_legacy_rad,ud_eff_v,uq_eff_v,ccr_a,ccr_b,ccr_c")
+    for mode in modes:
+        cmd_el = select_electrical_angle(args.raw, args.zero, mode)
+        ua, ub, uc = foc_set_phase_voltage_sine(args.uq_v, args.ud_v, cmd_el, args.battery_v)
+        ccr_a = int(ua * args.pwm_period / args.battery_v)
+        ccr_b = int(ub * args.pwm_period / args.battery_v)
+        ccr_c = int(uc * args.pwm_period / args.battery_v)
+
+        err = 0.0 if legacy_el is None else angle_error(cmd_el, legacy_el)
+        if actual_el is None:
+            ud_eff = 0.0
+            uq_eff = 0.0
+        else:
+            ud_eff, uq_eff = phase_voltage_to_dq(ua, ub, uc, actual_el, args.battery_v)
+
+        print(f"{mode},{cmd_el:+.6f},{err:+.6f},{ud_eff:+.6f},{uq_eff:+.6f},{ccr_a},{ccr_b},{ccr_c}")
+    return 0
+
+
 def run_conventions(args: argparse.Namespace) -> int:
     cfg = MotorSimConfig(
         zero_electric_angle=args.zero,
@@ -255,7 +286,7 @@ def run_self_test() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true", help="run built-in simulation checks")
-    parser.add_argument("--scenario", choices=["conventions", "step"], default="conventions")
+    parser.add_argument("--scenario", choices=["conventions", "step", "snapshot"], default="conventions")
     parser.add_argument("--angle-mode", choices=["raw_pos_add", "raw_pos_sub", "raw_neg_add", "raw_neg_sub", "legacy"], default="raw_neg_add")
     parser.add_argument("--speed-rps", type=float, default=20.0)
     parser.add_argument("--duration-s", type=float, default=1.0)
@@ -263,6 +294,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--encoder-direction", type=int, choices=[-1, 1], default=-1)
     parser.add_argument("--phase-trim-deg", type=float, default=0.0)
     parser.add_argument("--output-csv", default="")
+    parser.add_argument("--raw", type=int, default=0)
+    parser.add_argument("--legacy-elec", type=float, default=float("nan"))
+    parser.add_argument("--actual-elec", type=float, default=float("nan"))
+    parser.add_argument("--uq-v", type=float, default=-2.0)
+    parser.add_argument("--ud-v", type=float, default=0.0)
+    parser.add_argument("--battery-v", type=float, default=24.0)
+    parser.add_argument("--pwm-period", type=int, default=1800)
     return parser.parse_args()
 
 
@@ -270,6 +308,8 @@ def main() -> int:
     args = parse_args()
     if args.self_test:
         return run_self_test()
+    if args.scenario == "snapshot":
+        return run_snapshot(args)
     if args.scenario == "step":
         return run_step(args)
     return run_conventions(args)
