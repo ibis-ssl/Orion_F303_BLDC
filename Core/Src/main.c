@@ -29,6 +29,7 @@
 #include "control_mode.h"
 #include "diagnostics.h"
 #include "dma.h"
+#include "foc_control.h"
 #include "foc_diagnostic.h"
 #include "gpio.h"
 #include "protect.h"
@@ -109,7 +110,7 @@ inline void motorProcess_itr(bool motor)
 {
   updateADC(motor);
   updateAS5047P(motor);
-  setOutputRadianMotor(motor, as5047p[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
+  focControlApplyVoltage(motor, cmd[motor].out_v_final, cmd[motor].speed, motor_param[motor].output_voltage_limit);
 }
 
 // 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
@@ -213,7 +214,7 @@ void runMode(void)
 
   system_exec_time_stamp[2] = interrupt_timer_cnt;
   for (int i = 0; i < 2; i++) {
-    setFinalOutputVoltage(&cmd[i], &enc_offset[i], sys.manual_offset_radian);  // select Vq-offset angle
+    cmd[i].out_v_final = cmd[i].out_v;
   }
 
   system_exec_time_stamp[3] = interrupt_timer_cnt;
