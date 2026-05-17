@@ -29,6 +29,7 @@
 #define FOC_DIAG_PHASE_ADVANCE_STEP_RAD (0.01745329252f)
 #define FOC_DIAG_PHASE_ADVANCE_LIMIT_RAD (0.78539816339f)
 #define FOC_DIAG_RAD_TO_DEG (57.2957795131f)
+#define FOC_DIAG_AXIS_OFFSET_RAD ((float)M_PI * 0.5f)
 
 typedef struct
 {
@@ -97,6 +98,12 @@ static inline float focDiagnosticPhaseAdvance(float speed_rps)
   return clampFocDiagPhaseAdvance(model + foc_diag_phase_advance_trim_rad);
 }
 
+static inline float focDiagnosticTorqueAxisOffset(float output_voltage)
+{
+  (void)output_voltage;
+  return FOC_DIAG_AXIS_OFFSET_RAD;
+}
+
 void startFocDiagnosticMode(void)
 {
   foc_diag_active = true;
@@ -112,7 +119,7 @@ void startFocDiagnosticMode(void)
   cmd[1].timeout_cnt = -1;
   setPwmAll(TIM_PWM_CENTER);
   resumePwmOutput();
-  p("\nFOC diag start limit %+4.1fV angle raw-+zero tq %+3.0f adv %+4.1fdeg, w/s cmd, v angle, [/]/P phase, V stop\n",
+  p("\nFOC diag start limit %+4.1fV angle raw-+zero+pi/2 tq %+3.0f adv %+4.1fdeg, w/s cmd, v angle, [/]/P phase, V stop\n",
     FOC_DIAG_VOLTAGE_LIMIT,
     FOC_DIAG_DEFAULT_TORQUE_SIGN,
     foc_diag_phase_advance_trim_rad * FOC_DIAG_RAD_TO_DEG);
@@ -173,7 +180,7 @@ void printFocDiagnosticAngleState(void)
   }
   __enable_irq();
 
-  p("\n[FOC ANG] convention raw- + zero + manual, tq %+3.0f, trim %+5.1fdeg\n",
+  p("\n[FOC ANG] convention raw- + zero + manual + pi/2, tq %+3.0f, trim %+5.1fdeg\n",
     FOC_DIAG_DEFAULT_TORQUE_SIGN,
     foc_diag_phase_advance_trim_rad * FOC_DIAG_RAD_TO_DEG);
 
@@ -182,13 +189,15 @@ void printFocDiagnosticAngleState(void)
     const float raw_pos = rawElectricalAnglePositive(&enc);
     const float raw_neg = rawElectricalAngleNegative(&enc);
     const float foc_base = focNormalizeAngle(raw_neg + snapshot[i].zero_calib + sys.manual_offset_radian);
+    const float axis_offset = focDiagnosticTorqueAxisOffset(snapshot[i].out_v_final);
+    const float foc_axis = focNormalizeAngle(foc_base + axis_offset);
     const float phase_model = focDiagnosticPhaseAdvance(snapshot[i].cmd_speed);
     const float phase_used = (snapshot[i].cmd_speed < 0.0f) ? -phase_model : phase_model;
-    const float foc_used = focNormalizeAngle(foc_base + phase_used);
+    const float foc_used = focNormalizeAngle(foc_axis + phase_used);
     const float legacy = focNormalizeAngle(snapshot[i].legacy_output_radian + snapshot[i].zero_calib + sys.manual_offset_radian);
     const float voltage_q = FOC_DIAG_DEFAULT_TORQUE_SIGN * snapshot[i].out_v_final;
 
-    p("[FOC ANG] M%u raw %5d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f used %+6.3f adv %+5.1fdeg cmd %+6.1f rps %+6.1f uq %+4.1f\n",
+    p("[FOC ANG] M%u raw %5d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f axis %+5.2f used %+6.3f adv %+5.1fdeg cmd %+6.1f rps %+6.1f uq %+4.1f\n",
       i,
       snapshot[i].raw,
       raw_pos,
@@ -196,6 +205,7 @@ void printFocDiagnosticAngleState(void)
       snapshot[i].zero_calib,
       legacy,
       foc_base,
+      axis_offset,
       foc_used,
       phase_used * FOC_DIAG_RAD_TO_DEG,
       snapshot[i].cmd_speed,
@@ -239,6 +249,7 @@ void focDiagnosticProcess_itr(bool motor)
   }
 
   float electrical = selectFocDiagnosticElectricalAngle(motor);
+  electrical += focDiagnosticTorqueAxisOffset(cmd[motor_idx].out_v_final);
   const float phase_advance = focDiagnosticPhaseAdvance(cmd[motor_idx].speed);
   electrical += (cmd[motor_idx].speed < 0.0f) ? -phase_advance : phase_advance;
   focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical, getBatteryVoltage());

@@ -77,8 +77,8 @@ def foc_set_phase_voltage_sine(uq: float, ud: float, angle_el: float, voltage_li
     ubeta = sin_el * ud + cos_el * uq
 
     ua = ualpha + half_limit
-    ub = -0.5 * ualpha + SQRT3_2 * ubeta + half_limit
-    uc = -0.5 * ualpha - SQRT3_2 * ubeta + half_limit
+    ub = -0.5 * ualpha - SQRT3_2 * ubeta + half_limit
+    uc = -0.5 * ualpha + SQRT3_2 * ubeta + half_limit
     return ua, ub, uc
 
 
@@ -90,7 +90,7 @@ def phase_voltage_to_dq(ua: float, ub: float, uc: float, rotor_angle_el: float, 
     vc = uc - half
 
     ualpha = va
-    ubeta = (vb - vc) / math.sqrt(3.0)
+    ubeta = (vc - vb) / math.sqrt(3.0)
     sin_el = math.sin(normalize_angle(rotor_angle_el))
     cos_el = math.cos(normalize_angle(rotor_angle_el))
     ud = cos_el * ualpha + sin_el * ubeta

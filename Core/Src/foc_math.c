@@ -83,13 +83,13 @@ foc_phase_voltage_t focSetPhaseVoltageSine(float uq, float ud, float angle_el, f
   ud = focLimitSymmetric(ud, half_limit);
   focFastSinCos(angle_el, &sin_el, &cos_el);
 
-  /* Inverse Park + Clarke transform, matching SimpleFOC SinePWM voltage mode. */
+  /* Inverse Park + Clarke transform, with B/C phase order matching legacy PWM. */
   ualpha = cos_el * ud - sin_el * uq;
   ubeta = sin_el * ud + cos_el * uq;
 
   phase.ua = ualpha + half_limit;
-  phase.ub = -0.5f * ualpha + FOC_SQRT3_2 * ubeta + half_limit;
-  phase.uc = -0.5f * ualpha - FOC_SQRT3_2 * ubeta + half_limit;
+  phase.ub = -0.5f * ualpha - FOC_SQRT3_2 * ubeta + half_limit;
+  phase.uc = -0.5f * ualpha + FOC_SQRT3_2 * ubeta + half_limit;
 
   return phase;
 }
