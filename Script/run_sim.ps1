@@ -1,11 +1,13 @@
 param(
-    [ValidateSet("conventions", "step", "snapshot")]
+    [ValidateSet("conventions", "step", "snapshot", "realtime")]
     [string]$Scenario = "conventions",
     [ValidateSet("simple", "dq")]
     [string]$Model = "simple",
     [ValidateSet("raw_pos_add", "raw_pos_sub", "raw_neg_add", "raw_neg_sub", "legacy")]
     [string]$AngleMode = "raw_neg_add",
     [double]$SpeedRps = 20.0,
+    [double]$SpeedRpsM0 = 20.0,
+    [double]$SpeedRpsM1 = 20.0,
     [double]$DurationSec = 1.0,
     [double]$Zero = 1.2,
     [ValidateSet("-1", "1")]
@@ -20,6 +22,8 @@ param(
     [double]$UdV = 0.0,
     [double]$BatteryV = 24.0,
     [int]$PwmPeriod = 1800,
+    [double]$InitialThetaM0 = 0.3,
+    [double]$InitialThetaM1 = 0.6,
     [switch]$SelfTest
 )
 
@@ -38,6 +42,8 @@ if ($SelfTest) {
     $ArgsList += @("--model", $Model)
     $ArgsList += @("--angle-mode", $AngleMode)
     $ArgsList += @("--speed-rps", $SpeedRps.ToString([Globalization.CultureInfo]::InvariantCulture))
+    $ArgsList += @("--speed-rps-m0", $SpeedRpsM0.ToString([Globalization.CultureInfo]::InvariantCulture))
+    $ArgsList += @("--speed-rps-m1", $SpeedRpsM1.ToString([Globalization.CultureInfo]::InvariantCulture))
     $ArgsList += @("--duration-s", $DurationSec.ToString([Globalization.CultureInfo]::InvariantCulture))
     $ArgsList += @("--zero", $Zero.ToString([Globalization.CultureInfo]::InvariantCulture))
     $ArgsList += @("--encoder-direction", $EncoderDirection)
@@ -50,6 +56,8 @@ if ($SelfTest) {
     $ArgsList += @("--ud-v", $UdV.ToString([Globalization.CultureInfo]::InvariantCulture))
     $ArgsList += @("--battery-v", $BatteryV.ToString([Globalization.CultureInfo]::InvariantCulture))
     $ArgsList += @("--pwm-period", $PwmPeriod.ToString([Globalization.CultureInfo]::InvariantCulture))
+    $ArgsList += @("--initial-theta-m0", $InitialThetaM0.ToString([Globalization.CultureInfo]::InvariantCulture))
+    $ArgsList += @("--initial-theta-m1", $InitialThetaM1.ToString([Globalization.CultureInfo]::InvariantCulture))
     if ($OutputCsv -ne "") {
         $ArgsList += @("--output-csv", (Join-Path $RepoRoot $OutputCsv))
     }

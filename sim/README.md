@@ -87,3 +87,22 @@ powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario step -Mo
 ```
 
 初期パラメータは仮値であり、実機同定値ではない。重要なのは、パラメータを振ったときに症状がどう変わるかを見ることである。
+
+## 実行周期モデル
+
+`-Scenario realtime` は、実機の制御周期に近い形で次を模擬する。
+
+- 20kHz ISR相当の `dt = 50us`
+- 1kHz main loop相当の速度電圧指令更新
+- ISRごとのM0/M1交互PWM更新
+- 各モーターのPWM出力保持
+- エンコーダサンプル遅延
+
+実行例:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime -Model dq -AngleMode raw_neg_add -SpeedRpsM0 20 -SpeedRpsM1 20 -DurationSec 0.1 -EncoderDelaySteps 1
+powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario realtime -Model dq -AngleMode raw_neg_add -SpeedRpsM0 20 -SpeedRpsM1 20 -DurationSec 0.1 -OutputCsv sim\out\realtime.csv
+```
+
+CSVは1kHz main loop相当のタイミングでM0/M1を2行ずつ出力する。`speed_rps`, `encoder_raw`, `cmd_elec_rad`, `uq_eff_v`, `id_a`, `iq_a`, `torque_nm`, 三相電圧を確認できる。

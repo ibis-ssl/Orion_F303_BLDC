@@ -157,6 +157,15 @@ class EncoderSim:
         return self.queue.pop(0)
 
 
+@dataclass
+class PwmHold:
+    ua: float = 12.0
+    ub: float = 12.0
+    uc: float = 12.0
+    cmd_elec: float = 0.0
+    uq_cmd: float = 0.0
+
+
 def phase_advance_for_speed(speed_rps: float, cfg: MotorSimConfig) -> float:
     model = cfg.phase_advance_model_rad_per_rps * abs(speed_rps)
     return clamp(model + cfg.phase_advance_trim_rad, math.pi * 0.25)
@@ -205,6 +214,30 @@ def update_dq_motor(state: MotorSimState, cfg: MotorSimConfig, ud_eff: float, uq
     return electromagnetic_torque
 
 
+def build_foc_pwm(
+    cfg: MotorSimConfig,
+    raw: int,
+    angle_mode: str,
+    speed_rps: float,
+    voltage_cmd: float,
+) -> PwmHold:
+    electrical_cmd = select_electrical_angle(raw, cfg.zero_electric_angle, angle_mode)
+    advance = phase_advance_for_speed(speed_rps, cfg)
+    electrical_cmd = normalize_angle(electrical_cmd + (-advance if speed_rps < 0.0 else advance))
+    uq_cmd = cfg.torque_sign * voltage_cmd
+    ua, ub, uc = foc_set_phase_voltage_sine(uq_cmd, 0.0, electrical_cmd, cfg.voltage_supply)
+    return PwmHold(ua=ua, ub=ub, uc=uc, cmd_elec=electrical_cmd, uq_cmd=uq_cmd)
+
+
+def integrate_motor_from_pwm(state: MotorSimState, cfg: MotorSimConfig, pwm: PwmHold, model: str) -> tuple[float, float, float]:
+    ud_eff, uq_eff = phase_voltage_to_dq(pwm.ua, pwm.ub, pwm.uc, state.electrical_angle, cfg.voltage_supply)
+    if model == "dq":
+        torque = update_dq_motor(state, cfg, ud_eff, uq_eff)
+    else:
+        torque = update_simple_motor(state, cfg, uq_eff)
+    return ud_eff, uq_eff, torque
+
+
 def simulate_step(
     cfg: MotorSimConfig,
     angle_mode: str,
@@ -221,19 +254,9 @@ def simulate_step(
 
     for step in range(steps):
         raw = encoder.sample(state.theta_mech)
-        electrical_cmd = select_electrical_angle(raw, cfg.zero_electric_angle, angle_mode)
-        advance = phase_advance_for_speed(speed_rps, cfg)
-        electrical_cmd = normalize_angle(electrical_cmd + (-advance if speed_rps < 0.0 else advance))
-
         voltage_cmd = clamp(speed_rps * cfg.voltage_per_rps, cfg.voltage_limit)
-        uq_cmd = cfg.torque_sign * voltage_cmd
-        ua, ub, uc = foc_set_phase_voltage_sine(uq_cmd, 0.0, electrical_cmd, cfg.voltage_supply)
-        ud_eff, uq_eff = phase_voltage_to_dq(ua, ub, uc, state.electrical_angle, cfg.voltage_supply)
-
-        if model == "dq":
-            torque = update_dq_motor(state, cfg, ud_eff, uq_eff)
-        else:
-            torque = update_simple_motor(state, cfg, uq_eff)
+        pwm = build_foc_pwm(cfg, raw, angle_mode, speed_rps, voltage_cmd)
+        ud_eff, uq_eff, torque = integrate_motor_from_pwm(state, cfg, pwm, model)
 
         if step % sample_interval == 0:
             rows.append({
@@ -241,19 +264,120 @@ def simulate_step(
                 "theta_mech_rad": state.theta_mech,
                 "theta_elec_actual_rad": state.electrical_angle,
                 "encoder_raw": raw,
-                "cmd_elec_rad": electrical_cmd,
+                "cmd_elec_rad": pwm.cmd_elec,
                 "speed_rps": state.rps,
                 "target_rps": speed_rps,
-                "uq_cmd_v": uq_cmd,
+                "uq_cmd_v": pwm.uq_cmd,
                 "ud_eff_v": ud_eff,
                 "uq_eff_v": uq_eff,
                 "id_a": state.id_a,
                 "iq_a": state.iq_a,
                 "torque_nm": torque,
-                "ua_v": ua,
-                "ub_v": ub,
-                "uc_v": uc,
+                "ua_v": pwm.ua,
+                "ub_v": pwm.ub,
+                "uc_v": pwm.uc,
             })
+
+    return rows
+
+
+def make_realtime_row(
+    time_s: float,
+    motor: int,
+    state: MotorSimState,
+    raw: int,
+    pwm: PwmHold,
+    ud_eff: float,
+    uq_eff: float,
+    torque: float,
+    target_rps: float,
+    voltage_cmd: float,
+) -> dict[str, float]:
+    return {
+        "time_s": time_s,
+        "motor": motor,
+        "theta_mech_rad": state.theta_mech,
+        "theta_elec_actual_rad": state.electrical_angle,
+        "encoder_raw": raw,
+        "cmd_elec_rad": pwm.cmd_elec,
+        "speed_rps": state.rps,
+        "target_rps": target_rps,
+        "voltage_cmd_v": voltage_cmd,
+        "uq_cmd_v": pwm.uq_cmd,
+        "ud_eff_v": ud_eff,
+        "uq_eff_v": uq_eff,
+        "id_a": state.id_a,
+        "iq_a": state.iq_a,
+        "torque_nm": torque,
+        "ua_v": pwm.ua,
+        "ub_v": pwm.ub,
+        "uc_v": pwm.uc,
+    }
+
+
+def simulate_realtime(args: argparse.Namespace) -> list[dict[str, float]]:
+    cfg = MotorSimConfig(
+        zero_electric_angle=args.zero,
+        encoder_direction=args.encoder_direction,
+        encoder_delay_steps=args.encoder_delay_steps,
+        phase_advance_trim_rad=math.radians(args.phase_trim_deg),
+    )
+    states = [
+        MotorSimState(theta_mech=args.initial_theta_m0, omega_rad_s=0.0),
+        MotorSimState(theta_mech=args.initial_theta_m1, omega_rad_s=0.0),
+    ]
+    encoders = [
+        EncoderSim(cfg.encoder_direction, cfg.encoder_delay_steps),
+        EncoderSim(cfg.encoder_direction, cfg.encoder_delay_steps),
+    ]
+    pwms = [PwmHold(cfg.voltage_supply * 0.5, cfg.voltage_supply * 0.5, cfg.voltage_supply * 0.5),
+            PwmHold(cfg.voltage_supply * 0.5, cfg.voltage_supply * 0.5, cfg.voltage_supply * 0.5)]
+    target_rps = [args.speed_rps_m0, args.speed_rps_m1]
+    voltage_cmd = [0.0, 0.0]
+    raw_last = [encoder_raw_from_mech(states[0].theta_mech, cfg.encoder_direction),
+                encoder_raw_from_mech(states[1].theta_mech, cfg.encoder_direction)]
+    ud_last = [0.0, 0.0]
+    uq_last = [0.0, 0.0]
+    torque_last = [0.0, 0.0]
+    rows: list[dict[str, float]] = []
+
+    steps = int(args.duration_s / cfg.dt)
+    isr_per_main = max(1, int(round(0.001 / cfg.dt)))
+    motor_select = 0
+
+    for step in range(steps):
+        if step % isr_per_main == 0:
+            for m in range(2):
+                voltage_cmd[m] = clamp(target_rps[m] * cfg.voltage_per_rps, cfg.voltage_limit)
+
+        motor_select ^= 1
+        raw_last[motor_select] = encoders[motor_select].sample(states[motor_select].theta_mech)
+        pwms[motor_select] = build_foc_pwm(
+            cfg,
+            raw_last[motor_select],
+            args.angle_mode,
+            target_rps[motor_select],
+            voltage_cmd[motor_select],
+        )
+
+        for m in range(2):
+            ud_last[m], uq_last[m], torque_last[m] = integrate_motor_from_pwm(states[m], cfg, pwms[m], args.model)
+
+        if step % isr_per_main == 0:
+            time_s = step * cfg.dt
+            for m in range(2):
+                rows.append(make_realtime_row(
+                    time_s,
+                    m,
+                    states[m],
+                    raw_last[m],
+                    pwms[m],
+                    ud_last[m],
+                    uq_last[m],
+                    torque_last[m],
+                    target_rps[m],
+                    voltage_cmd[m],
+                ))
 
     return rows
 
@@ -343,11 +467,55 @@ def run_step(args: argparse.Namespace) -> int:
     return 0
 
 
+def summarize_realtime_rows(rows: list[dict[str, float]]) -> dict[int, dict[str, float]]:
+    result: dict[int, dict[str, float]] = {}
+    for motor in (0, 1):
+        motor_rows = [row for row in rows if int(row["motor"]) == motor]
+        tail = motor_rows[len(motor_rows) // 2:] if motor_rows else []
+        if not tail:
+            result[motor] = {"final_rps": 0.0, "avg_uq_eff": 0.0, "avg_iq_a": 0.0, "avg_torque_nm": 0.0}
+            continue
+        result[motor] = {
+            "final_rps": motor_rows[-1]["speed_rps"],
+            "avg_uq_eff": sum(row["uq_eff_v"] for row in tail) / len(tail),
+            "avg_iq_a": sum(row["iq_a"] for row in tail) / len(tail),
+            "avg_torque_nm": sum(row["torque_nm"] for row in tail) / len(tail),
+        }
+    return result
+
+
+def run_realtime(args: argparse.Namespace) -> int:
+    rows = simulate_realtime(args)
+    if args.output_csv:
+        write_csv(rows, Path(args.output_csv))
+
+    summary = summarize_realtime_rows(rows)
+    print("motor,final_rps,avg_uq_eff,avg_iq_a,avg_torque_nm")
+    for motor in (0, 1):
+        s = summary[motor]
+        print(f"M{motor},{s['final_rps']:+.4f},{s['avg_uq_eff']:+.4f},{s['avg_iq_a']:+.4f},{s['avg_torque_nm']:+.6f}")
+    return 0
+
+
 def run_self_test() -> int:
     cfg = MotorSimConfig(zero_electric_angle=0.0, encoder_direction=-1, damping=0.005, coulomb_friction=0.0)
     rows_ok = simulate_step(cfg, "raw_neg_add", 20.0, 0.8, "simple")
     rows_bad = simulate_step(cfg, "raw_pos_add", 20.0, 0.8, "simple")
     rows_dq = simulate_step(cfg, "raw_neg_add", 20.0, 0.05, "dq")
+    realtime_args = argparse.Namespace(
+        zero=0.0,
+        encoder_direction=-1,
+        encoder_delay_steps=1,
+        phase_trim_deg=0.0,
+        initial_theta_m0=0.3,
+        initial_theta_m1=0.6,
+        speed_rps_m0=20.0,
+        speed_rps_m1=20.0,
+        duration_s=0.02,
+        angle_mode="raw_neg_add",
+        model="dq",
+    )
+    rows_rt = simulate_realtime(realtime_args)
     ok = summarize_rows(rows_ok)
     bad = summarize_rows(rows_bad)
     dq = summarize_rows(rows_dq)
@@ -359,6 +527,7 @@ def run_self_test() -> int:
         ("angle_mode_expected_response", abs(ok["final_rps"]) > 0.5),
         ("wrong_zero_convention_differs", abs(ok["avg_uq_eff"] - bad["avg_uq_eff"]) > 0.5),
         ("dq_current_response", abs(dq["avg_iq_a"]) > 0.1),
+        ("realtime_scheduler_rows", len(rows_rt) >= 20),
     ]
     for name, passed in checks:
         print(f"{name}: {'OK' if passed else 'NG'}")
@@ -368,10 +537,12 @@ def run_self_test() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true", help="run built-in simulation checks")
-    parser.add_argument("--scenario", choices=["conventions", "step", "snapshot"], default="conventions")
+    parser.add_argument("--scenario", choices=["conventions", "step", "snapshot", "realtime"], default="conventions")
     parser.add_argument("--model", choices=["simple", "dq"], default="simple")
     parser.add_argument("--angle-mode", choices=["raw_pos_add", "raw_pos_sub", "raw_neg_add", "raw_neg_sub", "legacy"], default="raw_neg_add")
     parser.add_argument("--speed-rps", type=float, default=20.0)
+    parser.add_argument("--speed-rps-m0", type=float, default=20.0)
+    parser.add_argument("--speed-rps-m1", type=float, default=20.0)
     parser.add_argument("--duration-s", type=float, default=1.0)
     parser.add_argument("--zero", type=float, default=1.2)
     parser.add_argument("--encoder-direction", type=int, choices=[-1, 1], default=-1)
@@ -385,6 +556,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ud-v", type=float, default=0.0)
     parser.add_argument("--battery-v", type=float, default=24.0)
     parser.add_argument("--pwm-period", type=int, default=1800)
+    parser.add_argument("--initial-theta-m0", type=float, default=0.3)
+    parser.add_argument("--initial-theta-m1", type=float, default=0.6)
     return parser.parse_args()
 
 
@@ -394,6 +567,8 @@ def main() -> int:
         return run_self_test()
     if args.scenario == "snapshot":
         return run_snapshot(args)
+    if args.scenario == "realtime":
+        return run_realtime(args)
     if args.scenario == "step":
         return run_step(args)
     return run_conventions(args)
