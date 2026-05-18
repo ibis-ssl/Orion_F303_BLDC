@@ -11,6 +11,7 @@
 float focControlRawPositiveElectricalAngle(int raw);
 float focControlRawNegativeElectricalAngle(int raw);
 float focControlBaseElectricalAngle(bool motor);
+float focControlPhaseAdvanceModel(float speed_rps);
 float focControlPhaseAdvance(float speed_rps);
 float focControlAxisOffset(void);
 float focControlTorqueSign(void);

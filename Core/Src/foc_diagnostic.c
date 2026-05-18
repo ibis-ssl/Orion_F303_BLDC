@@ -134,13 +134,14 @@ void printFocDiagnosticAngleState(void)
     const float foc_base = focNormalizeAngle(raw_neg + snapshot[i].zero_calib + sys.manual_offset_radian);
     const float axis_offset = focControlAxisOffset();
     const float foc_axis = focNormalizeAngle(foc_base + axis_offset);
-    const float phase_model = focControlPhaseAdvance(snapshot[i].cmd_speed);
-    const float phase_used = (snapshot[i].cmd_speed < 0.0f) ? -phase_model : phase_model;
+    const float phase_model = focControlPhaseAdvanceModel(snapshot[i].cmd_speed);
+    const float phase_total = focControlPhaseAdvance(snapshot[i].cmd_speed);
+    const float phase_used = (snapshot[i].cmd_speed < 0.0f) ? -phase_total : phase_total;
     const float foc_used = focNormalizeAngle(foc_axis + phase_used);
     const float legacy = focNormalizeAngle(snapshot[i].legacy_output_radian + snapshot[i].zero_calib + sys.manual_offset_radian);
     const float voltage_q = focControlTorqueSign() * snapshot[i].out_v_final;
 
-    p("[FOC ANG] M%u raw %5d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f axis %+5.2f used %+6.3f adv %+5.1fdeg cmd %+6.1f rps %+6.1f uq %+4.1f\n",
+    p("[FOC ANG] M%u raw %5d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f axis %+5.2f used %+6.3f advM %+5.1f advT %+5.1f advU %+5.1f cmd %+6.1f rps %+6.1f uq %+4.1f\n",
       i,
       snapshot[i].raw,
       raw_pos,
@@ -150,6 +151,8 @@ void printFocDiagnosticAngleState(void)
       foc_base,
       axis_offset,
       foc_used,
+      phase_model * FOC_DIAG_RAD_TO_DEG,
+      focControlGetPhaseAdvanceTrim() * FOC_DIAG_RAD_TO_DEG,
       phase_used * FOC_DIAG_RAD_TO_DEG,
       snapshot[i].cmd_speed,
       snapshot[i].real_rps,

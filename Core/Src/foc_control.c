@@ -68,10 +68,15 @@ float focControlBaseElectricalAngle(bool motor)
     + sys.manual_offset_radian);
 }
 
-float focControlPhaseAdvance(float speed_rps)
+float focControlPhaseAdvanceModel(float speed_rps)
 {
   const float model = FOC_CONTROL_PHASE_ADVANCE_MODEL_RAD_PER_RPS * fabsf(speed_rps);
-  return clampFocControlPhaseAdvance(model + foc_control_phase_advance_trim_rad);
+  return clampFocControlPhaseAdvance(model);
+}
+
+float focControlPhaseAdvance(float speed_rps)
+{
+  return clampFocControlPhaseAdvance(focControlPhaseAdvanceModel(speed_rps) + foc_control_phase_advance_trim_rad);
 }
 
 float focControlAxisOffset(void)
