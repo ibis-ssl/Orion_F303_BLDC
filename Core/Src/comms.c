@@ -171,8 +171,12 @@ void receiveUserSerialCommand(void)
         sys.free_wheel_cnt = 0;
         sys.zero_output_sleep_cnt = 0;
 
+        cmd[0].speed = 0;
+        cmd[1].speed = 0;
         cmd[0].out_v = 0;
         cmd[1].out_v = 0;
+        cmd[0].out_v_final = 0;
+        cmd[1].out_v_final = 0;
         resumePwmOutput();
         break;
       case 'q':
