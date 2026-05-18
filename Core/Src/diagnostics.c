@@ -51,7 +51,15 @@ void runIoCheckOnce(void)
 
   p("ADC raw CS %4d %4d Batt %4d GD %4d FET %4d %4d MotorT %4d %4d Off %4d\n", adc_raw.cs_motor[0], adc_raw.cs_motor[1], adc_raw.batt_v, adc_raw.gd_dcdc_v, adc_raw.temp_fet[0], adc_raw.temp_fet[1],
     adc_raw.temp_motor[0], adc_raw.temp_motor[1], adc_raw.cs_adc_offset);
-  p("ADC val CS %+6.3f %+6.3f Batt %5.2f GD %5.2f FET %3d %3d MotorT %3d %3d\n", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage(), getGateDriverDCDCVoltage(), getTempFET(0), getTempFET(1),
+  p("ADC val CS %+6.3f %+6.3f Avg %+6.3f %+6.3f Batt %5.2f GD %5.2f FET %3d %3d MotorT %3d %3d\n",
+    getCurrentMotor(0),
+    getCurrentMotor(1),
+    getCurrentMotorAverage(0),
+    getCurrentMotorAverage(1),
+    getBatteryVoltage(),
+    getGateDriverDCDCVoltage(),
+    getTempFET(0),
+    getTempFET(1),
     getTempMotor(0), getTempMotor(1));
   waitPrintDrain();
 
@@ -87,7 +95,12 @@ void printRuntimeDiagnostics(void)
   switch (sys.print_cnt) {
     case 1:
       // p("M0raw %6d M1raw %6d ", as5047p[0].enc_raw, as5047p[1].enc_raw);
-      p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage());
+      p("\e[0mCS %+5.2f %+5.2f Avg %+5.2f %+5.2f / BV %4.1f ",
+        getCurrentMotor(0),
+        getCurrentMotor(1),
+        getCurrentMotorAverage(0),
+        getCurrentMotorAverage(1),
+        getBatteryVoltage());
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
     case 2:

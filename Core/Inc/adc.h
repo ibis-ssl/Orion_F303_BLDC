@@ -62,6 +62,7 @@ float getGateDriverDCDCVoltage(void);
 bool isNotZeroCurrent();
 
 float getCurrentMotor(bool motor);
+float getCurrentMotorAverage(bool motor);
 int getTempFET(bool motor);
 int getTempMotor(bool motor);
 void updateADC(bool motor);

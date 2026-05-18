@@ -168,9 +168,12 @@ void receiveUserSerialCommand(void)
         calib_process.enc_calib_cnt = 0;
         calib_process.motor_calib_cnt = 0;
         sys.manual_offset_radian = 0;
+        sys.free_wheel_cnt = 0;
+        sys.zero_output_sleep_cnt = 0;
 
         cmd[0].out_v = 0;
         cmd[1].out_v = 0;
+        resumePwmOutput();
         break;
       case 'q':
         sys.manual_offset_radian += 0.01;
