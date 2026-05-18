@@ -172,6 +172,13 @@ ADC34の非同期クロックはPLL直結を避け、PLL/2の48MHzにする。AD
 
 CANはAPB1=24MHzに合わせ、Prescaler=3、BS1=5TQ、BS2=2TQ、SJW=1TQで1Mbpsにする。旧72MHz設定はAPB1=36MHz、Prescaler=4、BS1=4TQ、BS2=4TQで1Mbpsだったため、CAN設定を戻すと96MHz設定では約667kbpsへ落ちる。
 
+## TIM割り込み高速化
+30kHz制御周期への移行を見据え、TIM割り込み内の処理はHAL呼び出しを避ける。ADC injected結果は `JDRx` を直接読み、次回変換開始は `ISR` のJEOC/JEOSをクリアして `CR.JADSTART` を立てる。電流値は毎割り込み更新するが、温度、バッテリ電圧、ゲートドライバ電圧は `ADC_SLOW_SAMPLE_INTERVAL=8` で間引いてコピーし、電圧換算値はキャッシュする。
+
+通常FOC出力は `ud=0` の電圧FOC専用パスを使う。汎用の相電圧構造体生成と角度正規化を通さず、`uq`、電気角、バッテリ電圧からPWM比較値を直接作る。`fast_sin()` は負角でもテーブルmaskで折り返せる実装にし、通常制御では `focNormalizeAngle()` を避ける。
+
+AS5047Pの角度差ピーク記録は診断用であり、通常の速度計算には使わない。割り込み負荷を下げるため、`diff_enc` は毎回更新しつつ、`diff_min/max` のabs比較は16回に1回へ間引く。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 

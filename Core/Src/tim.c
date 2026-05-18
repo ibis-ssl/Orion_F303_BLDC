@@ -312,8 +312,8 @@ float get_sin_table(uint16_t idx)
 
 inline float fast_sin(float rad)
 {
-  // keep bitmask-based wrap but align scale to table size to avoid index shift
-  return rad_to_sin_cnv_array[(uint16_t)(((rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f))) & SIN_TABLE_MASK];
+  const int32_t idx = (int32_t)(rad * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f));
+  return rad_to_sin_cnv_array[(uint32_t)idx & SIN_TABLE_MASK];
 }
 
 void setPwmAll(uint32_t pwm_cnt)

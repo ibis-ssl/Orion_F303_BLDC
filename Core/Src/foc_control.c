@@ -63,7 +63,7 @@ float focControlRawNegativeElectricalAngle(int raw)
 float focControlBaseElectricalAngle(bool motor)
 {
   const uint8_t motor_idx = motor ? 1U : 0U;
-  return focNormalizeAngle(focControlRawNegativeElectricalAngle(as5047p[motor_idx].enc_raw)
+  return (as5047p[motor_idx].output_radian
     + enc_offset[motor_idx].zero_calib
     + sys.manual_offset_radian);
 }
@@ -116,7 +116,7 @@ void focControlApplyVoltage(bool motor, float output_voltage, float speed_rps, f
   float electrical = focControlBaseElectricalAngle(motor) + FOC_CONTROL_AXIS_OFFSET_RAD;
   const float phase_advance = focControlPhaseAdvance(speed_rps);
   electrical += (speed_rps < 0.0f) ? -phase_advance : phase_advance;
-  focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical, getBatteryVoltage());
+  focDriverApplySineVoltageUq(motor, voltage_q, electrical, getBatteryVoltage());
 }
 
 void focControlApplyFixedAngleVoltage(bool motor, float electrical_angle, float output_voltage, float voltage_limit)
@@ -127,5 +127,5 @@ void focControlApplyFixedAngleVoltage(bool motor, float electrical_angle, float 
     focDriverSetPwmCompare(motor, center);
     return;
   }
-  focDriverApplySineVoltage(motor, voltage_q, 0.0f, electrical_angle, getBatteryVoltage());
+  focDriverApplySineVoltageUq(motor, voltage_q, electrical_angle, getBatteryVoltage());
 }

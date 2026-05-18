@@ -22,7 +22,10 @@
 /* USER CODE BEGIN 0 */
 #include <stdlib.h>
 
+#define AS5047P_DIFF_PEAK_INTERVAL (16U)
+
 as5047p_t as5047p[2];
+static uint8_t as5047p_diff_peak_div[2];
 /* USER CODE END 0 */
 
 SPI_HandleTypeDef hspi1;
@@ -129,6 +132,12 @@ static inline void updateDiff(bool enc)
   }
 
   as5047p[enc].diff_enc = temp;
+
+  as5047p_diff_peak_div[enc]++;
+  if (as5047p_diff_peak_div[enc] < AS5047P_DIFF_PEAK_INTERVAL) {
+    return;
+  }
+  as5047p_diff_peak_div[enc] = 0U;
 
   if (abs(as5047p[enc].diff_max) < abs(temp)) {
     as5047p[enc].diff_max = temp;

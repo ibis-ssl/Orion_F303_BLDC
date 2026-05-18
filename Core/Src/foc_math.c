@@ -136,3 +136,53 @@ foc_pwm_compare_t focPhaseVoltageToCompare(foc_phase_voltage_t phase, float volt
 
   return cmp;
 }
+
+foc_pwm_compare_t focBuildSinePwmUq(float uq, float angle_el, float voltage_power_supply, uint16_t pwm_period)
+{
+  foc_pwm_compare_t cmp = {0};
+  if (voltage_power_supply <= 0.0f || pwm_period == 0U) {
+    cmp.limited = true;
+    return cmp;
+  }
+
+  const float half_supply = voltage_power_supply * 0.5f;
+  uq = focLimitSymmetric(uq, half_supply);
+
+  const float sin_el = fast_sin(angle_el);
+  const float cos_el = fast_sin(angle_el + (float)M_PI * 0.5f);
+  const float ualpha = -sin_el * uq;
+  const float ubeta = cos_el * uq;
+  const float scale = (float)pwm_period / voltage_power_supply;
+
+  float v = ualpha + half_supply;
+  if (v < 0.0f) {
+    v = 0.0f;
+    cmp.limited = true;
+  } else if (v > voltage_power_supply) {
+    v = voltage_power_supply;
+    cmp.limited = true;
+  }
+  cmp.a = (uint16_t)(v * scale);
+
+  v = -0.5f * ualpha - FOC_SQRT3_2 * ubeta + half_supply;
+  if (v < 0.0f) {
+    v = 0.0f;
+    cmp.limited = true;
+  } else if (v > voltage_power_supply) {
+    v = voltage_power_supply;
+    cmp.limited = true;
+  }
+  cmp.b = (uint16_t)(v * scale);
+
+  v = -0.5f * ualpha + FOC_SQRT3_2 * ubeta + half_supply;
+  if (v < 0.0f) {
+    v = 0.0f;
+    cmp.limited = true;
+  } else if (v > voltage_power_supply) {
+    v = voltage_power_supply;
+    cmp.limited = true;
+  }
+  cmp.c = (uint16_t)(v * scale);
+
+  return cmp;
+}

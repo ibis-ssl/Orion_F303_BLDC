@@ -27,6 +27,8 @@
 #define ADC_TEMP_FILTER_ALPHA (0.02f)
 #define ADC_TEMP_VALID_MIN_C (-20.0f)
 #define ADC_TEMP_VALID_MAX_C (119.0f)
+#define ADC_ISR_PROFILING_PIN (0)
+#define ADC_SLOW_SAMPLE_INTERVAL (8U)
 
 adc_raw_t adc_raw;
 static float adc_current_filtered[2];
@@ -35,6 +37,9 @@ static float adc_temp_fet_filtered[2] = {25.0f, 25.0f};
 static float adc_temp_motor_filtered[2] = {25.0f, 25.0f};
 static bool adc_temp_fet_valid[2] = {false, false};
 static bool adc_temp_motor_valid[2] = {false, false};
+static uint8_t adc_slow_sample_div[2];
+static float adc_battery_voltage = 0.0f;
+static float adc_gate_driver_dcdc_voltage = 0.0f;
 /* USER CODE END 0 */
 
 ADC_HandleTypeDef hadc1;
@@ -450,9 +455,14 @@ static inline float adcCurrentFromRaw(int raw)
   return (raw - adc_raw.cs_adc_offset) * 3.3f / 4096.0f * 8.0f;
 }
 
+static inline float adcCurrentFromRawFloat(float raw)
+{
+  return (raw - (float)adc_raw.cs_adc_offset) * 3.3f / 4096.0f * 8.0f;
+}
+
 static inline void adcUpdateCurrentFilter(uint8_t motor)
 {
-  const float sample = adcCurrentFromRaw(adc_raw.cs_motor[motor]);
+  const float sample = (float)adc_raw.cs_motor[motor];
   if (!adc_current_valid[motor]) {
     adc_current_filtered[motor] = sample;
     adc_current_valid[motor] = true;
@@ -463,38 +473,74 @@ static inline void adcUpdateCurrentFilter(uint8_t motor)
 
 inline float getBatteryVoltage(void)
 {
-  return adc_raw.batt_v * 3.3 * 11 / 4096;
+  return adc_battery_voltage;
 }
 
 inline float getGateDriverDCDCVoltage(void)
 {
-  return (adc_raw.gd_dcdc_v) * 3.3 * 11 / 4096;
+  return adc_gate_driver_dcdc_voltage;
 }
 
 // timer割り込みの中で更新する
+static inline void adcProfilePinSet(void)
+{
+#if ADC_ISR_PROFILING_PIN
+  GPIOC->BSRR = GPIO_PIN_13;
+#endif
+}
+
+static inline void adcProfilePinReset(void)
+{
+#if ADC_ISR_PROFILING_PIN
+  GPIOC->BSRR = (uint32_t)GPIO_PIN_13 << 16U;
+#endif
+}
+
+static inline void adcInjectedStartFast(ADC_TypeDef * adc)
+{
+  adc->ISR = ADC_ISR_JEOC | ADC_ISR_JEOS;
+  adc->CR |= ADC_CR_JADSTART;
+}
+
+static inline bool adcShouldUpdateSlow(uint8_t motor)
+{
+  adc_slow_sample_div[motor]++;
+  if (adc_slow_sample_div[motor] >= ADC_SLOW_SAMPLE_INTERVAL) {
+    adc_slow_sample_div[motor] = 0U;
+    return true;
+  }
+  return false;
+}
+
 static inline void updateADC_M1(void)
 {
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-  adc_raw.cs_motor[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_1);
+  adcProfilePinSet();
+  adc_raw.cs_motor[0] = (int)hadc1.Instance->JDR1;
   adcUpdateCurrentFilter(0U);
-  adc_raw.temp_motor[0] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_2);
-  adc_raw.temp_motor[1] = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_3);
-  adc_raw.gd_dcdc_v = HAL_ADCEx_InjectedGetValue(&hadc1, ADC_INJECTED_RANK_4);
-  HAL_ADCEx_InjectedStart(&hadc1);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  if (adcShouldUpdateSlow(0U)) {
+    adc_raw.temp_motor[0] = (int)hadc1.Instance->JDR2;
+    adc_raw.temp_motor[1] = (int)hadc1.Instance->JDR3;
+    adc_raw.gd_dcdc_v = (int)hadc1.Instance->JDR4;
+    adc_gate_driver_dcdc_voltage = (float)adc_raw.gd_dcdc_v * 3.3f * 11.0f / 4096.0f;
+  }
+  adcInjectedStartFast(hadc1.Instance);
+  adcProfilePinReset();
 }
 
 static inline void updateADC_M0(void)
 {
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
-  adc_raw.batt_v = HAL_ADCEx_InjectedGetValue(&hadc3, ADC_INJECTED_RANK_1);
-  adc_raw.cs_motor[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_1);
+  adcProfilePinSet();
+  adc_raw.cs_motor[1] = (int)hadc2.Instance->JDR1;
   adcUpdateCurrentFilter(1U);
-  adc_raw.temp_fet[0] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_2);
-  adc_raw.temp_fet[1] = HAL_ADCEx_InjectedGetValue(&hadc2, ADC_INJECTED_RANK_3);
-  HAL_ADCEx_InjectedStart(&hadc2);
-  HAL_ADCEx_InjectedStart(&hadc3);
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  if (adcShouldUpdateSlow(1U)) {
+    adc_raw.batt_v = (int)hadc3.Instance->JDR1;
+    adc_raw.temp_fet[0] = (int)hadc2.Instance->JDR2;
+    adc_raw.temp_fet[1] = (int)hadc2.Instance->JDR3;
+    adc_battery_voltage = (float)adc_raw.batt_v * 3.3f * 11.0f / 4096.0f;
+  }
+  adcInjectedStartFast(hadc2.Instance);
+  adcInjectedStartFast(hadc3.Instance);
+  adcProfilePinReset();
 }
 
 bool isNotZeroCurrent()
@@ -514,7 +560,7 @@ inline float getCurrentMotor(bool motor)
 
 inline float getCurrentMotorAverage(bool motor)
 {
-  return adc_current_filtered[motor];
+  return adcCurrentFromRawFloat(adc_current_filtered[motor]);
 }
 
 static float adcTempFromRaw(int raw)

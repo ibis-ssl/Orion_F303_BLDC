@@ -28,8 +28,19 @@ foc_pwm_compare_t focDriverBuildSinePwm(float uq, float ud, float angle_el, floa
   return focPhaseVoltageToCompare(phase, voltage_power_supply, FOC_PWM_PERIOD);
 }
 
+foc_pwm_compare_t focDriverBuildSinePwmUq(float uq, float angle_el, float voltage_power_supply)
+{
+  return focBuildSinePwmUq(uq, angle_el, voltage_power_supply, FOC_PWM_PERIOD);
+}
+
 void focDriverApplySineVoltage(bool motor, float uq, float ud, float angle_el, float voltage_power_supply)
 {
   foc_pwm_compare_t compare = focDriverBuildSinePwm(uq, ud, angle_el, voltage_power_supply);
+  focDriverSetPwmCompare(motor, compare);
+}
+
+void focDriverApplySineVoltageUq(bool motor, float uq, float angle_el, float voltage_power_supply)
+{
+  foc_pwm_compare_t compare = focBuildSinePwmUq(uq, angle_el, voltage_power_supply, FOC_PWM_PERIOD);
   focDriverSetPwmCompare(motor, compare);
 }
