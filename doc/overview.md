@@ -170,6 +170,8 @@ SPI1はAPB2=48MHz、Prescaler=/4により12MHzで動作する。AS5047Pの公称
 
 ADC34の非同期クロックはPLL直結を避け、PLL/2の48MHzにする。ADC1/2は従来通りPCLK同期/2で動作するため、APB2=48MHzでは24MHzになる。
 
+CANはAPB1=24MHzに合わせ、Prescaler=3、BS1=5TQ、BS2=2TQ、SJW=1TQで1Mbpsにする。旧72MHz設定はAPB1=36MHz、Prescaler=4、BS1=4TQ、BS2=4TQで1Mbpsだったため、CAN設定を戻すと96MHz設定では約667kbpsへ落ちる。
+
 ## 診断と安全チェック
 UART `i` で非回転I/Oチェックを実行する。実行時は速度指令と出力電圧を0にし、PWMをフリーウィールへ落としてから、スイッチ、ADC raw/換算値、AS5047P raw/診断レジスタ、PWM CCR/CCER/BDTR、CAN/Flash状態を出力する。実機で回転指令を入れる前のベンチ確認に使う。
 
