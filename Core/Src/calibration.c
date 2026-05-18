@@ -494,3 +494,26 @@ void startCalibrationMode(void)
 
   // main : runMode()
 }
+
+void startMotorCalibrationMode(void)
+{
+  p("motor calibration mode!\n");
+
+  calib_process.enc_calib_cnt = 0U;
+  calib_process.motor_calib_mode = MOTOR_CALIB_STAGE_INIT;
+  calib_process.motor_calib_cnt = 1U;
+  calib_process.motor_calib_voltage = 0.0f;
+  sys.manual_offset_radian = 0.0f;
+
+  cmd[0].speed = 0.0f;
+  cmd[1].speed = 0.0f;
+  cmd[0].out_v = 0.0f;
+  cmd[1].out_v = 0.0f;
+  cmd[0].out_v_final = 0.0f;
+  cmd[1].out_v_final = 0.0f;
+  calib[0].rps_integral = 0.0f;
+  calib[1].rps_integral = 0.0f;
+
+  setPwmAll(TIM_PWM_CENTER);
+  resumePwmOutput();
+}

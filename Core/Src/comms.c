@@ -158,6 +158,10 @@ void receiveUserSerialCommand(void)
         p("\n\nstart calib mode!\n\n");
         startCalibrationMode();
         break;
+      case 'm':
+        p("\n\nstart motor calib mode only!\n\n");
+        startMotorCalibrationMode();
+        break;
       case 'n':
         p("run mode!\n");
 
