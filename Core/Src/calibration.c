@@ -10,6 +10,7 @@
 #include "adc.h"
 #include "app_context.h"
 #include "flash.h"
+#include "foc_control.h"
 #include "motor.h"
 #include "tim.h"
 #include "usart.h"
@@ -152,7 +153,7 @@ void calibrationProcess_itr(bool motor)
 {
   updateADC(motor);
   updateAS5047P(motor);
-  setOutputRadianMotor(motor, enc_calib_output_radian, ENC_CALIB_VOLTAGE, getBatteryVoltage(), MOTOR_CALIB_VOLTAGE_HIGH);
+  focControlApplyFixedAngleVoltage(motor, enc_calib_output_radian, ENC_CALIB_VOLTAGE, MOTOR_CALIB_VOLTAGE_HIGH);
 }
 
 void encoderCalibrationMode(void)
@@ -347,7 +348,7 @@ void motorCalibrationMode(void)
       cmd[i].out_v = 0;
     }
 
-    setFinalOutputVoltage(&cmd[i], &enc_offset[i], sys.manual_offset_radian);  // select Vq-offset angle
+    cmd[i].out_v_final = cmd[i].out_v;
   }
 
   if (calib_process.motor_calib_cnt == 1) {

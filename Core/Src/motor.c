@@ -1,8 +1,6 @@
-/*
- * motor.c
- *
- * Builds output voltage and encoder electrical-angle offsets from speed commands,
- * and updates encoder-based speed estimates. PWM generation is handled by tim.c.
+/**
+ * @file motor.c
+ * @brief Builds output voltage commands from speed commands and updates encoder speed estimates.
  */
 #include "motor.h"
 
@@ -51,37 +49,9 @@ void speedToOutputVoltage(motor_pid_control_t * pid, motor_real_t * real, motor_
 {
   updateEffectiveVoltage(pid, real, param);
 
-  /*
-   * Legacy control does not use the local PID terms here. It limits the voltage
-   * command by the difference from the effective voltage estimated from speed.
-   */
   updateCommandVoltageFromSpeed(param, cmd);
   limitOutputVoltageDiff(pid, cmd);
   updateLoadLimitCounter(pid);
-}
-
-// Legacy control represents voltage sign by selecting an electrical-angle offset.
-// This offset was tuned experimentally and compensates more than ideal q-axis phase.
-#define LEGACY_MINUS_TORQUE_OFFSET_RADIAN (2 * M_PI - ROTATION_OFFSET_RADIAN)
-#define LEGACY_PLUS_TORQUE_OFFSET_RADIAN (ROTATION_OFFSET_RADIAN)
-
-float getLegacyTorqueOffsetRadian(float output_voltage)
-{
-  if (output_voltage < 0.0f) {
-    return LEGACY_MINUS_TORQUE_OFFSET_RADIAN;
-  }
-  return LEGACY_PLUS_TORQUE_OFFSET_RADIAN;
-}
-
-static inline float buildLegacyEncoderOffset(const enc_offset_t * enc_offset, float manual_offset, float torque_offset)
-{
-  return enc_offset->zero_calib + manual_offset + torque_offset;
-}
-
-void setFinalOutputVoltage(motor_control_cmd_t * cmd, enc_offset_t * enc_offset, float manual_offset)
-{
-  cmd->out_v_final = cmd->out_v;
-  enc_offset->final = buildLegacyEncoderOffset(enc_offset, manual_offset, getLegacyTorqueOffsetRadian(cmd->out_v_final));
 }
 
 static inline int calcEncoderRawDiffLegacy(int pre_raw, int current_raw)

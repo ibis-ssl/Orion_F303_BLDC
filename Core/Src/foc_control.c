@@ -116,7 +116,7 @@ void focControlApplyVoltage(bool motor, float output_voltage, float speed_rps, f
 
 void focControlApplyFixedAngleVoltage(bool motor, float electrical_angle, float output_voltage, float voltage_limit)
 {
-  const float voltage_q = clampFocControlVoltage(output_voltage, voltage_limit);
+  const float voltage_q = FOC_CONTROL_TORQUE_SIGN * clampFocControlVoltage(output_voltage, voltage_limit);
   if (voltage_q == 0.0f) {
     foc_pwm_compare_t center = {TIM_PWM_CENTER, TIM_PWM_CENTER, TIM_PWM_CENTER, false};
     focDriverSetPwmCompare(motor, center);
