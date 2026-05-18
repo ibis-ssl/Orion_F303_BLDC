@@ -166,6 +166,9 @@ uint32_t uartGetPrintfCount(void)
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
+  if (huart->Instance != USART1) {
+    return;
+  }
 
   if (sending_first_buf)
   {                            // FIRST buf complete
@@ -173,9 +176,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
     if (second_buf_len > 0 && is_in_printf_func == false)
     { // another buffer?
-      sending_second_buf = true;
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, second_buf_len);
+      const int len = second_buf_len;
       second_buf_len = 0;
+      sending_second_buf = true;
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, len);
     }
   }
   else if (sending_second_buf)
@@ -184,9 +188,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
     if (first_buf_len > 0 && is_in_printf_func == false)
     { // another buffer?
-      sending_first_buf = true;
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, first_buf_len);
+      const int len = first_buf_len;
       first_buf_len = 0;
+      sending_first_buf = true;
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len);
     }
   }
 }
@@ -225,8 +230,12 @@ void p(const char *format, ...)
     va_end(ap);
     if (sending_first_buf == false)
     {
-      second_buf_len = (int)strlen(second_buf);
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, second_buf_len); // 2ms
+      const int len = second_buf_len;
+      second_buf_len = 0;
+      if (len > 0) {
+        sending_second_buf = true;
+        HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, len); // 2ms
+      }
     }
   }
   else if (sending_second_buf)
@@ -236,8 +245,12 @@ void p(const char *format, ...)
 
     if (sending_second_buf == false)
     {
-      first_buf_len = (int)strlen(first_buf);
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, first_buf_len); // 2ms
+      const int len = first_buf_len;
+      first_buf_len = 0;
+      if (len > 0) {
+        sending_first_buf = true;
+        HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len); // 2ms
+      }
     }
   }
   else
