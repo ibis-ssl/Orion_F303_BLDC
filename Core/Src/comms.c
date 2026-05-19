@@ -194,15 +194,15 @@ void receiveUserSerialCommand(void)
         p("offset %+4.2f\n", sys.manual_offset_radian);
         break;
       case 'w':
-        cmd[0].speed += 0.5;
+        cmd[0].speed = clampSize(cmd[0].speed + 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[0].timeout_cnt = -1;
-        cmd[1].speed += 0.5;
+        cmd[1].speed = clampSize(cmd[1].speed + 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[1].timeout_cnt = -1;
         break;
       case 's':
-        cmd[0].speed -= 0.5;
+        cmd[0].speed = clampSize(cmd[0].speed - 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[0].timeout_cnt = -1;
-        cmd[1].speed -= 0.5;
+        cmd[1].speed = clampSize(cmd[1].speed - 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[1].timeout_cnt = -1;
         break;
       case 'e':
