@@ -15,9 +15,9 @@
 #include "tim.h"
 #include "usart.h"
 
-#define MOTOR_CALIB_INIT_CNT (2500)
-#define MOTOR_CALIB_READY_CNT (2000)
-#define MOTOR_CALIB_START_CNT (1500)
+#define MOTOR_CALIB_INIT_CNT (3750)
+#define MOTOR_CALIB_READY_CNT (3000)
+#define MOTOR_CALIB_START_CNT (2250)
 #define MOTOR_CALIB_VOLTAGE_LOW (3.0)
 #define MOTOR_CALIB_VOLTAGE_HIGH (5.0)
 

@@ -194,7 +194,7 @@ void runStartupSequence(void)
     }
 
     interrupt_timer_cnt = 0;
-    while (interrupt_timer_cnt < 20U * 50U) {
+    while (interrupt_timer_cnt < 30U * 50U) {
       if (isNotZeroCurrent() || getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
         forceStopAllPwmOutputAndTimer();
         p("fail check!! Current M0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentMotor(0), getCurrentMotor(1), turn_on_channel);

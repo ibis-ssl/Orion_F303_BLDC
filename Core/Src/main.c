@@ -113,8 +113,8 @@ inline void motorProcess_itr(bool motor)
   focControlApplyVoltage(motor, cmd[motor].out_v_final, cmd[motor].speed, motor_param[motor].output_voltage_limit);
 }
 
-// TIM1 HCLK 96MHz / 2 prescaler / 2400 cnt -> 20kHz interrupt -> 1ms cycle
-#define INTERRUPT_KHZ_1MS (20)
+// TIM1 HCLK 96MHz / 2 prescaler / 1600 cnt -> 30kHz interrupt -> 1ms cycle
+#define INTERRUPT_KHZ_1MS (30)
 volatile uint32_t interrupt_timer_cnt = 0, main_loop_remain_counter = 0;
 volatile uint32_t system_exec_time_stamp[10] = {0};
 
