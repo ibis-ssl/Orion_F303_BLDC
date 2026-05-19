@@ -151,6 +151,12 @@ void receiveUserSerialCommand(void)
       case ']':
         adjustFocDiagnosticPhaseAdvance(0.01745329252f);
         break;
+      case '{':
+        adjustFocDiagnosticPhaseAdvance(-0.00174532925f);
+        break;
+      case '}':
+        adjustFocDiagnosticPhaseAdvance(0.00174532925f);
+        break;
       case 'P':
         resetFocDiagnosticPhaseAdvance();
         break;

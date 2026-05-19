@@ -43,3 +43,4 @@
 *.bin
 *.pyc
 sim/out/
+Script/Logs
