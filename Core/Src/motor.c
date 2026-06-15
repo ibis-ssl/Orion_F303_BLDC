@@ -91,7 +91,7 @@ static inline void recordEncoderSpeedError(system_t * sys, enc_error_watcher_t *
   enc_error->cnt = diff_cnt;
 }
 
-static inline void updateMotorSpeedValue(motor_real_t * real, const as5047p_t * enc, float rps)
+static inline void updateMotorSpeedValue(motor_real_t * real, const mt6835_t * enc, float rps)
 {
   real->rps = rps;
   real->rps_ave = real->rps_ave * 0.99f + real->rps * 0.01f;
@@ -99,7 +99,7 @@ static inline void updateMotorSpeedValue(motor_real_t * real, const as5047p_t * 
   real->pre_enc_cnt_raw = enc->enc_raw;
 }
 
-int calcMotorSpeed(motor_real_t * real, as5047p_t * enc, system_t * sys, enc_error_watcher_t * enc_error)
+int calcMotorSpeed(motor_real_t * real, mt6835_t * enc, system_t * sys, enc_error_watcher_t * enc_error)
 {
   int diff_cnt = calcEncoderRawDiffLegacy(real->pre_enc_cnt_raw, enc->enc_raw);
   float rps = encoderDiffToRps(diff_cnt);

@@ -63,7 +63,7 @@ float focControlRawNegativeElectricalAngle(int raw)
 float focControlBaseElectricalAngle(bool motor)
 {
   const uint8_t motor_idx = motor ? 1U : 0U;
-  return (as5047p[motor_idx].output_radian
+  return (mt6835[motor_idx].output_radian
     + enc_offset[motor_idx].zero_calib
     + sys.manual_offset_radian);
 }

@@ -45,13 +45,15 @@ typedef struct
   int enc_elec_raw;
   int pre_enc_raw;
   int diff_enc, diff_min, diff_max, diff_max_cnt, diff_min_cnt;
-  uint32_t spi_error_count;
-  uint16_t last_frame;
-  struct
-  {
-    uint16_t error, prog, diagagc, mag, angleenc, anglecom;
-  } reg;
-} as5047p_t;
+  uint32_t crc_error_count;
+  uint32_t status_error_count;
+  uint32_t undervoltage_count;
+  uint32_t angle_raw_21bit;
+  uint32_t last_frame;
+  uint8_t status;
+  uint8_t last_crc;
+  uint8_t calculated_crc;
+} mt6835_t;
 
 /* USER CODE END Private defines */
 
@@ -59,11 +61,10 @@ void MX_SPI1_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 
-extern as5047p_t as5047p[2];
+extern mt6835_t mt6835[2];
 
-uint16_t readRegisterAS5047P(bool enc, uint16_t address);
-void updateAS5047P(bool motor);
-void updateAS5047PDiagnostics(bool motor);
+void updateMT6835(bool motor);
+void updateMT6835Diagnostics(bool motor);
 
 /* USER CODE END Prototypes */
 

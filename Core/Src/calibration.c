@@ -152,7 +152,7 @@ static void startEncoderCalibSettle(void)
 void calibrationProcess_itr(bool motor)
 {
   updateADC(motor);
-  updateAS5047P(motor);
+  updateMT6835(motor);
   focControlApplyFixedAngleVoltage(motor, enc_calib_output_radian, ENC_CALIB_VOLTAGE, MOTOR_CALIB_VOLTAGE_HIGH);
 }
 
@@ -183,7 +183,7 @@ void encoderCalibrationMode(void)
   }
 
   for (uint8_t m = 0U; m < 2U; m++) {
-    const float point_zero = normalizeAngle(enc_calib_state.electrical_angle - as5047p[m].output_radian);
+    const float point_zero = normalizeAngle(enc_calib_state.electrical_angle - mt6835[m].output_radian);
     enc_calib_state.point_zero_sin_sum[m] += sinf(point_zero);
     enc_calib_state.point_zero_cos_sum[m] += cosf(point_zero);
     enc_calib_state.point_zero_count[m]++;
@@ -228,7 +228,7 @@ void encoderCalibrationMode(void)
       }
     }
 
-    raw_log[m] = as5047p[m].enc_raw;
+    raw_log[m] = mt6835[m].enc_raw;
     zero_mdeg_log[m] = (int)(point_zero * ENC_CALIB_MDEG_SCALE);
     hyst_mdeg_log[m] = (hysteresis < 0.0f) ? -1 : (int)(hysteresis * ENC_CALIB_MDEG_SCALE);
     enc_calib_state.zero_count[m]++;

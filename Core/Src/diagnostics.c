@@ -43,8 +43,8 @@ void runIoCheckOnce(void)
   updateADC(0);
   updateADC(1);
   adcUpdateTemperatureFilters();
-  updateAS5047P(0);
-  updateAS5047P(1);
+  updateMT6835(0);
+  updateMT6835(1);
 
   p("SW 1:%d 2:%d 3:%d 4:%d\n", isPushedSW1(), isPushedSW2(), isPushedSW3(), isPushedSW4());
   waitPrintDrain();
@@ -64,11 +64,25 @@ void runIoCheckOnce(void)
   waitPrintDrain();
 
   for (int i = 0; i < 2; i++) {
-    updateAS5047PDiagnostics(i);
-    p("ENC M%d raw %5d elec %5d rad %+6.3f diff %+6d min %+6d max %+6d frame 0x%04x spierr %lu\n", i, as5047p[i].enc_raw, as5047p[i].enc_elec_raw, as5047p[i].output_radian, as5047p[i].diff_enc,
-      as5047p[i].diff_min, as5047p[i].diff_max, as5047p[i].last_frame, as5047p[i].spi_error_count);
-    p("ENC M%d reg err 0x%02x prog 0x%02x diag 0x%03x mag 0x%03x enc 0x%03x com 0x%03x\n", i, as5047p[i].reg.error, as5047p[i].reg.prog, as5047p[i].reg.diagagc, as5047p[i].reg.mag,
-      as5047p[i].reg.angleenc, as5047p[i].reg.anglecom);
+    updateMT6835Diagnostics(i);
+    p("ENC M%d raw %5d raw21 %7lu elec %5d rad %+6.3f diff %+6d min %+6d max %+6d\n",
+      i,
+      mt6835[i].enc_raw,
+      mt6835[i].angle_raw_21bit,
+      mt6835[i].enc_elec_raw,
+      mt6835[i].output_radian,
+      mt6835[i].diff_enc,
+      mt6835[i].diff_min,
+      mt6835[i].diff_max);
+    p("ENC M%d frame 0x%08lx status 0x%02x crc %02x/%02x crcErr %lu statusErr %lu uvErr %lu\n",
+      i,
+      mt6835[i].last_frame,
+      mt6835[i].status,
+      mt6835[i].last_crc,
+      mt6835[i].calculated_crc,
+      mt6835[i].crc_error_count,
+      mt6835[i].status_error_count,
+      mt6835[i].undervoltage_count);
     waitPrintDrain();
   }
 
@@ -94,7 +108,7 @@ void printRuntimeDiagnostics(void)
 
   switch (sys.print_cnt) {
     case 1:
-      // p("M0raw %6d M1raw %6d ", as5047p[0].enc_raw, as5047p[1].enc_raw);
+      // p("M0raw %6d M1raw %6d ", mt6835[0].enc_raw, mt6835[1].enc_raw);
       p("\e[0mCS %+5.2f %+5.2f Avg %+5.2f %+5.2f / BV %4.1f ",
         getCurrentMotor(0),
         getCurrentMotor(1),
@@ -107,7 +121,7 @@ void printRuntimeDiagnostics(void)
       p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
       break;
     case 3:
-      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", as5047p[0].enc_raw, as5047p[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
+      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", mt6835[0].enc_raw, mt6835[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
       break;
     case 4:
       //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
@@ -141,13 +155,13 @@ void printRuntimeDiagnostics(void)
       }
       p("Ave %6.4f %6.4f %6.4f %6.4f ", system_exec_time_stamp_ave[0], system_exec_time_stamp_ave[1], system_exec_time_stamp_ave[2], system_exec_time_stamp_ave[3]);
       //p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
-      // p("min %+6d cnt %6d / max %+6d cnt %6d ", as5047p[0].diff_min, as5047p[0].diff_min_cnt, as5047p[0].diff_max, as5047p[0].diff_max_cnt);
+      // p("min %+6d cnt %6d / max %+6d cnt %6d ", mt6835[0].diff_min, mt6835[0].diff_min_cnt, mt6835[0].diff_max, mt6835[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
-      as5047p[0].diff_max = 0;
-      as5047p[0].diff_min = 65535;
-      as5047p[1].diff_max = 0;
-      as5047p[1].diff_min = 65535;
+      mt6835[0].diff_max = 0;
+      mt6835[0].diff_min = 65535;
+      mt6835[1].diff_max = 0;
+      mt6835[1].diff_min = 65535;
       break;
     case 9:
       p("\n");

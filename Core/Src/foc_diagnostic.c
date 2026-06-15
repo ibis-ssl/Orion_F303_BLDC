@@ -115,8 +115,8 @@ void printFocDiagnosticAngleState(void)
 
   __disable_irq();
   for (uint8_t i = 0U; i < 2U; i++) {
-    snapshot[i].raw = as5047p[i].enc_raw;
-    snapshot[i].legacy_output_radian = as5047p[i].output_radian;
+    snapshot[i].raw = mt6835[i].enc_raw;
+    snapshot[i].legacy_output_radian = mt6835[i].output_radian;
     snapshot[i].zero_calib = enc_offset[i].zero_calib;
     snapshot[i].cmd_speed = cmd[i].speed;
     snapshot[i].real_rps = motor_real[i].rps;
@@ -184,7 +184,7 @@ void focDiagnosticMode(void)
 void focDiagnosticProcess_itr(bool motor)
 {
   updateADC(motor);
-  updateAS5047P(motor);
+  updateMT6835(motor);
 
   const uint8_t motor_idx = motor ? 1U : 0U;
   focControlApplyVoltage(motor, cmd[motor_idx].out_v_final, cmd[motor_idx].speed, FOC_DIAG_VOLTAGE_LIMIT);

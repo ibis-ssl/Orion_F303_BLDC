@@ -99,7 +99,7 @@ calib_process_t calib_process;
 static inline void updateMotorSpeedEstimate(void)
 {
   for (int i = 0; i < 2; i++) {
-    int ret = calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
+    int ret = calcMotorSpeed(&motor_real[i], &mt6835[i], &sys, &enc_error_watcher);
     if (ret < 0) {
       p("stop!! speed error");
     }
@@ -109,7 +109,7 @@ static inline void updateMotorSpeedEstimate(void)
 inline void motorProcess_itr(bool motor)
 {
   updateADC(motor);
-  updateAS5047P(motor);
+  updateMT6835(motor);
   focControlApplyVoltage(motor, cmd[motor].out_v_final, cmd[motor].speed, motor_param[motor].output_voltage_limit);
 }
 
