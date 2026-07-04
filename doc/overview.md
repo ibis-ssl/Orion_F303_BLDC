@@ -190,7 +190,7 @@ UARTログはUSART1 TX DMAの二重バッファで送る。送信完了割り込
 
 電流検出は `getCurrentMotor()` が従来通り瞬時値を返し、過電流保護や起動時チェックはこの値を使う。効率計算や調整ログ用には `getCurrentMotorAverage()` を追加し、ADC更新時に `alpha=0.001` のIIR平均を更新する。通常ログの `CS` は瞬時値、`Avg` はノイズを落とした平均値である。平均値は診断用途であり、保護判定へは使わない。
 
-MT6835は通常角度更新と診断更新のどちらもCRC付きburst readを使う。診断読み出し中は短時間だけ割り込みを止め、PWM ISR側のSPIアクセスと競合しないようにする。`last_frame`、受信CRC、計算CRC、status、CRCエラー数、statusエラー数、低電圧数を保持する。CRC不一致または低電圧status時は角度を更新せず、直前の正常値を維持する。
+MT6835は通常角度更新と診断更新のどちらもCRC付きburst readを使う。診断読み出し中は短時間だけ割り込みを止め、PWM ISR側のSPIアクセスと競合しないようにする。`last_frame`、受信CRC、計算CRC、status、CRCエラー数、statusエラー数、低電圧数を保持する。CRC不一致またはstatus非ゼロ時は角度を更新せず、直前の正常値を維持する。連続異常が30回に達した場合は `BLDC_ENC_ERROR` で保護停止する。
 
 ## MT6835エンコーダ
 
@@ -199,7 +199,7 @@ MT6835は通常角度更新と診断更新のどちらもCRC付きburst readを�
 - burst readはcommand `0xA0`、開始レジスタ`0x03`を送信し、21bit角度、3bit status、CRC-8を受信する。
 - CRC-8は多項式 `x^8 + x^2 + x + 1`（poly `0x07`）、初期値`0x00`で、角度/statusの3byteを対象とする。
 - 21bit角度は下位5bitを落として既存制御系の`0..65535`へ変換する。速度、CAN角度、FOC角度のスケールは従来と同じである。
-- status bitはbit0=過速度、bit1=磁界弱、bit2=電源低電圧として保持する。低電圧時は角度更新を拒否する。
+- status bitはbit0=過速度、bit1=磁界弱、bit2=電源低電圧として保持する。status非ゼロ時は角度更新を拒否し、連続異常が30回に達した場合は保護停止する。
 - センサ交換後はエンコーダゼロ角が変わるため、回転指令を入れる前にUART `i` でraw変化、CRCエラー0、status 0を確認し、その後エンコーダ校正を再実行する。
 
 電流センス安全確認の `isNotZeroCurrent()` はM0/M1の両方を見る。温度はADC rawから直接返さず、有効範囲内の値だけを一次ローパスに通したフィルタ値を `getTempFET()` / `getTempMotor()` で返す。

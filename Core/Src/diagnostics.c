@@ -118,7 +118,7 @@ void printRuntimeDiagnostics(void)
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
     case 2:
-      p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
+      p("RPS %+6.3f %+6.3f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
       break;
     case 3:
       p("RAW %5d %5d Out_v %+5.1f %+5.1f ", mt6835[0].enc_raw, mt6835[1].enc_raw, cmd[0].out_v, cmd[1].out_v);

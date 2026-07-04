@@ -48,6 +48,8 @@ typedef struct
   uint32_t crc_error_count;
   uint32_t status_error_count;
   uint32_t undervoltage_count;
+  uint32_t consecutive_error_count;
+  uint32_t successful_update_count;
   uint32_t angle_raw_21bit;
   uint32_t last_frame;
   uint8_t status;
@@ -65,6 +67,8 @@ extern mt6835_t mt6835[2];
 
 void updateMT6835(bool motor);
 void updateMT6835Diagnostics(bool motor);
+bool isMT6835Ready(bool motor);
+bool isMT6835Healthy(bool motor);
 
 /* USER CODE END Prototypes */
 
