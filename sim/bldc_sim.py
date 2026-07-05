@@ -11,7 +11,8 @@ from pathlib import Path
 
 TWO_PI = 2.0 * math.pi
 SQRT3_2 = 0.8660254037844386
-ENC_COUNT = 65536
+ENC_COUNT = 1 << 21
+ENC_MASK = ENC_COUNT - 1
 POLE_PAIRS = 12
 MAD_4006_CUSTOM_KV_RPM_PER_V = 200.0
 MAD_4006_STANDARD_KV_RPM_PER_V = 320.0
@@ -100,11 +101,11 @@ def phase_voltage_to_dq(ua: float, ub: float, uc: float, rotor_angle_el: float, 
 
 def encoder_raw_from_mech(theta_mech: float, direction: int = -1) -> int:
     sensed = theta_mech if direction >= 0 else -theta_mech
-    return int(normalize_angle(sensed) * ENC_COUNT / TWO_PI) & 0xFFFF
+    return int(normalize_angle(sensed) * ENC_COUNT / TWO_PI) & ENC_MASK
 
 
 def raw_to_mech_rad(raw: int) -> float:
-    return float(raw & 0xFFFF) * TWO_PI / float(ENC_COUNT)
+    return float(raw & ENC_MASK) * TWO_PI / float(ENC_COUNT)
 
 
 def raw_pos_electrical(raw: int) -> float:

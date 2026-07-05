@@ -141,7 +141,7 @@ void printFocDiagnosticAngleState(void)
     const float legacy = focNormalizeAngle(snapshot[i].legacy_output_radian + snapshot[i].zero_calib + sys.manual_offset_radian);
     const float voltage_q = focControlTorqueSign() * snapshot[i].out_v_final;
 
-    p("[FOC ANG] M%u raw %5d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f axis %+5.2f used %+6.3f advM %+5.1f advT %+5.1f advU %+5.1f cmd %+6.1f rps %+6.1f uq %+4.1f\n",
+    p("[FOC ANG] M%u raw %7d raw+ %+6.3f raw- %+6.3f zero %+6.3f legacy %+6.3f foc %+6.3f axis %+5.2f used %+6.3f advM %+5.1f advT %+5.1f advU %+5.1f cmd %+6.1f rps %+6.1f uq %+4.1f\n",
       i,
       snapshot[i].raw,
       raw_pos,

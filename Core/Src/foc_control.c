@@ -16,8 +16,7 @@
 #include "spi.h"
 #include "tim.h"
 
-#define FOC_CONTROL_ELEC_CNT (5461)
-#define FOC_CONTROL_ELEC_RAW_TO_RAD (2.0f * (float)M_PI / (float)FOC_CONTROL_ELEC_CNT)
+#define FOC_CONTROL_RAW_TO_RAD (2.0f * (float)M_PI / (float)ENC_CNT_MAX)
 #define FOC_CONTROL_TORQUE_SIGN (-1.0f)
 #define FOC_CONTROL_AXIS_OFFSET_RAD ((float)M_PI * 0.5f)
 #define FOC_CONTROL_PHASE_ADVANCE_MODEL_RAD_PER_RPS (0.00610865238f)
@@ -52,7 +51,8 @@ static inline float clampFocControlVoltage(float voltage, float limit)
 
 float focControlRawPositiveElectricalAngle(int raw)
 {
-  return (float)(raw % FOC_CONTROL_ELEC_CNT) * FOC_CONTROL_ELEC_RAW_TO_RAD;
+  const uint32_t electrical_raw = ((uint32_t)raw * MOTOR_POLE_PAIRS) & (uint32_t)ENC_CNT_MASK;
+  return (float)electrical_raw * FOC_CONTROL_RAW_TO_RAD;
 }
 
 float focControlRawNegativeElectricalAngle(int raw)

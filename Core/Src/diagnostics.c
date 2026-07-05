@@ -65,7 +65,7 @@ void runIoCheckOnce(void)
 
   for (int i = 0; i < 2; i++) {
     updateMT6835Diagnostics(i);
-    p("ENC M%d raw %5d raw21 %7lu elec %5d rad %+6.3f diff %+6d min %+6d max %+6d\n",
+    p("ENC M%d raw %7d raw21 %7lu elec %7d rad %+6.3f diff %+7d min %+7d max %+7d\n",
       i,
       mt6835[i].enc_raw,
       mt6835[i].angle_raw_21bit,
@@ -108,7 +108,7 @@ void printRuntimeDiagnostics(void)
 
   switch (sys.print_cnt) {
     case 1:
-      // p("M0raw %6d M1raw %6d ", mt6835[0].enc_raw, mt6835[1].enc_raw);
+      // p("M0raw %7d M1raw %7d ", mt6835[0].enc_raw, mt6835[1].enc_raw);
       p("\e[0mCS %+5.2f %+5.2f Avg %+5.2f %+5.2f / BV %4.1f ",
         getCurrentMotor(0),
         getCurrentMotor(1),
@@ -121,7 +121,7 @@ void printRuntimeDiagnostics(void)
       p("RPS %+6.3f %+6.3f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
       break;
     case 3:
-      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", mt6835[0].enc_raw, mt6835[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
+      p("RAW %7d %7d Out_v %+5.1f %+5.1f ", mt6835[0].enc_raw, mt6835[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
       break;
     case 4:
       //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
@@ -155,13 +155,13 @@ void printRuntimeDiagnostics(void)
       }
       p("Ave %6.4f %6.4f %6.4f %6.4f ", system_exec_time_stamp_ave[0], system_exec_time_stamp_ave[1], system_exec_time_stamp_ave[2], system_exec_time_stamp_ave[3]);
       //p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
-      // p("min %+6d cnt %6d / max %+6d cnt %6d ", mt6835[0].diff_min, mt6835[0].diff_min_cnt, mt6835[0].diff_max, mt6835[0].diff_max_cnt);
+      // p("min %+7d cnt %7d / max %+7d cnt %7d ", mt6835[0].diff_min, mt6835[0].diff_min_cnt, mt6835[0].diff_max, mt6835[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
       mt6835[0].diff_max = 0;
-      mt6835[0].diff_min = 65535;
+      mt6835[0].diff_min = ENC_CNT_MAX - 1;
       mt6835[1].diff_max = 0;
-      mt6835[1].diff_min = 65535;
+      mt6835[1].diff_min = ENC_CNT_MAX - 1;
       break;
     case 9:
       p("\n");

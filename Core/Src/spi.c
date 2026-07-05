@@ -27,7 +27,8 @@
 #define MT6835_ANGLE_REGISTER (0x03U)
 #define MT6835_STATUS_UNDERVOLTAGE (0x04U)
 #define MT6835_HEALTH_ERROR_LIMIT (30U)
-#define MT6835_RAW_TO_CONTROL_DIRECTION(raw) ((ENC_CNT_MAX - (raw)) % ENC_CNT_MAX)
+#define MT6835_RAW_TO_CONTROL_DIRECTION(raw) ((int)(-(uint32_t)(raw) & (uint32_t)ENC_CNT_MASK))
+#define MT6835_RAW_TO_RAD (2.0f * (float)M_PI / (float)ENC_CNT_MAX)
 
 mt6835_t mt6835[2];
 static uint8_t mt6835_diff_peak_div[2];
@@ -252,9 +253,9 @@ static inline void updateMT6835Common(mt6835_t * enc, uint32_t frame)
 
   enc->pre_enc_raw = enc->enc_raw;
   enc->angle_raw_21bit = ((uint32_t)angle_high << 13U) | ((uint32_t)angle_middle << 5U) | ((uint32_t)angle_low_status >> 3U);
-  enc->enc_raw = MT6835_RAW_TO_CONTROL_DIRECTION((int)(enc->angle_raw_21bit >> 5U));
-  enc->enc_elec_raw = 5461 - (enc->enc_raw % 5461);
-  enc->output_radian = (float)enc->enc_elec_raw / 5461.0f * 2.0f * (float)M_PI;
+  enc->enc_raw = MT6835_RAW_TO_CONTROL_DIRECTION(enc->angle_raw_21bit);
+  enc->enc_elec_raw = (int)(-(uint32_t)((uint32_t)enc->enc_raw * MOTOR_POLE_PAIRS) & (uint32_t)ENC_CNT_MASK);
+  enc->output_radian = (float)enc->enc_elec_raw * MT6835_RAW_TO_RAD;
   enc->consecutive_error_count = 0U;
   enc->successful_update_count++;
 }

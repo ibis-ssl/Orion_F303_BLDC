@@ -109,7 +109,7 @@ void runStartupSequence(void)
   HAL_Delay(1);
   for (int i = 0; i < 2; i++) {
     updateMT6835Diagnostics(i);
-    p("M%d raw %5d raw21 %7lu status 0x%02x crc %02x/%02x crcErr %lu\n",
+    p("M%d raw %7d raw21 %7lu status 0x%02x crc %02x/%02x crcErr %lu\n",
       i,
       mt6835[i].enc_raw,
       mt6835[i].angle_raw_21bit,

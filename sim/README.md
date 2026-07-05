@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario snapshot
 torque = Kt_per_volt * uq_effective - damping * omega - load_torque
 omega += torque / inertia * dt
 theta += omega * dt
-encoder_raw = theta を 0..65535 へ量子化
+encoder_raw = theta を 0..2097151 へ量子化
 ```
 
 このモデルはモータ定数の精密同定ではなく、符号、位相、ゼロ角規約、進角の妥当性確認に使う。
@@ -64,7 +64,7 @@ encoder_raw = theta を 0..65535 へ量子化
    - 初期慣性は、直径10cm、質量1kgの中実円柱相当として `J = 1/2*m*r^2 = 1.25e-3 kg m^2` とする。
 
 4. エンコーダモデル:
-   - 機械角からAS5047P raw相当の `0..65535` を生成する。
+   - 機械角からMT6835 21bit制御用raw相当の `0..2097151` を生成する。
    - 量子化、センサ方向、サンプル遅延、ノイズを持つ。
    - raw差分による速度推定や、1サンプル古い角度をFOCへ入れた場合の影響を確認する。
 

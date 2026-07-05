@@ -264,8 +264,8 @@ void sendCanData(void)
 {
   static int transfer_cnt;
 
-  sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)mt6835[0].enc_raw * 2 * M_PI / 65535);
-  sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)mt6835[1].enc_raw * 2 * M_PI / 65535);
+  sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)mt6835[0].enc_raw * 2 * M_PI / (float)ENC_CNT_MAX);
+  sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)mt6835[1].enc_raw * 2 * M_PI / (float)ENC_CNT_MAX);
 
   switch (transfer_cnt) {
     case 0:
