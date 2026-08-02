@@ -1,5 +1,29 @@
 ﻿# Orion_F303_BLDC 改善方針
 
+## PC用CAN低層ドライバ
+
+`tools/orion_can` に、WeActStudio USB2CANFDV1を使用するPC用Pythonドライバを置く。CANRushのSLCAN接続・フレーム変換を参考にしているが、コードは本リポジトリ内で独立している。
+
+- シリアル設定は1,000,000 baud、CAN nominal bitrateは`S8`（1 Mbit/s）、normal modeとする。
+- Classical CAN、標準11bit ID、最大8 byteを扱う。
+- シリアルポートは単一I/Oワーカーだけが所有し、送信要求、周期送信、受信解析を直列化する。
+- `set_speed()` で設定した速度は20 ms周期で送信する。200 ms更新されなければ、PC側watchdogにより送信値を0 rpsへ落とす。
+- 切断時は登録済みの全モーターへ速度0を複数回送信してからCANチャネルを閉じる。
+- 現行ファームの受信ID実装に合わせ、board IDは0または1、motorは0または1に制限する。
+- 速度payloadはIEEE 754 float32 little endianをbyte 0..3へ格納し、byte 4..7を0、DLCを8とする。
+
+単体テスト:
+
+```powershell
+python -m unittest tools.orion_can.test_driver
+```
+
+実機で速度0送信とテレメトリ受信を確認する例:
+
+```powershell
+python -m tools.orion_can.smoke_test --port COM175 --board 0 --duration 2
+```
+
 ## 目的
 - 可読性と保守性を上げる。
 - リアルタイム制御性能を維持する。
