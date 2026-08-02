@@ -27,6 +27,20 @@ static uint32_t can_rx_cnt = 0;
 static can_msg_buf_t can_rx_buf;
 static CAN_RxHeaderTypeDef can_rx_header;
 
+#define LEGACY_CAN_ENCODER_BITS (14U)
+#define LEGACY_CAN_ENCODER_STORAGE_SHIFT (2U)
+#define LEGACY_CAN_ENCODER_MAX (65535U)
+
+static inline uint32_t encoderRawToLegacyCanRaw(int enc_raw)
+{
+  return ((uint32_t)enc_raw >> (ENC_CNT_BITS - LEGACY_CAN_ENCODER_BITS)) << LEGACY_CAN_ENCODER_STORAGE_SHIFT;
+}
+
+static inline float encoderRawToLegacyCanAngle(int enc_raw)
+{
+  return (float)encoderRawToLegacyCanRaw(enc_raw) * 2 * M_PI / LEGACY_CAN_ENCODER_MAX;
+}
+
 static inline float clampSize(float in, float max)
 {
   if (in > max) {
@@ -264,8 +278,8 @@ void sendCanData(void)
 {
   static int transfer_cnt;
 
-  sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)mt6835[0].enc_raw * 2 * M_PI / (float)ENC_CNT_MAX);
-  sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)mt6835[1].enc_raw * 2 * M_PI / (float)ENC_CNT_MAX);
+  sendSpeed(flash.board_id, 0, motor_real[0].rps, encoderRawToLegacyCanAngle(mt6835[0].enc_raw));
+  sendSpeed(flash.board_id, 1, motor_real[1].rps, encoderRawToLegacyCanAngle(mt6835[1].enc_raw));
 
   switch (transfer_cnt) {
     case 0:
