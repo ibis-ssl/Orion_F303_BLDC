@@ -24,6 +24,14 @@ python -m unittest tools.orion_can.test_driver
 python -m tools.orion_can.smoke_test --port COM175 --board 0 --duration 2
 ```
 
+簡易モーター制御GUI:
+
+```powershell
+python -m tools.orion_can.gui
+```
+
+GUIは接続時に両モーターを0 rpsで初期化する。「運転開始 / 目標を反映」を押すまで非ゼロ指令を送らない。運転中はGUIから50 ms間隔で目標値を更新するため、GUIスレッドが停止すると低層ドライバの200 ms watchdogが送信値を0 rpsへ変更する。「停止（0 rps）」、切断、ウィンドウ終了時には両モーターへ0 rpsを反復送信する。入力可能範囲はファームの`SPEED_CMD_LIMIT_RPS`に合わせて-80～+80 rpsとする。
+
 ## 目的
 - 可読性と保守性を上げる。
 - リアルタイム制御性能を維持する。

@@ -4,6 +4,7 @@ import struct
 import unittest
 
 from .driver import CanFrame, OrionCanDriver, OrionCanError
+from .gui import decode_speed, parse_target
 
 
 class CanFrameTest(unittest.TestCase):
@@ -25,6 +26,18 @@ class CanFrameTest(unittest.TestCase):
     def test_rejects_unsupported_board(self) -> None:
         with self.assertRaises(ValueError):
             OrionCanDriver._validate_motor(2, 0)
+
+    def test_gui_target_validation(self) -> None:
+        self.assertEqual(parse_target("-12.5"), -12.5)
+        with self.assertRaises(ValueError):
+            parse_target("81")
+        with self.assertRaises(ValueError):
+            parse_target("not-a-number")
+
+    def test_speed_telemetry_decode(self) -> None:
+        frame = CanFrame(0x203, struct.pack("<ff", 3.25, 1.0))
+        self.assertEqual(decode_speed(frame, 1), (1, 3.25))
+        self.assertIsNone(decode_speed(frame, 0))
 
 
 if __name__ == "__main__":
