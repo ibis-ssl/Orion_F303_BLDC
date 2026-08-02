@@ -33,6 +33,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         self.targets = [0.0, 0.0]
         self.telemetry = [MotorTelemetry(), MotorTelemetry()]
         self.speed_history: list[deque[tuple[float, float]]] = [deque(), deque()]
+        self.command_history: list[deque[tuple[float, float]]] = [deque(), deque()]
         self.current_history: list[deque[tuple[float, float]]] = [deque(), deque()]
         self.rx_total = 0
 
@@ -125,8 +126,20 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         layout.addWidget(telemetry_group)
 
         self.plot_tabs = QtWidgets.QTabWidget()
-        self.speed_plot, self.speed_curves = self._make_plot("現在速度 [rps]", -MAX_SPEED_RPS, MAX_SPEED_RPS)
-        self.current_plot, self.current_curves = self._make_plot("電流 [A]", -5.0, 5.0)
+        self.speed_plot, self.speed_curves = self._make_plot("速度 [rps]", -MAX_SPEED_RPS, MAX_SPEED_RPS, "現在速度 M")
+        command_colors = ("#64b5f6", "#ffb74d")
+        self.command_curves = [
+            self.speed_plot.plot(
+                name=f"指令速度 M{motor}",
+                pen=pg.mkPen(color, width=1, style=QtCore.Qt.PenStyle.DashLine),
+                antialias=False,
+            )
+            for motor, color in enumerate(command_colors)
+        ]
+        for curve in self.command_curves:
+            curve.setClipToView(True)
+            curve.setSkipFiniteCheck(True)
+        self.current_plot, self.current_curves = self._make_plot("電流 [A]", -5.0, 5.0, "電流 M")
         self.plot_tabs.addTab(self.speed_plot, "現在速度")
         self.plot_tabs.addTab(self.current_plot, "電流")
         layout.addWidget(self.plot_tabs, stretch=1)
@@ -136,7 +149,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         self.resize(900, 850)
 
     @staticmethod
-    def _make_plot(y_label: str, y_min: float, y_max: float) -> tuple[pg.PlotWidget, list[pg.PlotDataItem]]:
+    def _make_plot(y_label: str, y_min: float, y_max: float, series_label: str) -> tuple[pg.PlotWidget, list[pg.PlotDataItem]]:
         plot = pg.PlotWidget()
         plot.setMinimumHeight(450)
         plot.setLabel("bottom", "時刻", units="s")
@@ -148,7 +161,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         colors = ("#1976d2", "#ef6c00")
         curves = []
         for motor, color in enumerate(colors):
-            curve = plot.plot(name=f"Motor {motor}", pen=pg.mkPen(color, width=1), antialias=False)
+            curve = plot.plot(name=f"{series_label}{motor}", pen=pg.mkPen(color, width=1), antialias=False)
             curve.setClipToView(True)
             curve.setDownsampling(ds=1, auto=False, method="peak")
             curve.setSkipFiniteCheck(True)
@@ -230,6 +243,9 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         try:
             if self.running:
                 self._send_targets()
+                commanded_at = time.monotonic()
+                for motor, target in enumerate(self.targets):
+                    self.command_history[motor].append((commanded_at, target))
             for _ in range(MAX_RX_PER_TICK):
                 frame = self.driver.receive(timeout=0)
                 if frame is None:
@@ -266,10 +282,11 @@ class MotorControlWindow(QtWidgets.QMainWindow):
     def _update_plots(self) -> None:
         now = time.monotonic()
         cutoff = now - PLOT_WINDOW_S
-        for history in self.speed_history + self.current_history:
+        for history in self.speed_history + self.command_history + self.current_history:
             while history and history[0][0] < cutoff:
                 history.popleft()
         self._set_curve_data(self.speed_curves, self.speed_history, now)
+        self._set_curve_data(self.command_curves, self.command_history, now)
         self._set_curve_data(self.current_curves, self.current_history, now)
 
     @staticmethod
@@ -283,7 +300,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
 
     def _clear_telemetry(self) -> None:
         self.telemetry = [MotorTelemetry(), MotorTelemetry()]
-        for history in self.speed_history + self.current_history:
+        for history in self.speed_history + self.command_history + self.current_history:
             history.clear()
         self.rx_total = 0
 
