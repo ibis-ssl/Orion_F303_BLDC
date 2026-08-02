@@ -1,0 +1,4 @@
+# Orion PC用CAN GUIの実行依存パッケージ。
+numpy>=2.0,<3
+PySide6>=6.8,<7
+pyqtgraph>=0.14,<0.15

@@ -4,7 +4,8 @@ import struct
 import unittest
 
 from .driver import CanFrame, OrionCanDriver, OrionCanError
-from .gui import decode_speed, parse_target
+from .gui import parse_target
+from .telemetry import MotorTelemetry, angle_rad_to_legacy_raw, apply_telemetry_frame, decode_speed
 
 
 class CanFrameTest(unittest.TestCase):
@@ -38,6 +39,16 @@ class CanFrameTest(unittest.TestCase):
         frame = CanFrame(0x203, struct.pack("<ff", 3.25, 1.0))
         self.assertEqual(decode_speed(frame, 1), (1, 3.25))
         self.assertIsNone(decode_speed(frame, 0))
+
+    def test_decodes_orion_telemetry(self) -> None:
+        telemetry = [MotorTelemetry(), MotorTelemetry()]
+        speed = CanFrame(0x202, struct.pack("<ff", 3.25, 3.141592653589793))
+        current = CanFrame(0x233, struct.pack("<ff", -1.5, 0.0))
+        self.assertTrue(apply_telemetry_frame(speed, 1, telemetry))
+        self.assertTrue(apply_telemetry_frame(current, 1, telemetry))
+        self.assertEqual(telemetry[0].speed_rps, 3.25)
+        self.assertEqual(telemetry[0].encoder_raw, angle_rad_to_legacy_raw(3.141592653589793))
+        self.assertEqual(telemetry[1].current_a, -1.5)
 
 
 if __name__ == "__main__":

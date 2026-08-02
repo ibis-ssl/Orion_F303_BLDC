@@ -27,10 +27,26 @@ python -m tools.orion_can.smoke_test --port COM175 --board 0 --duration 2
 簡易モーター制御GUI:
 
 ```powershell
-python -m tools.orion_can.gui
+python -m pip install -r tools/orion_can/requirements.txt
+python -m tools.orion_can.qt_gui
 ```
 
-GUIは接続時に両モーターを0 rpsで初期化する。「運転開始 / 目標を反映」を押すまで非ゼロ指令を送らない。運転中はGUIから50 ms間隔で目標値を更新するため、GUIスレッドが停止すると低層ドライバの200 ms watchdogが送信値を0 rpsへ変更する。「停止（0 rps）」、切断、ウィンドウ終了時には両モーターへ0 rpsを反復送信する。入力可能範囲はファームの`SPEED_CMD_LIMIT_RPS`に合わせて-80～+80 rpsとする。
+通常使用するGUIはPySide6 + PyQtGraph版の`qt_gui.py`とする。旧Tk Canvas版の`gui.py`は負荷比較とフォールバック用に残す。Qt版もCANドライバ、物理量復号、20 ms周期送信、500 ms GUI watchdog、停止時0 rps反復送信を共用する。プロットへはNumPy配列を渡し、線幅1 px、アンチエイリアス無効、OpenGL有効、表示範囲clip有効、downsampling無効として、直近10秒の全受信点を描画する。
+
+GUIは接続成功時からMotor 0/1の速度スライダ値を自動送信し、以後は0.5 rps刻みの操作を即座に反映する。指定速度と受信した現在速度は別々に表示する。GUIから50 ms間隔で目標値を更新し、GUI用watchdogは全点プロット描画時の一時停止を許容する500 msとする。プロセス停止やCAN断ではファーム側の約100 ms timeoutが引き続き機能する。「停止（0 rps）」、切断、ウィンドウ終了時には両モーターへ0 rpsを反復送信する。入力可能範囲はファームの`SPEED_CMD_LIMIT_RPS`に合わせて-80～+80 rpsとする。CAN受信値は生パケットではなく、モーターごとの回転数、encoder raw、電圧、電流、モーター温度、FET温度へ復号して表示する。CAN上のencoder角度はradであるため、ファームのlegacy 16bit格納値へ逆変換したraw値を表示する。現在速度と電流は受信時刻付きで直近10秒分を保持し、期間内の受信データを間引かず全点プロットする。数値表示は100 ms周期、負荷の高い全点プロット描画は250 ms周期へ分離する。グラフは各450 px高とし、速度／電流タブで切り替える。
+
+### GUI全点プロット負荷の実機計測
+
+`tools/orion_can/load_test.py` はWindows native thread CPU時間を使い、実機運転中のGUIスレッド、CAN I/Oスレッド、全点描画時間、履歴点数、受信キューを1秒周期でCSVへ記録する。試験中にGUIが停止した場合にも、別スレッドの安全タイマーから速度0を送る。
+
+2026-08-03にBoard 1、Motor 0を10 rps、Motor 1を0 rpsとして表示ありGUIを15秒計測した。速度履歴が約7,100点/モーターに達した7.4秒でGUIスレッド98.5%、10秒以降は約97～100%となった。CAN I/Oスレッドは概ね1～5%で、受信キューは最大69 frame程度だった。0 rpsの12秒対照試験でも履歴は約9,700点/モーターに達したが、GUIスレッドは最大約14%だった。受信量ではなく、回転中に値が上下する約2万点の折れ線をTk Canvasが実画面へ描画する処理が主負荷である。`create_line()`呼び出し自体の計測は約11～13 msだが、実画面のラスタライズ処理を含むGUIスレッドは飽和する。水平に近い0 rps波形は描画負荷が小さい。
+
+計測ログ:
+
+- `Log/orion_gui_load_motor0_10rps_15s_visible.csv`: 10 rps、表示あり、15秒。
+- `Log/orion_gui_load_motor0_0rps_12s_visible.csv`: 0 rps、表示あり、12秒の対照条件。
+
+同条件をPySide6 + PyQtGraph版で15秒計測した結果、約9,900速度点/モーターを全点保持した状態でGUIスレッドは最大17.1%、10秒時6.2%、プロット更新は最大8.6 msだった。Tk版で7秒以降に発生したGUIスレッド約100%への飽和は発生しなかった。ログは`Log/orion_qt_gui_load_motor0_10rps_15s_visible.csv`に保存した。
 
 ## 目的
 - 可読性と保守性を上げる。
