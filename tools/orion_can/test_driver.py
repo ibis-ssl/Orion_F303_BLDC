@@ -5,7 +5,7 @@ import unittest
 
 from .driver import CanFrame, OrionCanDriver, OrionCanError
 from .gui import parse_target
-from .telemetry import MotorTelemetry, angle_rad_to_legacy_raw, apply_telemetry_frame, decode_speed
+from .telemetry import MotorTelemetry, angle_rad_to_legacy_raw, apply_telemetry_frame, decode_speed, decode_speed_command
 
 
 class CanFrameTest(unittest.TestCase):
@@ -49,6 +49,32 @@ class CanFrameTest(unittest.TestCase):
         self.assertEqual(telemetry[0].speed_rps, 3.25)
         self.assertEqual(telemetry[0].encoder_raw, angle_rad_to_legacy_raw(3.141592653589793))
         self.assertEqual(telemetry[1].current_a, -1.5)
+
+    def test_decodes_main_board_speed_command(self) -> None:
+        command = CanFrame(0x103, struct.pack("<f", -12.5) + b"\x00" * 4)
+        self.assertEqual(decode_speed_command(command, 1), (1, -12.5))
+        self.assertIsNone(decode_speed_command(command, 0))
+
+    def test_periodic_tx_can_be_fully_paused(self) -> None:
+        class FakePort:
+            def __init__(self) -> None:
+                self.writes: list[bytes] = []
+
+            def write(self, data: bytes) -> None:
+                self.writes.append(data)
+
+            def flush(self) -> None:
+                pass
+
+        driver = OrionCanDriver("unused")
+        driver.set_speed(1, 0, 10.0)
+        port = FakePort()
+        driver.set_periodic_tx_enabled(False)
+        driver._send_periodic(port, 1.0)
+        self.assertEqual(port.writes, [])
+        driver.set_periodic_tx_enabled(True)
+        driver._send_periodic(port, 1.0)
+        self.assertEqual(len(port.writes), 1)
 
 
 if __name__ == "__main__":

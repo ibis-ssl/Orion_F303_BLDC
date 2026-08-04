@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from serial.tools import list_ports
 
 from .driver import OrionCanDriver, OrionCanError
-from .telemetry import MotorTelemetry, apply_telemetry_frame
+from .telemetry import MotorTelemetry, apply_telemetry_frame, decode_speed_command
 
 MAX_SPEED_RPS = 80.0
 PLOT_WINDOW_S = 10.0
@@ -30,10 +30,12 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Orion CAN Motor Control - PyQtGraph")
         self.driver: OrionCanDriver | None = None
         self.running = False
+        self.local_tx_enabled = True
         self.targets = [0.0, 0.0]
         self.telemetry = [MotorTelemetry(), MotorTelemetry()]
         self.speed_history: list[deque[tuple[float, float]]] = [deque(), deque()]
         self.command_history: list[deque[tuple[float, float]]] = [deque(), deque()]
+        self.external_command_history: list[deque[tuple[float, float]]] = [deque(), deque()]
         self.current_history: list[deque[tuple[float, float]]] = [deque(), deque()]
         self.rx_total = 0
 
@@ -140,8 +142,13 @@ class MotorControlWindow(QtWidgets.QMainWindow):
             curve.setClipToView(True)
             curve.setSkipFiniteCheck(True)
         self.current_plot, self.current_curves = self._make_plot("電流 [A]", -5.0, 5.0, "電流 M")
+        self.external_command_plot, self.external_command_curves = self._make_plot(
+            "メイン基板からの速度指令 [rps]", -MAX_SPEED_RPS, MAX_SPEED_RPS, "受信指令 M"
+        )
         self.plot_tabs.addTab(self.speed_plot, "現在速度")
         self.plot_tabs.addTab(self.current_plot, "電流")
+        self.plot_tabs.addTab(self.external_command_plot, "メイン基板指令")
+        self.plot_tabs.currentChanged.connect(self._plot_tab_changed)
         layout.addWidget(self.plot_tabs, stretch=1)
 
         self.status_label = QtWidgets.QLabel("未接続 / 停止")
@@ -189,33 +196,38 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         try:
             driver = OrionCanDriver(port, command_watchdog_s=0.500)
             driver.open()
+            if self._is_external_command_tab():
+                driver.set_periodic_tx_enabled(False)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "接続エラー", str(exc))
             return
         self.driver = driver
         self.running = True
+        self.local_tx_enabled = not self._is_external_command_tab()
         self._clear_telemetry()
         self.targets = [slider.value() * 0.5 for slider in self.speed_sliders]
-        self._send_targets()
+        if self.local_tx_enabled:
+            self._send_targets()
         self.connect_button.setText("切断")
-        self.status_label.setText(f"{port} / Board {self.board_spin.value()} / 接続済み・自動反映中")
+        self._update_connection_status()
 
     def _disconnect(self) -> None:
         driver, self.driver = self.driver, None
         self.running = False
         if driver is not None:
             try:
-                driver.close()
+                driver.close(send_stop=self.local_tx_enabled)
             except Exception as exc:
                 QtWidgets.QMessageBox.warning(self, "切断時エラー", str(exc))
         self.connect_button.setText("接続")
+        self.local_tx_enabled = True
         self.status_label.setText("未接続 / 停止")
 
     def _slider_changed(self, motor: int, slider_value: int) -> None:
         target = slider_value * 0.5
         self.targets[motor] = target
         self.target_labels[motor].setText(f"{target:+.1f} rps")
-        if self.running and self.driver is not None:
+        if self.running and self.local_tx_enabled and self.driver is not None:
             self.driver.set_speed(self.board_spin.value(), motor, target)
 
     def _send_targets(self) -> None:
@@ -229,6 +241,9 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         for slider in self.speed_sliders:
             slider.setValue(0)
         if self.driver is not None:
+            if not self.local_tx_enabled:
+                self.status_label.setText(f"{self.port_combo.currentText()} / Board {self.board_spin.value()} / 受信専用・CAN送信停止中")
+                return
             try:
                 self.driver.stop_all()
                 self.running = True
@@ -241,7 +256,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         if self.driver is None:
             return
         try:
-            if self.running:
+            if self.running and self.local_tx_enabled:
                 self._send_targets()
                 commanded_at = time.monotonic()
                 for motor, target in enumerate(self.targets):
@@ -250,6 +265,11 @@ class MotorControlWindow(QtWidgets.QMainWindow):
                 frame = self.driver.receive(timeout=0)
                 if frame is None:
                     break
+                commanded = decode_speed_command(frame, self.board_spin.value())
+                if commanded is not None:
+                    motor, speed_rps = commanded
+                    self.external_command_history[motor].append((time.monotonic(), speed_rps))
+                    continue
                 update = apply_telemetry_frame(frame, self.board_spin.value(), self.telemetry)
                 if update is None:
                     continue
@@ -261,6 +281,30 @@ class MotorControlWindow(QtWidgets.QMainWindow):
                     self.current_history[update.motor].append((received_at, update.value))
         except OrionCanError as exc:
             self._connection_failed(exc)
+
+    @QtCore.Slot(int)
+    def _plot_tab_changed(self, _index: int) -> None:
+        receive_only = self._is_external_command_tab()
+        self.local_tx_enabled = not receive_only
+        if self.driver is not None:
+            if receive_only:
+                self.driver.set_periodic_tx_enabled(False)
+            else:
+                self._send_targets()
+                self.driver.set_periodic_tx_enabled(True)
+        self._update_connection_status()
+
+    def _is_external_command_tab(self) -> bool:
+        return hasattr(self, "external_command_plot") and self.plot_tabs.currentWidget() is self.external_command_plot
+
+    def _update_connection_status(self) -> None:
+        if self.driver is None:
+            return
+        if self.local_tx_enabled:
+            mode = "接続済み・自動反映中"
+        else:
+            mode = "受信専用・CAN送信停止中"
+        self.status_label.setText(f"{self.port_combo.currentText()} / Board {self.board_spin.value()} / {mode}")
 
     @QtCore.Slot()
     def _update_display(self) -> None:
@@ -282,11 +326,12 @@ class MotorControlWindow(QtWidgets.QMainWindow):
     def _update_plots(self) -> None:
         now = time.monotonic()
         cutoff = now - PLOT_WINDOW_S
-        for history in self.speed_history + self.command_history + self.current_history:
+        for history in self.speed_history + self.command_history + self.external_command_history + self.current_history:
             while history and history[0][0] < cutoff:
                 history.popleft()
         self._set_curve_data(self.speed_curves, self.speed_history, now)
         self._set_curve_data(self.command_curves, self.command_history, now)
+        self._set_curve_data(self.external_command_curves, self.external_command_history, now)
         self._set_curve_data(self.current_curves, self.current_history, now)
 
     @staticmethod
@@ -300,7 +345,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
 
     def _clear_telemetry(self) -> None:
         self.telemetry = [MotorTelemetry(), MotorTelemetry()]
-        for history in self.speed_history + self.command_history + self.current_history:
+        for history in self.speed_history + self.command_history + self.external_command_history + self.current_history:
             history.clear()
         self.rx_total = 0
 

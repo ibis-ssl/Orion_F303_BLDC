@@ -78,6 +78,7 @@ class OrionCanDriver:
         self._rx_queue: queue.Queue[CanFrame] = queue.Queue(maxsize=1024)
         self._target_lock = threading.Lock()
         self._targets: dict[int, tuple[float, float]] = {}
+        self._periodic_tx_enabled = True
         self._error: Exception | None = None
 
     def open(self) -> None:
@@ -95,12 +96,13 @@ class OrionCanDriver:
         self._thread = threading.Thread(target=self._worker, name="orion-can-io", daemon=True)
         self._thread.start()
 
-    def close(self) -> None:
+    def close(self, *, send_stop: bool = True) -> None:
         port = self._serial
         if port is None:
             return
         try:
-            self.stop_all(repetitions=5)
+            if send_stop:
+                self.stop_all(repetitions=5)
         finally:
             self._stop.set()
             if self._thread is not None:
@@ -127,6 +129,11 @@ class OrionCanDriver:
 
     def clear_speed(self, board_id: int, motor: int) -> None:
         self.set_speed(board_id, motor, 0.0)
+
+    def set_periodic_tx_enabled(self, enabled: bool) -> None:
+        """速度指令の周期CAN送信を開始または完全停止する。"""
+        with self._target_lock:
+            self._periodic_tx_enabled = enabled
 
     def stop_all(self, *, repetitions: int = 5) -> None:
         if self._serial is None:
@@ -231,6 +238,8 @@ class OrionCanDriver:
 
     def _send_periodic(self, port: serial.Serial, now: float) -> None:
         with self._target_lock:
+            if not self._periodic_tx_enabled:
+                return
             targets = list(self._targets.items())
         for channel, (speed, updated_at) in targets:
             effective_speed = speed if now - updated_at <= self._watchdog else 0.0

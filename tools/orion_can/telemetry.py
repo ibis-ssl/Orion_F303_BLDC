@@ -32,6 +32,14 @@ def decode_speed(frame: CanFrame, board_id: int) -> tuple[int, float] | None:
     return frame.can_id - base_id, struct.unpack_from("<f", frame.data)[0]
 
 
+def decode_speed_command(frame: CanFrame, board_id: int) -> tuple[int, float] | None:
+    """メイン基板から対象ドライバへ送られる速度指令を復号する。"""
+    base_id = 0x100 + board_id * 2
+    if frame.can_id not in (base_id, base_id + 1) or len(frame.data) != 8:
+        return None
+    return frame.can_id - base_id, struct.unpack_from("<f", frame.data)[0]
+
+
 def angle_rad_to_legacy_raw(angle_rad: float) -> int:
     raw = round(angle_rad * 65535.0 / (2.0 * 3.141592653589793))
     return max(0, min(65535, raw))

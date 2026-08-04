@@ -31,7 +31,7 @@ python -m pip install -r tools/orion_can/requirements.txt
 python -m tools.orion_can.qt_gui
 ```
 
-通常使用するGUIはPySide6 + PyQtGraph版の`qt_gui.py`とする。旧Tk Canvas版の`gui.py`は負荷比較とフォールバック用に残す。Qt版もCANドライバ、物理量復号、20 ms周期送信、500 ms GUI watchdog、停止時0 rps反復送信を共用する。プロットへはNumPy配列を渡し、線幅1 px、アンチエイリアス無効、OpenGL有効、表示範囲clip有効、downsampling無効として、直近10秒の全受信点を描画する。速度プロットにはCANへ周期送信しているMotor 0/1の指令速度を20 ms周期で記録し、現在速度を実線、指令速度を同系色の破線として同じ時間軸へ重ねる。
+通常使用するGUIはPySide6 + PyQtGraph版の`qt_gui.py`とする。旧Tk Canvas版の`gui.py`は負荷比較とフォールバック用に残す。Qt版もCANドライバ、物理量復号、20 ms周期送信、500 ms GUI watchdog、停止時0 rps反復送信を共用する。プロットへはNumPy配列を渡し、線幅1 px、アンチエイリアス無効、OpenGL有効、表示範囲clip有効、downsampling無効として、直近10秒の全受信点を描画する。速度プロットにはCANへ周期送信しているMotor 0/1の指令速度を20 ms周期で記録し、現在速度を実線、指令速度を同系色の破線として同じ時間軸へ重ねる。別の「メイン基板指令」タブでは、対象Board IDの速度指令CAN（`0x100 + board_id * 2 + motor`、float32 little endian）を受信時刻付きで記録し、Motor 0/1を分けてプロットする。GUI自身の指令履歴とは分離して保持する。このタブを選択中はGUIの周期CAN送信をドライバ層でpauseし、watchdogによる0 rpsフレームも含めて送信しない。タブを離れたときだけ現在のスライダ値で周期送信を再開する。受信専用中の停止ボタンと切断もCANデータフレームを送信しない。
 
 GUIは接続成功時からMotor 0/1の速度スライダ値を自動送信し、以後は0.5 rps刻みの操作を即座に反映する。指定速度と受信した現在速度は別々に表示する。GUIから50 ms間隔で目標値を更新し、GUI用watchdogは全点プロット描画時の一時停止を許容する500 msとする。プロセス停止やCAN断ではファーム側の約100 ms timeoutが引き続き機能する。「停止（0 rps）」、切断、ウィンドウ終了時には両モーターへ0 rpsを反復送信する。入力可能範囲はファームの`SPEED_CMD_LIMIT_RPS`に合わせて-80～+80 rpsとする。CAN受信値は生パケットではなく、モーターごとの回転数、encoder raw、電圧、電流、モーター温度、FET温度へ復号して表示する。CAN上のencoder角度はradであるため、ファームのlegacy 16bit格納値へ逆変換したraw値を表示する。現在速度と電流は受信時刻付きで直近10秒分を保持し、期間内の受信データを間引かず全点プロットする。数値表示は100 ms周期、負荷の高い全点プロット描画は250 ms周期へ分離する。グラフは各450 px高とし、速度／電流タブで切り替える。
 
