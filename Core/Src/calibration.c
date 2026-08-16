@@ -156,6 +156,13 @@ void calibrationProcess_itr(bool motor)
   focControlApplyFixedAngleVoltage(motor, enc_calib_output_radian, ENC_CALIB_VOLTAGE, MOTOR_CALIB_VOLTAGE_HIGH);
 }
 
+void motorCalibrationProcess_itr(bool motor)
+{
+  updateADC(motor);
+  updateMT6835(motor);
+  focControlApplyVoltage(motor, cmd[motor].out_v_final, cmd[motor].speed, MOTOR_CALIB_VOLTAGE_HIGH);
+}
+
 void encoderCalibrationMode(void)
 {
   if (enc_calib_state.stage == ENC_CALIB_STAGE_IDLE) {

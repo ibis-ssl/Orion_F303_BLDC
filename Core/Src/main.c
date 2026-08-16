@@ -141,6 +141,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   setLedBlue(false);
   if (isEncoderCalibrationActive()) {
     calibrationProcess_itr(motor_select_toggle);
+  } else if (isMotorCalibrationActive()) {
+    motorCalibrationProcess_itr(motor_select_toggle);
   } else if (isFocDiagnosticActive()) {
     focDiagnosticProcess_itr(motor_select_toggle);
   } else {

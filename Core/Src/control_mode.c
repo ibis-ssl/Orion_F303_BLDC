@@ -21,9 +21,14 @@ bool isEncoderCalibrationActive(void)
   return calib_process.enc_calib_cnt != 0U;
 }
 
+bool isMotorCalibrationActive(void)
+{
+  return calib_process.motor_calib_cnt != 0U;
+}
+
 bool isAnyCalibrationActive(void)
 {
-  return (calib_process.enc_calib_cnt != 0U) || (calib_process.motor_calib_cnt != 0U);
+  return isEncoderCalibrationActive() || isMotorCalibrationActive();
 }
 
 control_mode_t getControlMode(void)
@@ -37,7 +42,7 @@ control_mode_t getControlMode(void)
   if (isEncoderCalibrationActive()) {
     return CONTROL_MODE_ENCODER_CALIB;
   }
-  if (calib_process.motor_calib_cnt != 0U) {
+  if (isMotorCalibrationActive()) {
     return CONTROL_MODE_MOTOR_CALIB;
   }
   if (isFocDiagnosticActive()) {
