@@ -52,7 +52,7 @@ void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1800;
+  htim1.Init.Period = 1600;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -117,7 +117,7 @@ void MX_TIM8_Init(void)
   htim8.Instance = TIM8;
   htim8.Init.Prescaler = 1;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = 1800;
+  htim8.Init.Period = 1600;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim8.Init.RepetitionCounter = 0;
   htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -312,42 +312,8 @@ float get_sin_table(uint16_t idx)
 
 inline float fast_sin(float rad)
 {
-  // keep bitmask-based wrap but align scale to table size to avoid index shift
-  return rad_to_sin_cnv_array[(uint16_t)(((rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f))) & SIN_TABLE_MASK];
-}
-
-#define BATTERY_VOLTAGE_BOTTOM (18)
-#define X2_PER_R3 (1.154)
-
-inline void setOutputRadianMotor(bool motor, float out_rad, float output_voltage, float battery_voltage, float output_voltage_limit)
-{
-  int voltage_propotional_cnt;
-
-  if (battery_voltage < BATTERY_VOLTAGE_BOTTOM) {
-    battery_voltage = BATTERY_VOLTAGE_BOTTOM;
-  }
-  if (output_voltage < 0) {
-    output_voltage = -output_voltage;
-  }
-  if (output_voltage > output_voltage_limit) {
-    output_voltage = 0;
-  }
-  voltage_propotional_cnt = output_voltage / battery_voltage * TIM_PWM_CENTER * X2_PER_R3;
-
-  uint16_t rad_to_cnt = (uint16_t)(((out_rad + (float)M_PI * 4.0f) * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f)) + 1023) & SIN_TABLE_MASK;
-  uint16_t output_ccr_cnt[3];
-  output_ccr_cnt[0] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[rad_to_cnt];
-  output_ccr_cnt[1] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[SIN_OFFSET_120 + rad_to_cnt];  // +1/3 rev
-  output_ccr_cnt[2] = TIM_PWM_CENTER + voltage_propotional_cnt * rad_to_sin_cnv_array[SIN_OFFSET_240 + rad_to_cnt];  // -1/3 rev
-  if (motor == 0) {
-    htim1.Instance->CCR1 = output_ccr_cnt[0];
-    htim1.Instance->CCR2 = output_ccr_cnt[1];
-    htim1.Instance->CCR3 = output_ccr_cnt[2];
-  } else {
-    htim8.Instance->CCR1 = output_ccr_cnt[0];
-    htim8.Instance->CCR2 = output_ccr_cnt[1];
-    htim8.Instance->CCR3 = output_ccr_cnt[2];
-  }
+  const int32_t idx = (int32_t)(rad * (float)SIN_TABLE_SIZE / ((float)M_PI * 2.0f));
+  return rad_to_sin_cnv_array[(uint32_t)idx & SIN_TABLE_MASK];
 }
 
 void setPwmAll(uint32_t pwm_cnt)

@@ -13,6 +13,10 @@ C_SRCS += \
 ../Core/Src/diagnostics.c \
 ../Core/Src/dma.c \
 ../Core/Src/flash.c \
+../Core/Src/foc_control.c \
+../Core/Src/foc_diagnostic.c \
+../Core/Src/foc_driver_hal.c \
+../Core/Src/foc_math.c \
 ../Core/Src/gpio.c \
 ../Core/Src/main.c \
 ../Core/Src/motor.c \
@@ -36,6 +40,10 @@ C_DEPS += \
 ./Core/Src/diagnostics.d \
 ./Core/Src/dma.d \
 ./Core/Src/flash.d \
+./Core/Src/foc_control.d \
+./Core/Src/foc_diagnostic.d \
+./Core/Src/foc_driver_hal.d \
+./Core/Src/foc_math.d \
 ./Core/Src/gpio.d \
 ./Core/Src/main.d \
 ./Core/Src/motor.d \
@@ -59,6 +67,10 @@ OBJS += \
 ./Core/Src/diagnostics.o \
 ./Core/Src/dma.o \
 ./Core/Src/flash.o \
+./Core/Src/foc_control.o \
+./Core/Src/foc_diagnostic.o \
+./Core/Src/foc_driver_hal.o \
+./Core/Src/foc_math.o \
 ./Core/Src/gpio.o \
 ./Core/Src/main.o \
 ./Core/Src/motor.o \

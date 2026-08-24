@@ -157,9 +157,18 @@ static char second_buf[UART_TEMP_BUF_SIZE];
 volatile int second_buf_len = 0, first_buf_len = 0;
 volatile bool sending_second_buf = false, sending_first_buf = false;
 volatile bool is_in_printf_func = false;
+static volatile uint32_t uart_printf_count = 0U;
+
+uint32_t uartGetPrintfCount(void)
+{
+  return uart_printf_count;
+}
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
+  if (huart->Instance != USART1) {
+    return;
+  }
 
   if (sending_first_buf)
   {                            // FIRST buf complete
@@ -167,9 +176,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
     if (second_buf_len > 0 && is_in_printf_func == false)
     { // another buffer?
-      sending_second_buf = true;
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, second_buf_len);
+      const int len = second_buf_len;
       second_buf_len = 0;
+      sending_second_buf = true;
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, len);
     }
   }
   else if (sending_second_buf)
@@ -178,60 +188,84 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
     if (first_buf_len > 0 && is_in_printf_func == false)
     { // another buffer?
-      sending_first_buf = true;
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, first_buf_len);
+      const int len = first_buf_len;
       first_buf_len = 0;
+      sending_first_buf = true;
+      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len);
     }
   }
+}
+
+static int appendFormatted(char * buf, volatile int * buf_len, const char * format, va_list ap)
+{
+  const int remaining = UART_TEMP_BUF_SIZE - *buf_len;
+  if (remaining <= 1) {
+    return 0;
+  }
+
+  int written = vsnprintf(buf + *buf_len, (size_t)remaining, format, ap);
+  if (written <= 0) {
+    return 0;
+  }
+  if (written >= remaining) {
+    *buf_len = UART_TEMP_BUF_SIZE - 1;
+    buf[*buf_len] = '\0';
+    return 0;
+  }
+
+  *buf_len += written;
+  return written;
 }
 
 void p(const char *format, ...)
 {
   va_list ap;
+  uart_printf_count++;
   va_start(ap, format);
   is_in_printf_func = true;
 
   if (sending_first_buf)
   {
-    if (second_buf_len > UART_TEMP_BUF_SIZE / 2)
-    {
-      is_in_printf_func = false;
-      return;
-    }
-    second_buf_len += vsprintf(second_buf + second_buf_len, format, ap);
+    appendFormatted(second_buf, &second_buf_len, format, ap);
     va_end(ap);
     if (sending_first_buf == false)
     {
-      second_buf_len = (int)strlen(second_buf);
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, second_buf_len); // 2ms
+      const int len = second_buf_len;
+      second_buf_len = 0;
+      if (len > 0) {
+        sending_second_buf = true;
+        HAL_UART_Transmit_DMA(&huart1, (uint8_t *)second_buf, len); // 2ms
+      }
     }
   }
   else if (sending_second_buf)
   {
-    if (first_buf_len > UART_TEMP_BUF_SIZE / 2)
-    {
-
-      is_in_printf_func = false;
-      return;
-    }
-
-    first_buf_len += vsprintf(first_buf + first_buf_len, format, ap);
+    appendFormatted(first_buf, &first_buf_len, format, ap);
     va_end(ap);
 
     if (sending_second_buf == false)
     {
-      first_buf_len = (int)strlen(first_buf);
-      HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, first_buf_len); // 2ms
+      const int len = first_buf_len;
+      first_buf_len = 0;
+      if (len > 0) {
+        sending_first_buf = true;
+        HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, len); // 2ms
+      }
     }
   }
   else
   {
     // start !!
-    first_buf_len = vsprintf(first_buf, format, ap);
+    first_buf_len = 0;
+    appendFormatted(first_buf, &first_buf_len, format, ap);
     va_end(ap);
+    if (first_buf_len <= 0)
+    {
+      is_in_printf_func = false;
+      return;
+    }
     sending_first_buf = true;
     HAL_UART_Transmit_DMA(&huart1, (uint8_t *)first_buf, first_buf_len); // 2ms
-    first_buf_len = (int)strlen(first_buf);
     first_buf_len = 0;
     second_buf_len = 0;
   }

@@ -10,11 +10,91 @@
 #include "can.h"
 #include "comms.h"
 #include "control_mode.h"
+#include "flash.h"
+#include "foc_control.h"
+#include "gpio.h"
 #include "motor.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 
 extern uint32_t ex_can_send_fail_cnt;
+
+static void waitPrintDrain(void)
+{
+  HAL_Delay(3);
+}
+
+void runIoCheckOnce(void)
+{
+  p("\n[IO CHECK] non-rotating check start\n");
+  waitPrintDrain();
+
+  cmd[0].speed = 0.0f;
+  cmd[1].speed = 0.0f;
+  cmd[0].out_v = 0.0f;
+  cmd[1].out_v = 0.0f;
+  cmd[0].out_v_final = 0.0f;
+  cmd[1].out_v_final = 0.0f;
+  sys.free_wheel_cnt = 60000U;
+  setPwmAll(TIM_PWM_CENTER);
+  setPwmOutPutFreeWheel();
+
+  updateADC(0);
+  updateADC(1);
+  adcUpdateTemperatureFilters();
+  updateMT6835(0);
+  updateMT6835(1);
+
+  p("SW 1:%d 2:%d 3:%d 4:%d\n", isPushedSW1(), isPushedSW2(), isPushedSW3(), isPushedSW4());
+  waitPrintDrain();
+
+  p("ADC raw CS %4d %4d Batt %4d GD %4d FET %4d %4d MotorT %4d %4d Off %4d\n", adc_raw.cs_motor[0], adc_raw.cs_motor[1], adc_raw.batt_v, adc_raw.gd_dcdc_v, adc_raw.temp_fet[0], adc_raw.temp_fet[1],
+    adc_raw.temp_motor[0], adc_raw.temp_motor[1], adc_raw.cs_adc_offset);
+  p("ADC val CS %+6.3f %+6.3f Avg %+6.3f %+6.3f Batt %5.2f GD %5.2f FET %3d %3d MotorT %3d %3d\n",
+    getCurrentMotor(0),
+    getCurrentMotor(1),
+    getCurrentMotorAverage(0),
+    getCurrentMotorAverage(1),
+    getBatteryVoltage(),
+    getGateDriverDCDCVoltage(),
+    getTempFET(0),
+    getTempFET(1),
+    getTempMotor(0), getTempMotor(1));
+  waitPrintDrain();
+
+  for (int i = 0; i < 2; i++) {
+    updateMT6835Diagnostics(i);
+    p("ENC M%d raw %7d raw21 %7lu elec %7d rad %+6.3f diff %+7d min %+7d max %+7d\n",
+      i,
+      mt6835[i].enc_raw,
+      mt6835[i].angle_raw_21bit,
+      mt6835[i].enc_elec_raw,
+      mt6835[i].output_radian,
+      mt6835[i].diff_enc,
+      mt6835[i].diff_min,
+      mt6835[i].diff_max);
+    p("ENC M%d frame 0x%08lx status 0x%02x crc %02x/%02x crcErr %lu statusErr %lu uvErr %lu\n",
+      i,
+      mt6835[i].last_frame,
+      mt6835[i].status,
+      mt6835[i].last_crc,
+      mt6835[i].calculated_crc,
+      mt6835[i].crc_error_count,
+      mt6835[i].status_error_count,
+      mt6835[i].undervoltage_count);
+    waitPrintDrain();
+  }
+
+  p("PWM TIM1 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n", htim1.Instance->CCR1, htim1.Instance->CCR2, htim1.Instance->CCR3, htim1.Instance->CCER, htim1.Instance->BDTR);
+  p("PWM TIM8 CCR %4ld %4ld %4ld CCER 0x%04lx BDTR 0x%04lx\n", htim8.Instance->CCR1, htim8.Instance->CCR2, htim8.Instance->CCR3, htim8.Instance->CCER, htim8.Instance->BDTR);
+  waitPrintDrain();
+
+  p("CAN rx %lu err 0x%08lx board 0x%03lx flash calib %+6.3f %+6.3f rps/v %+6.3f %+6.3f\n", getCanRxCount(), getCanError(), flash.board_id, flash.calib[0], flash.calib[1], flash.rps_per_v_cw[0],
+    flash.rps_per_v_cw[1]);
+  p("[IO CHECK] done, PWM remains freewheel for 60s or until run command\n\n");
+  waitPrintDrain();
+}
 
 void printRuntimeDiagnostics(void)
 {
@@ -28,15 +108,20 @@ void printRuntimeDiagnostics(void)
 
   switch (sys.print_cnt) {
     case 1:
-      // p("M0raw %6d M1raw %6d ", as5047p[0].enc_raw, as5047p[1].enc_raw);
-      p("\e[0mCS %+5.2f %+5.2f / BV %4.1f ", getCurrentMotor(0), getCurrentMotor(1), getBatteryVoltage());
+      // p("M0raw %7d M1raw %7d ", mt6835[0].enc_raw, mt6835[1].enc_raw);
+      p("\e[0mCS %+5.2f %+5.2f Avg %+5.2f %+5.2f / BV %4.1f ",
+        getCurrentMotor(0),
+        getCurrentMotor(1),
+        getCurrentMotorAverage(0),
+        getCurrentMotorAverage(1),
+        getBatteryVoltage());
       // p("P %+3.1f I %+3.1f D %+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd);
       break;
     case 2:
-      p("RPS %+6.1f %+6.1f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
+      p("RPS %+6.3f %+6.3f Free %4d ", motor_real[0].rps, motor_real[1].rps, sys.free_wheel_cnt);
       break;
     case 3:
-      p("RAW %5d %5d Out_v %+5.1f %+5.1f ", as5047p[0].enc_raw, as5047p[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
+      p("RAW %7d %7d Out_v %+5.1f %+5.1f ", mt6835[0].enc_raw, mt6835[1].enc_raw, cmd[0].out_v, cmd[1].out_v);
       break;
     case 4:
       //p("p%+3.1f i%+3.1f d%+3.1f k%+3.1f ", pid[0].pid_kp, pid[0].pid_ki, pid[0].pid_kd, motor_real[0].k);
@@ -61,7 +146,7 @@ void printRuntimeDiagnostics(void)
       ex_can_send_fail_cnt = 0;
       break;
     case 7:
-      p("Offset %+4.2f RPS %+6.1f %+6.1f ", sys.manual_offset_radian, motor_real[0].rps_ave, motor_real[1].rps_ave);
+      p("Offset %+4.2f FocAxis %+4.2f RPS %+6.1f %+6.1f ", sys.manual_offset_radian, focControlAxisOffset(), motor_real[0].rps_ave, motor_real[1].rps_ave);
       //p("LoadCnt %4.3f %4.3f ", (float)pid[0].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT, (float)pid[1].load_limit_cnt / MOTOR_OVER_LOAD_CNT_LIMIT);
       break;
     case 8:
@@ -70,17 +155,21 @@ void printRuntimeDiagnostics(void)
       }
       p("Ave %6.4f %6.4f %6.4f %6.4f ", system_exec_time_stamp_ave[0], system_exec_time_stamp_ave[1], system_exec_time_stamp_ave[2], system_exec_time_stamp_ave[3]);
       //p("TO %4d %4d diff max M0 %+6d, M1 %+6d %d", cmd[0].timeout_cnt, cmd[1].timeout_cnt, motor_real[0].diff_cnt_max, motor_real[1].diff_cnt_max, enc_error_watcher.detect_flag);
-      // p("min %+6d cnt %6d / max %+6d cnt %6d ", as5047p[0].diff_min, as5047p[0].diff_min_cnt, as5047p[0].diff_max, as5047p[0].diff_max_cnt);
+      // p("min %+7d cnt %7d / max %+7d cnt %7d ", mt6835[0].diff_min, mt6835[0].diff_min_cnt, mt6835[0].diff_max, mt6835[0].diff_max_cnt);
       motor_real[0].diff_cnt_max = 0;
       motor_real[1].diff_cnt_max = 0;
-      as5047p[0].diff_max = 0;
-      as5047p[0].diff_min = 65535;
-      as5047p[1].diff_max = 0;
-      as5047p[1].diff_min = 65535;
+      mt6835[0].diff_max = 0;
+      mt6835[0].diff_min = ENC_CNT_MAX - 1;
+      mt6835[1].diff_max = 0;
+      mt6835[1].diff_min = ENC_CNT_MAX - 1;
+      break;
+    case 9:
+      p("\n");
+      break;
+    case 100:
+      sys.print_cnt = 0;
       break;
     default:
-      p("\n");
-      sys.print_cnt = 0;
       break;
   }
 }

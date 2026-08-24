@@ -7,6 +7,7 @@ typedef enum
 {
   CONTROL_MODE_STARTUP = 0,
   CONTROL_MODE_RUN,
+  CONTROL_MODE_FOC_DIAG,
   CONTROL_MODE_ENCODER_CALIB,
   CONTROL_MODE_MOTOR_CALIB,
   CONTROL_MODE_FREEWHEEL,
@@ -14,6 +15,7 @@ typedef enum
 } control_mode_t;
 
 bool isEncoderCalibrationActive(void);
+bool isMotorCalibrationActive(void);
 bool isAnyCalibrationActive(void);
 control_mode_t getControlMode(void);
 control_mode_t getCurrentControlMode(void);

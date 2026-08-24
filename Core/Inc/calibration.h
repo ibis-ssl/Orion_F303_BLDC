@@ -4,8 +4,10 @@
 #include <stdbool.h>
 
 void calibrationProcess_itr(bool motor);
+void motorCalibrationProcess_itr(bool motor);
 void encoderCalibrationMode(void);
 void motorCalibrationMode(void);
 void startCalibrationMode(void);
+void startMotorCalibrationMode(void);
 
 #endif /* INC_CALIBRATION_H_ */

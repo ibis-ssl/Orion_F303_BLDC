@@ -11,6 +11,7 @@
 #include "control_mode.h"
 #include "flash.h"
 #include "gpio.h"
+#include "spi.h"
 #include "tim.h"
 #include "usart.h"
 
@@ -135,13 +136,41 @@ static inline void protectOverLoad(void)
   }
 }
 
+static inline void protectEncoder(void)
+{
+  for (int i = 0; i < 2; i++) {
+    const bool encoder_required = (cmd[i].out_v_final != 0.0f) || (cmd[i].speed != 0.0f);
+    if (!encoder_required && !isMT6835Ready(i)) {
+      continue;
+    }
+    if (!isMT6835Healthy(i)) {
+      forceStopAllPwmOutputAndTimer();
+      p("M%d encoder error!! status 0x%02x crc %02x/%02x consec %lu crcErr %lu statusErr %lu\n",
+        i,
+        mt6835[i].status,
+        mt6835[i].last_crc,
+        mt6835[i].calculated_crc,
+        mt6835[i].consecutive_error_count,
+        mt6835[i].crc_error_count,
+        mt6835[i].status_error_count);
+      setLedBlue(false);
+      setLedGreen(true);
+      setLedRed(true);
+
+      error.id = flash.board_id * 2 + i;
+      error.info = BLDC_ENC_ERROR;
+      error.value = (float)mt6835[i].consecutive_error_count;
+      setFaultMode();
+      waitPowerOnTimeout();
+    }
+  }
+}
+
 void protect(void)
 {
   protectOverCurrent();
 
-  // Encoder error hook is disabled for now.
-  (void)enc_error_watcher;
-  (void)motor_real;
+  protectEncoder();
 
   protectBatteryVoltage();
   protectMotorTemperature();

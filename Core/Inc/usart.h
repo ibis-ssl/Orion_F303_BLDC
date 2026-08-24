@@ -42,6 +42,7 @@ void MX_USART1_UART_Init(void);
 
 /* USER CODE BEGIN Prototypes */
 void p(const char *format, ...);
+uint32_t uartGetPrintfCount(void);
 /* USER CODE END Prototypes */
 
 #ifdef __cplusplus

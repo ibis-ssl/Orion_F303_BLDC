@@ -14,7 +14,9 @@
 #include "comms.h"
 #include "control_mode.h"
 #include "control_limits.h"
+#include "diagnostics.h"
 #include "flash.h"
+#include "foc_math.h"
 #include "gpio.h"
 #include "motor.h"
 #include "spi.h"
@@ -30,6 +32,7 @@ void waitPowerOnTimeout(void);
 void runStartupSequence(void)
 {
   initFirstSin();
+  focMathInit();
   clearFaultMode();
 
   // LED
@@ -102,18 +105,18 @@ void runStartupSequence(void)
   // Short delay before sensor register access.
   HAL_Delay(1);
 
-  p("AS5047P registors\n");
+  p("MT6835 encoder status\n");
   HAL_Delay(1);
   for (int i = 0; i < 2; i++) {
-    as5047p[i].reg.error = readRegisterAS5047P(i, 0x0001) & 0x07;       // 0-2 bit, clear error
-    as5047p[i].reg.error = readRegisterAS5047P(i, 0x0001) & 0x07;       // 0-2 bit
-    as5047p[i].reg.prog = readRegisterAS5047P(i, 0x0003) & 0x7F;        // 0-6bit
-    as5047p[i].reg.diagagc = readRegisterAS5047P(i, 0x3FFC) & 0xFFF;    //0-11bit
-    as5047p[i].reg.mag = readRegisterAS5047P(i, 0x3FFD) & 0x3FFF;       //0-13bit
-    as5047p[i].reg.angleenc = readRegisterAS5047P(i, 0x3FFE) & 0x3FFF;  //0-13bit
-    as5047p[i].reg.anglecom = readRegisterAS5047P(i, 0x3FFF) & 0x3FFF;  //0-13bit
-    p("err 0x%02x prg 0x%02x diagagc 0x%03x ", as5047p[i].reg.error, as5047p[i].reg.prog, as5047p[i].reg.diagagc);
-    p("mag 0x%03x angle : enc 0x%03x com 0x%03x\n", as5047p[i].reg.mag, as5047p[i].reg.angleenc, as5047p[i].reg.anglecom);
+    updateMT6835Diagnostics(i);
+    p("M%d raw %7d raw21 %7lu status 0x%02x crc %02x/%02x crcErr %lu\n",
+      i,
+      mt6835[i].enc_raw,
+      mt6835[i].angle_raw_21bit,
+      mt6835[i].status,
+      mt6835[i].last_crc,
+      mt6835[i].calculated_crc,
+      mt6835[i].crc_error_count);
     HAL_Delay(1);
   }
 
@@ -191,7 +194,7 @@ void runStartupSequence(void)
     }
 
     interrupt_timer_cnt = 0;
-    while (interrupt_timer_cnt < 20U * 50U) {
+    while (interrupt_timer_cnt < 30U * 50U) {
       if (isNotZeroCurrent() || getBatteryVoltage() < THR_BATTERY_UNVER_VOLTAGE) {
         forceStopAllPwmOutputAndTimer();
         p("fail check!! Current M0 %+6.3f M1 %+6.3f ch:%d\n", getCurrentMotor(0), getCurrentMotor(1), turn_on_channel);

@@ -13,7 +13,9 @@
 #include "calibration.h"
 #include "can.h"
 #include "control_mode.h"
+#include "diagnostics.h"
 #include "flash.h"
+#include "foc_diagnostic.h"
 #include "motor.h"
 #include "tim.h"
 #include "usart.h"
@@ -24,6 +26,20 @@ static bool uart_rx_flag = false;
 static uint32_t can_rx_cnt = 0;
 static can_msg_buf_t can_rx_buf;
 static CAN_RxHeaderTypeDef can_rx_header;
+
+#define LEGACY_CAN_ENCODER_BITS (14U)
+#define LEGACY_CAN_ENCODER_STORAGE_SHIFT (2U)
+#define LEGACY_CAN_ENCODER_MAX (65535U)
+
+static inline uint32_t encoderRawToLegacyCanRaw(int enc_raw)
+{
+  return ((uint32_t)enc_raw >> (ENC_CNT_BITS - LEGACY_CAN_ENCODER_BITS)) << LEGACY_CAN_ENCODER_STORAGE_SHIFT;
+}
+
+static inline float encoderRawToLegacyCanAngle(int enc_raw)
+{
+  return (float)encoderRawToLegacyCanRaw(enc_raw) * 2 * M_PI / LEGACY_CAN_ENCODER_MAX;
+}
 
 static inline float clampSize(float in, float max)
 {
@@ -60,7 +76,7 @@ void initComms(void)
 static void can_rx_callback(void)
 {
   // Ignore command updates while any calibration is active.
-  if (isAnyCalibrationActive()) {
+  if (isAnyCalibrationActive() || isFocDiagnosticActive()) {
     return;
   }
 
@@ -134,9 +150,37 @@ void receiveUserSerialCommand(void)
     uart_rx_flag = false;
     HAL_UART_Receive_IT(&huart1, uart_rx_buf, 1);
     switch (uart_rx_buf[0]) {
+      case 'i':
+        runIoCheckOnce();
+        break;
+      case 'v':
+        printFocDiagnosticAngleState();
+        break;
+      case 'V':
+        toggleFocDiagnosticMode();
+        break;
+      case '[':
+        adjustFocDiagnosticPhaseAdvance(-0.01745329252f);
+        break;
+      case ']':
+        adjustFocDiagnosticPhaseAdvance(0.01745329252f);
+        break;
+      case '{':
+        adjustFocDiagnosticPhaseAdvance(-0.00174532925f);
+        break;
+      case '}':
+        adjustFocDiagnosticPhaseAdvance(0.00174532925f);
+        break;
+      case 'P':
+        resetFocDiagnosticPhaseAdvance();
+        break;
       case 'c':
         p("\n\nstart calib mode!\n\n");
         startCalibrationMode();
+        break;
+      case 'm':
+        p("\n\nstart motor calib mode only!\n\n");
+        startMotorCalibrationMode();
         break;
       case 'n':
         p("run mode!\n");
@@ -144,9 +188,16 @@ void receiveUserSerialCommand(void)
         calib_process.enc_calib_cnt = 0;
         calib_process.motor_calib_cnt = 0;
         sys.manual_offset_radian = 0;
+        sys.free_wheel_cnt = 0;
+        sys.zero_output_sleep_cnt = 0;
 
+        cmd[0].speed = 0;
+        cmd[1].speed = 0;
         cmd[0].out_v = 0;
         cmd[1].out_v = 0;
+        cmd[0].out_v_final = 0;
+        cmd[1].out_v_final = 0;
+        resumePwmOutput();
         break;
       case 'q':
         sys.manual_offset_radian += 0.01;
@@ -157,15 +208,15 @@ void receiveUserSerialCommand(void)
         p("offset %+4.2f\n", sys.manual_offset_radian);
         break;
       case 'w':
-        cmd[0].speed += 0.5;
+        cmd[0].speed = clampSize(cmd[0].speed + 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[0].timeout_cnt = -1;
-        cmd[1].speed += 0.5;
+        cmd[1].speed = clampSize(cmd[1].speed + 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[1].timeout_cnt = -1;
         break;
       case 's':
-        cmd[0].speed -= 0.5;
+        cmd[0].speed = clampSize(cmd[0].speed - 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[0].timeout_cnt = -1;
-        cmd[1].speed -= 0.5;
+        cmd[1].speed = clampSize(cmd[1].speed - 0.5f, SPEED_CMD_LIMIT_RPS);
         cmd[1].timeout_cnt = -1;
         break;
       case 'e':
@@ -216,7 +267,7 @@ void receiveUserSerialCommand(void)
         if (sys.print_idx > 2) {
           sys.print_idx = 0;
         }
-        p("\nprint idx : %d\n");
+        p("\nprint idx : %d\n", sys.print_idx);
         break;
     }
   }
@@ -227,8 +278,8 @@ void sendCanData(void)
 {
   static int transfer_cnt;
 
-  sendSpeed(flash.board_id, 0, motor_real[0].rps, (float)as5047p[0].enc_raw * 2 * M_PI / 65535);
-  sendSpeed(flash.board_id, 1, motor_real[1].rps, (float)as5047p[1].enc_raw * 2 * M_PI / 65535);
+  sendSpeed(flash.board_id, 0, motor_real[0].rps, encoderRawToLegacyCanAngle(mt6835[0].enc_raw));
+  sendSpeed(flash.board_id, 1, motor_real[1].rps, encoderRawToLegacyCanAngle(mt6835[1].enc_raw));
 
   switch (transfer_cnt) {
     case 0:

@@ -29,6 +29,8 @@
 #include "control_mode.h"
 #include "diagnostics.h"
 #include "dma.h"
+#include "foc_control.h"
+#include "foc_diagnostic.h"
 #include "gpio.h"
 #include "protect.h"
 #include "spi.h"
@@ -97,7 +99,7 @@ calib_process_t calib_process;
 static inline void updateMotorSpeedEstimate(void)
 {
   for (int i = 0; i < 2; i++) {
-    int ret = calcMotorSpeed(&motor_real[i], &as5047p[i], &sys, &enc_error_watcher);
+    int ret = calcMotorSpeed(&motor_real[i], &mt6835[i], &sys, &enc_error_watcher);
     if (ret < 0) {
       p("stop!! speed error");
     }
@@ -107,12 +109,12 @@ static inline void updateMotorSpeedEstimate(void)
 inline void motorProcess_itr(bool motor)
 {
   updateADC(motor);
-  updateAS5047P(motor);
-  setOutputRadianMotor(motor, as5047p[motor].output_radian + enc_offset[motor].final, cmd[motor].out_v_final, getBatteryVoltage(), motor_param[motor].output_voltage_limit);
+  updateMT6835(motor);
+  focControlApplyVoltage(motor, cmd[motor].out_v_final, cmd[motor].speed, motor_param[motor].output_voltage_limit);
 }
 
-// 7APB 36MHz / 1800 cnt -> 20kHz interrupt -> 1ms cycle
-#define INTERRUPT_KHZ_1MS (20)
+// TIM1 HCLK 96MHz / 2 prescaler / 1600 cnt -> 30kHz interrupt -> 1ms cycle
+#define INTERRUPT_KHZ_1MS (30)
 volatile uint32_t interrupt_timer_cnt = 0, main_loop_remain_counter = 0;
 volatile uint32_t system_exec_time_stamp[10] = {0};
 
@@ -139,6 +141,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef * htim)
   setLedBlue(false);
   if (isEncoderCalibrationActive()) {
     calibrationProcess_itr(motor_select_toggle);
+  } else if (isMotorCalibrationActive()) {
+    motorCalibrationProcess_itr(motor_select_toggle);
+  } else if (isFocDiagnosticActive()) {
+    focDiagnosticProcess_itr(motor_select_toggle);
   } else {
     motorProcess_itr(motor_select_toggle);
   }
@@ -210,7 +216,7 @@ void runMode(void)
 
   system_exec_time_stamp[2] = interrupt_timer_cnt;
   for (int i = 0; i < 2; i++) {
-    setFinalOutputVoltage(&cmd[i], &enc_offset[i], sys.manual_offset_radian);  // select Vq-offset angle
+    cmd[i].out_v_final = cmd[i].out_v;
   }
 
   system_exec_time_stamp[3] = interrupt_timer_cnt;
@@ -282,6 +288,7 @@ int main(void)
     receiveUserSerialCommand();
 
     updateMotorSpeedEstimate();
+    adcUpdateTemperatureFilters();
     sendCanData();
 
     system_exec_time_stamp[0] = interrupt_timer_cnt;
@@ -318,7 +325,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
     Error_Handler();
   }
@@ -328,7 +335,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {
@@ -336,7 +343,7 @@ void SystemClock_Config(void)
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1 | RCC_PERIPHCLK_TIM1 | RCC_PERIPHCLK_TIM8 | RCC_PERIPHCLK_ADC34;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
-  PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV1;
+  PeriphClkInit.Adc34ClockSelection = RCC_ADC34PLLCLK_DIV2;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   PeriphClkInit.Tim8ClockSelection = RCC_TIM8CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK) {

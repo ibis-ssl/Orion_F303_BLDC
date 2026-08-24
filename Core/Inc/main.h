@@ -62,8 +62,11 @@ enum {
 //#define ROTATION_OFFSET_RADIAN (2.09)
 // 理論値は2/3 M_PIで2.09あたり、ただし、40rps以下で設定値どおりになるよう、手動調整で2.00を使用
 #define ROTATION_OFFSET_RADIAN (2.00)
-#define ENC_CNT_MAX (65536)
-#define HARF_OF_ENC_CNT_MAX (32768)
+#define ENC_CNT_BITS (21)
+#define ENC_CNT_MAX (1 << ENC_CNT_BITS)
+#define ENC_CNT_MASK (ENC_CNT_MAX - 1)
+#define HARF_OF_ENC_CNT_MAX (ENC_CNT_MAX >> 1)
+#define MOTOR_POLE_PAIRS (12)
 
 #define SPEED_CMD_LIMIT_RPS (80)
 // 40で7m/sぴったりぐらい、加速にはDIFF_VOLTAGE_LIMITぶんも必要
