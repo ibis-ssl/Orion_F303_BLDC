@@ -47,7 +47,8 @@ MEMORY
 {
   CCMRAM    (xrw)  : ORIGIN = 0x10000000,   LENGTH = 8K
   RAM     (xrw)    : ORIGIN = 0x20000000,   LENGTH = 32K
-  FLASH    (rx)    : ORIGIN = 0x8000000,   LENGTH = 124K
+  /* 先頭16KBはbootloader、末尾4KBはCAN ID・校正設定として予約する。 */
+  FLASH    (rx)    : ORIGIN = 0x08004000,  LENGTH = 108K
   SETTINGS     (rx)    : ORIGIN = 0x801F000,   LENGTH = 4K
 }
 

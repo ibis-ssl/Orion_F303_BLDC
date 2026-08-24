@@ -129,6 +129,17 @@ void CAN_Filter_Init(uint16_t board_addr)
     Error_Handler();
   }
 
+  /* OTA entryは通常制御IDと分離した専用filterで常時受信する。 */
+  sFilterConfig.FilterIdHigh = (0x600) << 5;
+  sFilterConfig.FilterIdLow = (0x600) << 5;
+  sFilterConfig.FilterMaskIdHigh = (0x600) << 5;
+  sFilterConfig.FilterMaskIdLow = (0x600) << 5;
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.FilterBank = 2;
+  if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
+    Error_Handler();
+  }
+
   sFilterConfig.FilterIdHigh = (0x110) << 5;                       // kick
   sFilterConfig.FilterIdLow = (0x010) << 5;                        // power enable
   sFilterConfig.FilterMaskIdHigh = (0x101 + board_addr * 2) << 5;  //speed

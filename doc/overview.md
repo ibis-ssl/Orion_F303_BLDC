@@ -357,3 +357,10 @@ powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM60 -
 
 ## 参考ドキュメント
 - ハードウェア仕様（コード推定）: `doc/hardware_spec.md`
+# CAN OTA更新
+
+先頭16KBを常駐アプリケーションブートローダー、`0x08004000`～`0x0801EFFF`をアプリ領域とする。metadataは`0x08003800`、既存CAN ID・エンコーダ／モーター校正設定は`0x0801F000`～`0x0801FFFF`に置き、OTAおよび初回導入スクリプトは設定領域を消去しない。
+
+OTA node IDはFlashの`board_id` 0/1に対して16/17である。アプリがCAN ID `0x600`、payload `OFWUP + OTA node ID`を受信すると、TIM1/TIM8のPWMと相補出力を停止し、metadataを無効化してresetする。bootloaderは32 frame software FIFO、896 byte block、bitmap、block CRC32C、全体CRC32Cを使用し、欠落・重複・順序入替・FIFO overflowを検出する。応答IDは`0x650 + OTA node ID`である。
+
+初回導入は`Script/build_bootloader.ps1`、`Script/build_application.ps1`を実行後、`Script/install_bootloader.ps1`をdry-runし、バックアップを確認してから`-Execute`を指定する。実機電源が使用できないため、現時点では実機書込みとCAN更新は未確認である。

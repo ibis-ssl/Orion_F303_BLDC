@@ -41,6 +41,7 @@
 *.map
 *.elf
 *.bin
+*.hex
 *.pyc
 sim/out/
 Script/Logs

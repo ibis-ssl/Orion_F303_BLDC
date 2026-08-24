@@ -7,6 +7,7 @@
 
 #include <math.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "adc.h"
 #include "app_context.h"
@@ -30,6 +31,31 @@ static CAN_RxHeaderTypeDef can_rx_header;
 #define LEGACY_CAN_ENCODER_BITS (14U)
 #define LEGACY_CAN_ENCODER_STORAGE_SHIFT (2U)
 #define LEGACY_CAN_ENCODER_MAX (65535U)
+#define OTA_ENTRY_CAN_ID (0x600U)
+#define OTA_METADATA_ADDRESS (0x08003800U)
+
+static bool ota_entry_matches(void)
+{
+  const uint8_t node_id = (uint8_t)(16U + (flash.board_id <= 1U ? flash.board_id : 0U));
+  return can_rx_header.StdId == OTA_ENTRY_CAN_ID &&
+         memcmp(can_rx_buf.data, "OFWUP", 5U) == 0 && can_rx_buf.data[5] == node_id;
+}
+
+static void enter_firmware_update(void)
+{
+  FLASH_EraseInitTypeDef erase = {0};
+  uint32_t page_error = 0U;
+  forceStopAllPwmOutputAndTimer();
+  __disable_irq();
+  erase.TypeErase = FLASH_TYPEERASE_PAGES;
+  erase.PageAddress = OTA_METADATA_ADDRESS;
+  erase.NbPages = 1U;
+  (void)HAL_FLASH_Unlock();
+  (void)HAL_FLASHEx_Erase(&erase, &page_error);
+  (void)HAL_FLASH_Lock();
+  NVIC_SystemReset();
+  for (;;) {}
+}
 
 static inline uint32_t encoderRawToLegacyCanRaw(int enc_raw)
 {
@@ -75,6 +101,10 @@ void initComms(void)
 
 static void can_rx_callback(void)
 {
+  if (ota_entry_matches()) {
+    enter_firmware_update();
+  }
+
   // Ignore command updates while any calibration is active.
   if (isAnyCalibrationActive() || isFocDiagnosticActive()) {
     return;
