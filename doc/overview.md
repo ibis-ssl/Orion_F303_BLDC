@@ -363,4 +363,6 @@ powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1 -Port COM60 -
 
 OTA node IDはFlashの`board_id` 0/1に対して16/17である。アプリがCAN ID `0x600`、payload `OFWUP + OTA node ID`を受信すると、TIM1/TIM8のPWMと相補出力を停止し、metadataを無効化してresetする。bootloaderは32 frame software FIFO、896 byte block、bitmap、block CRC32C、全体CRC32Cを使用し、欠落・重複・順序入替・FIFO overflowを検出する。応答IDは`0x650 + OTA node ID`である。
 
-初回導入は`Script/build_bootloader.ps1`、`Script/build_application.ps1`を実行後、`Script/install_bootloader.ps1`をdry-runし、バックアップを確認してから`-Execute`を指定する。実機電源が使用できないため、現時点では実機書込みとCAN更新は未確認である。
+初回導入は`Script/build_bootloader.ps1`、`Script/build_application.ps1`を実行後、`Script/install_bootloader.ps1`をdry-runし、バックアップを確認してから`-Execute`を指定する。初期導入スクリプトはpage 0～61を8ページ単位で消去し、ST-Linkの一時的な失敗を最大3回再試行する。設定page 62/63は消去しない。
+
+2026-08-26に左右2台へ初回導入し、CM4→Main→CAN1 node 16/CAN2 node 17の並列更新を確認した。63,592 byte、CRC32C `0xC22DAE9C`のDebug imageを通常13.965秒、UART/CAN複合故障注入時14.047秒で更新した。両台のapplication・metadata readbackは生成物とSHA-256一致、board ID 0/1保持、USART1 2 Mbps起動ログとCAN受信復帰を確認済みである。
