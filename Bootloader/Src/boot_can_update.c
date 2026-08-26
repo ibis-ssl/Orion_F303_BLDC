@@ -31,7 +31,7 @@ static void can_init(void) {
   CAN->MCR = CAN_MCR_INRQ | CAN_MCR_ABOM; while ((CAN->MSR & CAN_MSR_INAK)==0U) {}
   CAN->BTR = (UINT32_C(4)<<CAN_BTR_TS1_Pos) | (UINT32_C(1)<<CAN_BTR_TS2_Pos);
   CAN->FMR |= CAN_FMR_FINIT; CAN->FA1R=0U; CAN->FS1R=3U; CAN->FM1R=0U; CAN->FFA1R=0U;
-  CAN->sFilterRegister[0].FR1=CAN_COMMAND_ID<<21U; CAN->sFilterRegister[0].FR2=UINT32_C(0x7FF)<<21U;
+  CAN->sFilterRegister[0].FR1=CAN_COMMAND_ID<<21U; CAN->sFilterRegister[0].FR2=UINT32_C(0x7FE)<<21U;
   CAN->sFilterRegister[1].FR1=CAN_DATA_ID_BASE<<21U; CAN->sFilterRegister[1].FR2=UINT32_C(0x780)<<21U;
   CAN->FA1R=3U; CAN->FMR &= ~CAN_FMR_FINIT; CAN->MCR &= ~CAN_MCR_INRQ; while ((CAN->MSR & CAN_MSR_INAK)!=0U) {}
 }
@@ -60,6 +60,12 @@ static void send_reply(const uint8_t data[8]) {
   mb->TDHR=(uint32_t)data[4]|((uint32_t)data[5]<<8U)|((uint32_t)data[6]<<16U)|((uint32_t)data[7]<<24U);
   mb->TIR=((CAN_RESPONSE_BASE+node_id)<<21U)|CAN_TI0R_TXRQ;
 }
+static void send_version(void) {
+  uint32_t build_id=0U,image_crc=0U;const uint32_t *v=(const uint32_t *)(BOOT_APP_BASE+UINT32_C(0x400));
+  if(boot_app_is_valid()&&v[0]==UINT32_C(0x52565746)){build_id=v[1];image_crc=*(const uint32_t *)(BOOT_METADATA_BASE+28U);}
+  const uint8_t d[8]={(uint8_t)build_id,(uint8_t)(build_id>>8U),(uint8_t)(build_id>>16U),(uint8_t)(build_id>>24U),(uint8_t)image_crc,(uint8_t)(image_crc>>8U),(uint8_t)(image_crc>>16U),(uint8_t)(image_crc>>24U)};
+  while((CAN->TSR&CAN_TSR_TME0)==0U){}CAN_TxMailBox_TypeDef *mb=&CAN->sTxMailBox[0];mb->TDTR=8U;mb->TDLR=(uint32_t)d[0]|((uint32_t)d[1]<<8U)|((uint32_t)d[2]<<16U)|((uint32_t)d[3]<<24U);mb->TDHR=(uint32_t)d[4]|((uint32_t)d[5]<<8U)|((uint32_t)d[6]<<16U)|((uint32_t)d[7]<<24U);mb->TIR=((UINT32_C(0x660)+node_id)<<21U)|CAN_TI0R_TXRQ;
+}
 static void respond(uint8_t command,uint8_t status,uint32_t value) { const uint8_t r[8]={(uint8_t)(command|0x80U),status,node_id,block_token,(uint8_t)value,(uint8_t)(value>>8U),(uint8_t)(value>>16U),(uint8_t)(value>>24U)}; send_reply(r); }
 static bool flash_wait(void) { while((FLASH->SR&FLASH_SR_BSY)!=0U){IWDG->KR=UINT32_C(0xAAAA);} const uint32_t e=FLASH->SR&(FLASH_SR_PGERR|FLASH_SR_WRPERR); FLASH->SR=FLASH_SR_EOP|FLASH_SR_PGERR|FLASH_SR_WRPERR; IWDG->KR=UINT32_C(0xAAAA); return e==0U; }
 static void flash_unlock(void) { if((FLASH->CR&FLASH_CR_LOCK)!=0U){FLASH->KEYR=UINT32_C(0x45670123);FLASH->KEYR=UINT32_C(0xCDEF89AB);} }
@@ -83,6 +89,6 @@ static void command(const uint8_t data[8]) {
 }
 bool boot_can_update_run(unsigned int idle_loops) {
   node_id=board_update_node_id();can_init();
-  for(unsigned int idle=0;idle<idle_loops||!boot_app_is_valid();idle++){uint32_t id;uint8_t data[8];IWDG->KR=UINT32_C(0xAAAA);drain();if(pop(&id,data)){idle=0U;if(id==CAN_COMMAND_ID){if(overflow){block_token=data[2];overflow=false;receiving=false;respond(data[0],STATUS_SEQUENCE,received);}else command(data);}else if(id>=CAN_DATA_ID_BASE&&id<=CAN_DATA_ID_LAST&&receiving&&data[0]==block_token){const uint32_t seq=id-CAN_DATA_ID_BASE,pos=seq*7U;if(pos<block_length&&(bitmap[seq/32U]&(UINT32_C(1)<<(seq%32U)))==0U){for(uint32_t i=1U;i<8U&&pos+i-1U<block_length;i++)block[pos+i-1U]=data[i];bitmap[seq/32U]|=UINT32_C(1)<<(seq%32U);}}}}
+  for(unsigned int idle=0;idle<idle_loops||!boot_app_is_valid();idle++){uint32_t id;uint8_t data[8];IWDG->KR=UINT32_C(0xAAAA);drain();if(pop(&id,data)){idle=0U;if(id==UINT32_C(0x611)&&data[0]==node_id){send_version();}else if(id==CAN_COMMAND_ID){if(overflow){block_token=data[2];overflow=false;receiving=false;respond(data[0],STATUS_SEQUENCE,received);}else command(data);}else if(id>=CAN_DATA_ID_BASE&&id<=CAN_DATA_ID_LAST&&receiving&&data[0]==block_token){const uint32_t seq=id-CAN_DATA_ID_BASE,pos=seq*7U;if(pos<block_length&&(bitmap[seq/32U]&(UINT32_C(1)<<(seq%32U)))==0U){for(uint32_t i=1U;i<8U&&pos+i-1U<block_length;i++)block[pos+i-1U]=data[i];bitmap[seq/32U]|=UINT32_C(1)<<(seq%32U);}}}}
   return boot_app_is_valid();
 }

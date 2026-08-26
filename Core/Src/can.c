@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "can.h"
+#include <string.h>
 
 /* USER CODE BEGIN 0 */
 int ex_can_send_fail_cnt;
@@ -129,6 +130,16 @@ void CAN_Filter_Init(uint16_t board_addr)
     Error_Handler();
   }
 
+  sFilterConfig.FilterIdHigh = (0x611) << 5;
+  sFilterConfig.FilterIdLow = (0x611) << 5;
+  sFilterConfig.FilterMaskIdHigh = (0x611) << 5;
+  sFilterConfig.FilterMaskIdLow = (0x611) << 5;
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.FilterBank = 3;
+  if (HAL_CAN_ConfigFilter(&hcan, &sFilterConfig) != HAL_OK) {
+    Error_Handler();
+  }
+
   /* OTA entryは通常制御IDと分離した専用filterで常時受信する。 */
   sFilterConfig.FilterIdHigh = (0x600) << 5;
   sFilterConfig.FilterIdLow = (0x600) << 5;
@@ -174,6 +185,21 @@ void sendFloatDual(uint32_t can_id, float data1, float data2)
   if (HAL_CAN_AddTxMessage(&hcan, &can_header, msg.data, &can_mailbox) != 0) {
     ex_can_send_fail_cnt++;
   }
+}
+
+void sendFirmwareVersion(uint8_t node_id, uint32_t build_id, uint32_t image_crc32c)
+{
+  can_msg_buf_t msg;
+  CAN_TxHeaderTypeDef header = {0};
+  uint32_t mailbox;
+  memcpy(&msg.data[0], &build_id, sizeof(build_id));
+  memcpy(&msg.data[4], &image_crc32c, sizeof(image_crc32c));
+  header.StdId = 0x660U + node_id;
+  header.RTR = CAN_RTR_DATA;
+  header.DLC = 8;
+  header.IDE = CAN_ID_STD;
+  header.TransmitGlobalTime = DISABLE;
+  if (HAL_CAN_AddTxMessage(&hcan, &header, msg.data, &mailbox) != HAL_OK) ex_can_send_fail_cnt++;
 }
 
 void sendSpeedInfo(uint32_t can_id, float rev_per_sec_, float omni_angle_)

@@ -366,3 +366,9 @@ OTA node IDはFlashの`board_id` 0/1に対して16/17である。アプリがCAN
 初回導入は`Script/build_bootloader.ps1`、`Script/build_application.ps1`を実行後、`Script/install_bootloader.ps1`をdry-runし、バックアップを確認してから`-Execute`を指定する。初期導入スクリプトはpage 0～61を8ページ単位で消去し、ST-Linkの一時的な失敗を最大3回再試行する。設定page 62/63は消去しない。
 
 2026-08-26に左右2台へ初回導入し、CM4→Main→CAN1 node 16/CAN2 node 17の並列更新を確認した。63,592 byte、CRC32C `0xC22DAE9C`のDebug imageを通常13.965秒、UART/CAN複合故障注入時14.047秒で更新した。両台のapplication・metadata readbackは生成物とSHA-256一致、board ID 0/1保持、USART1 2 Mbps起動ログとCAN受信復帰を確認済みである。
+
+## 開発用FW識別
+
+- アプリ先頭`0x08004000`から`+0x400`へ`FWVR` magicとUnix秒build IDを配置する。
+- CAN ID `0x611`でFlash設定由来のnode 16/17を指定すると、`0x660 + node`でbuild IDとimage CRC32Cを返す。通常アプリとbootloaderの双方が応答する。
+- アプリ／bootloaderビルド時は`Script/Logs/Build/`へGit hashとdirty状態をJSON保存する。2026-08-27に左右2台を並列更新し、CM4上で両方が期待バイナリと`SAME`になることを確認した。

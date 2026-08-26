@@ -49,6 +49,7 @@
 #include <string.h>
 
 #include "flash.h"
+#include "fw_version.h"
 #include "motor.h"
 #include "stm32f3xx_hal.h"
 /* USER CODE END Includes */
@@ -70,6 +71,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+
+const fw_version_t g_fw_version __attribute__((section(".fw_version"), used)) = {FW_VERSION_MAGIC, 0U};
 
 /* USER CODE END PV */
 

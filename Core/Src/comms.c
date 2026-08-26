@@ -17,6 +17,7 @@
 #include "diagnostics.h"
 #include "flash.h"
 #include "foc_diagnostic.h"
+#include "fw_version.h"
 #include "motor.h"
 #include "tim.h"
 #include "usart.h"
@@ -101,6 +102,12 @@ void initComms(void)
 
 static void can_rx_callback(void)
 {
+  const uint8_t node_id = (uint8_t)(16U + (flash.board_id <= 1U ? flash.board_id : 0U));
+  if (can_rx_header.StdId == 0x611U && can_rx_header.DLC == 8U && can_rx_buf.data[0] == node_id) {
+    const uint32_t image_crc = *(const uint32_t *)(OTA_METADATA_ADDRESS + 28U);
+    sendFirmwareVersion(node_id, fw_version_build_id(), image_crc);
+    return;
+  }
   if (ota_entry_matches()) {
     enter_firmware_update();
   }

@@ -71,6 +71,7 @@ void sendVoltage(int board_id, int motor, float voltage);
 void sendTemperature(int board_id, int motor, float motor_temp, float fet_temp);
 void sendCurrent(int board_id, int motor, float current);
 void sendError(uint16_t error_id, uint16_t error_info, float error_value);
+void sendFirmwareVersion(uint8_t node_id, uint32_t build_id, uint32_t image_crc32c);
 uint32_t getCanError(void);
 /* USER CODE END Prototypes */
 
