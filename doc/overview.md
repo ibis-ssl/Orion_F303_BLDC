@@ -378,4 +378,4 @@ OTA node IDはFlashの`board_id` 0/1に対して16/17である。アプリがCAN
 - metadataとアプリ全体CRC32Cが有効なら、bootloaderはCANを初期化せず直ちにアプリへ遷移する。通常起動をCANトラフィックの有無に依存させない。
 - アプリはOTA開始要求を受けるとモーターPWMを停止し、metadataを無効化してからresetする。無効な場合だけbootloaderがCAN更新を無期限に待つ。
 - 転送中断、CRC不一致、書込み途中のresetではmetadataを確定しないため、不完全なアプリを実行せず、CM4から再更新できる。
-- 2026-08-27にbootloaderを`-Werror`で再ビルドした。現時点でBLDC用ST-Linkは未接続のため、この起動判定版の実機導入は未実施である。
+- 2026-08-27にbootloaderを`-Werror`で再ビルドし、board ID 0/1の両実機へST-Linkで先頭領域を書込み・verifyした。周期CAN通信中のresetでも各board IDを保持して`start main loop!`へ復帰した。続いてCM4→Main経由で64,360 byteをCAN1 node 16へ17.157秒、CAN2 node 17へ14.300秒で更新した。両基板ともCAN受信、両モーター出力`+0.0 V`、期待CRC32C `0x53456172`との`SAME`を確認した。
