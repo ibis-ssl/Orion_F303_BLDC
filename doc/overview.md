@@ -339,6 +339,21 @@ powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configura
 powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Release -Rebuild
 ```
 
+### ブートローダーとアプリケーションの一括書き込み
+ブートローダー、OTAメタデータ、アプリケーションのビルド成果物を一括で書き込む。無引数時はDebug構成を使用する。書き込み前にFlash全体をバックアップし、設定領域`0x0801F000`～`0x0801FFFF`は消去しない。
+
+```powershell
+.\Script\flash_all.ps1
+```
+
+Release構成の既存成果物を書き込む場合は次のように指定する。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Script\flash_all.ps1 -Configuration Release
+```
+
+このスクリプトはビルドを行わない。事前に`Script/build_bootloader.ps1`と`Script/build_application.ps1`で対象成果物を生成する。
+
 ### UARTログ受信
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Script\monitor_uart.ps1
