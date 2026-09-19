@@ -8,11 +8,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$buildScript = Join-Path $scriptDir "build.ps1"
+$buildScript = Join-Path $scriptDir "build_application.ps1"
 $flashScript = Join-Path $scriptDir "flash.ps1"
 
 if (-not (Test-Path $buildScript)) {
-  throw "build.ps1 not found: $buildScript"
+  throw "build_application.ps1 not found: $buildScript"
 }
 
 if (-not (Test-Path $flashScript)) {

@@ -338,6 +338,9 @@ powershell -ExecutionPolicy Bypass -File .\Script\flash.ps1 -Configuration Relea
 ```
 
 ### ビルドしてから書き込み
+
+`build_and_flash.ps1`は移設済みアプリをビルドしてバージョン情報を刻印し、アプリbinとmetadataを生成する。書き込み前にFlash全体をバックアップした後、ブートローダーと設定領域を保持したまま、アプリ領域`0x08004000`とmetadata領域`0x08003800`だけを書き換えてベリファイする。
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Debug
 powershell -ExecutionPolicy Bypass -File .\Script\build_and_flash.ps1 -Configuration Release -Rebuild

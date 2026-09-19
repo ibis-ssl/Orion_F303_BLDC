@@ -14,7 +14,11 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
-$elfPath = Join-Path $repoRoot "$Configuration\Orion_F303_BLDC.elf"
+$appPath = Join-Path $repoRoot "$Configuration\Orion_F303_BLDC_app.bin"
+$metadataPath = Join-Path $repoRoot "$Configuration\Orion_F303_BLDC_app.metadata.bin"
+$logDir = Join-Path $repoRoot ("Script\Logs\app_flash_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+$backupPath = Join-Path $logDir "flash_before.bin"
+$connection = "port=SWD mode=UR freq=4000"
 
 if (-not (Test-Path $ProgrammerPath)) {
   throw "STM32_Programmer_CLI.exe not found: $ProgrammerPath"
@@ -36,25 +40,52 @@ if ($ConnectOnly) {
   exit 0
 }
 
-if (-not (Test-Path $elfPath)) {
-  throw "ELF not found: $elfPath"
+if (-not (Test-Path $appPath)) {
+  throw "Application binary not found: $appPath"
 }
 
-$args = @(
-  "-c", "port=SWD mode=UR",
-  "-w", $elfPath
+if (-not (Test-Path $metadataPath)) {
+  throw "Application metadata not found: $metadataPath"
+}
+
+New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+
+& $ProgrammerPath "-c" $connection "-u" "0x08000000" "0x20000" $backupPath
+if ($LASTEXITCODE -ne 0) {
+  throw "Flash backup failed for $Configuration"
+}
+
+$appArgs = @(
+  "-c", $connection,
+  "-w", $appPath, "0x08004000"
 )
 
 if (-not $NoVerify) {
-  $args += "-v"
+  $appArgs += "-v"
+}
+
+& $ProgrammerPath @appArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "Application flash failed for $Configuration"
+}
+
+$metadataArgs = @(
+  "-c", $connection,
+  "-w", $metadataPath, "0x08003800"
+)
+
+if (-not $NoVerify) {
+  $metadataArgs += "-v"
 }
 
 if (-not $NoReset) {
-  $args += "-rst"
+  $metadataArgs += "-rst"
 }
 
-& $ProgrammerPath @args
+& $ProgrammerPath @metadataArgs
 if ($LASTEXITCODE -ne 0) {
-  throw "Flash failed for $Configuration"
+  throw "Metadata flash failed for $Configuration"
 }
+
+Write-Output "Application and metadata flashed; backup: $backupPath"
 
