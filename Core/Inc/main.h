@@ -68,7 +68,9 @@ enum {
 #define HARF_OF_ENC_CNT_MAX (ENC_CNT_MAX >> 1)
 #define MOTOR_POLE_PAIRS (12)
 
-#define SPEED_CMD_LIMIT_RPS (80)
+#define SPEED_CMD_LIMIT_RPM (20.0f)
+#define SPEED_CMD_LIMIT_RPS (SPEED_CMD_LIMIT_RPM / 60.0f)
+#define ENCODER_SPEED_JUMP_LIMIT_RPS (160.0f)
 // 40で7m/sぴったりぐらい、加速にはDIFF_VOLTAGE_LIMITぶんも必要
 
 typedef struct

@@ -14,7 +14,8 @@ from serial.tools import list_ports
 from .driver import OrionCanDriver, OrionCanError
 from .telemetry import MotorTelemetry, apply_telemetry_frame, decode_speed_command
 
-MAX_SPEED_RPS = 80.0
+MAX_SPEED_RPM = 20
+MAX_SPEED_RPS = MAX_SPEED_RPM / 60.0
 PLOT_WINDOW_S = 10.0
 RX_INTERVAL_MS = 20
 DISPLAY_INTERVAL_MS = 100
@@ -80,16 +81,16 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         control = QtWidgets.QGroupBox("速度指令（接続中は自動反映）")
         control_layout = QtWidgets.QGridLayout(control)
         control_layout.addWidget(QtWidgets.QLabel("モーター"), 0, 0)
-        control_layout.addWidget(QtWidgets.QLabel("-80 rps"), 0, 1)
+        control_layout.addWidget(QtWidgets.QLabel("-20 rpm"), 0, 1)
         control_layout.addWidget(QtWidgets.QLabel("スライダ"), 0, 2, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
-        control_layout.addWidget(QtWidgets.QLabel("+80 rps"), 0, 3)
+        control_layout.addWidget(QtWidgets.QLabel("+20 rpm"), 0, 3)
         control_layout.addWidget(QtWidgets.QLabel("指定速度"), 0, 4)
         self.speed_sliders: list[QtWidgets.QSlider] = []
         self.target_labels: list[QtWidgets.QLabel] = []
         for motor in range(2):
             control_layout.addWidget(QtWidgets.QLabel(f"Motor {motor}"), motor + 1, 0)
             slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-            slider.setRange(-160, 160)
+            slider.setRange(-MAX_SPEED_RPM, MAX_SPEED_RPM)
             slider.setSingleStep(1)
             slider.setValue(0)
             slider.valueChanged.connect(lambda value, index=motor: self._slider_changed(index, value))
@@ -205,7 +206,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         self.running = True
         self.local_tx_enabled = not self._is_external_command_tab()
         self._clear_telemetry()
-        self.targets = [slider.value() * 0.5 for slider in self.speed_sliders]
+        self.targets = [slider.value() / 60.0 for slider in self.speed_sliders]
         if self.local_tx_enabled:
             self._send_targets()
         self.connect_button.setText("切断")
@@ -224,7 +225,7 @@ class MotorControlWindow(QtWidgets.QMainWindow):
         self.status_label.setText("未接続 / 停止")
 
     def _slider_changed(self, motor: int, slider_value: int) -> None:
-        target = slider_value * 0.5
+        target = slider_value / 60.0
         self.targets[motor] = target
         self.target_labels[motor].setText(f"{target:+.1f} rps")
         if self.running and self.local_tx_enabled and self.driver is not None:

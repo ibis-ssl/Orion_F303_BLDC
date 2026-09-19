@@ -79,7 +79,7 @@ static inline float encoderDiffToRps(int diff_cnt)
 
 static inline bool isEncoderSpeedJump(float rps, const system_t * sys)
 {
-  return fabsf(rps) > SPEED_CMD_LIMIT_RPS * 2.0f && sys->free_wheel_cnt == 0;
+  return fabsf(rps) > ENCODER_SPEED_JUMP_LIMIT_RPS && sys->free_wheel_cnt == 0;
 }
 
 static inline void recordEncoderSpeedError(system_t * sys, enc_error_watcher_t * enc_error, int diff_cnt)

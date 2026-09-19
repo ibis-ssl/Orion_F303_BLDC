@@ -190,14 +190,14 @@ void runMode(void)
   // Used for quick standalone checks without CAN.
   for (int i = 0; i < 2; i++) {
     if (isPushedSW1()) {
-      cmd[i].speed = 40.0;
+      cmd[i].speed = SPEED_CMD_LIMIT_RPS;
     } else if (isPushedSW2()) {
-      cmd[i].speed = -40.0;
+      cmd[i].speed = -SPEED_CMD_LIMIT_RPS;
     } else if (isPushedSW3()) {
-      cmd[i].speed = 60.0;
+      cmd[i].speed = SPEED_CMD_LIMIT_RPS;
       //resumePwmOutput();
     } else if (isPushedSW4()) {
-      cmd[i].speed = -60.0;
+      cmd[i].speed = -SPEED_CMD_LIMIT_RPS;
       //setPwmOutPutFreeWheel();
     }
 

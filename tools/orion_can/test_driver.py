@@ -29,9 +29,9 @@ class CanFrameTest(unittest.TestCase):
             OrionCanDriver._validate_motor(2, 0)
 
     def test_gui_target_validation(self) -> None:
-        self.assertEqual(parse_target("-12.5"), -12.5)
+        self.assertAlmostEqual(parse_target("-0.333333"), -0.333333)
         with self.assertRaises(ValueError):
-            parse_target("81")
+            parse_target("0.34")
         with self.assertRaises(ValueError):
             parse_target("not-a-number")
 
