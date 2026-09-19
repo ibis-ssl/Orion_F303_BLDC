@@ -86,11 +86,11 @@ void runStartupSequence(void)
     if (motor_param[i].voltage_per_rps < 0.25) {
       // 400kV
       // Lower diff limit for high-kV motors.
-      pid[i].diff_voltage_limit = 4.0;
+      pid[i].diff_voltage_limit = 4.0f / 3.0f;
 
     } else {
       // 200kV
-      pid[i].diff_voltage_limit = 6.0;
+      pid[i].diff_voltage_limit = 2.0f;
     }
   }
   p("CAN ADDR 0x%03x\nenc offset M0 %6.3f M1 %6.3f\nRPS/V M0 %6.3f M1 %6.3f\n", flash.board_id, flash.calib[0], flash.calib[1], flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);

@@ -150,6 +150,8 @@ cmd.speed
 
 `motor.c` は速度指令から出力電圧を作る。`foc_control.c` はMT6835 raw、エンコーダゼロ角、手動オフセット、q軸補正、位相進角からFOC電気角を作り、`foc_driver_hal.c` 経由で三相PWM CCRへ反映する。
 
+電源負荷を抑えるため、EMF推定値と指令電圧の差分上限は、高KVモーター（`voltage_per_rps < 0.25`）で `4/3 V`、低KVモーターで `2 V` とする。従来値の4 V／6 Vからそれぞれ1/3へ低減している。
+
 FOCの角度規約は `raw- + zero + manual + pi/2`、トルク方向係数は `-1.0` に固定する。正逆転は `Uq` 符号で表し、旧実装の `ROTATION_OFFSET_RADIAN = 2.00rad` は通常RUNと速度係数校正では使わない。周期ログでは手動オフセットとFOC q軸補正 `FocAxis` を出力する。
 
 ## FOC/SinePWM経路
