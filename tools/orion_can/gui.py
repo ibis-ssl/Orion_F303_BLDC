@@ -13,8 +13,7 @@ from serial.tools import list_ports
 from .driver import CanFrame, OrionCanDriver, OrionCanError
 from .telemetry import MotorTelemetry, TelemetryUpdate, angle_rad_to_legacy_raw, apply_telemetry_frame, decode_speed
 
-MAX_SPEED_RPM = 20
-MAX_SPEED_RPS = MAX_SPEED_RPM / 60.0
+MAX_SPEED_RPS = 20.0
 GUI_HEARTBEAT_MS = 50
 MONITOR_UPDATE_MS = 100
 PLOT_UPDATE_MS = 250
@@ -84,7 +83,7 @@ class MotorControlGui:
         self.connect_button.grid(row=0, column=5)
 
         ttk.Label(frame, text="モーター", anchor="center").grid(row=1, column=0, pady=(14, 4))
-        ttk.Label(frame, text="目標速度 [-20～+20 rpm]", anchor="center").grid(row=1, column=1, pady=(14, 4))
+        ttk.Label(frame, text="目標速度 [-20～+20 rps]", anchor="center").grid(row=1, column=1, pady=(14, 4))
         ttk.Label(frame, text="実速度", anchor="center").grid(row=1, column=2, pady=(14, 4))
         for motor in range(2):
             ttk.Label(frame, text=f"Motor {motor}").grid(row=2 + motor, column=0, padx=8, pady=6)
@@ -94,7 +93,7 @@ class MotorControlGui:
                 target_frame,
                 from_=-MAX_SPEED_RPS,
                 to=MAX_SPEED_RPS,
-                resolution=1.0 / 60.0,
+                resolution=0.5,
                 orient="horizontal",
                 length=300,
                 showvalue=False,
