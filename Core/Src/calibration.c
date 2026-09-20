@@ -359,13 +359,16 @@ void motorCalibrationMode(void)
   }
 
   if (calib_process.motor_calib_cnt == 1) {
-    static float rps_per_v_cw_l[2], rps_per_v_ccw_l[2], rps_per_v_cw_h[2], rps_per_v_ccw_h[2];
+    static float rps_per_v_cw_l[2], rps_per_v_ccw_l[2];
+#if 0
+    // 5V calibration is temporarily disabled. Keep the variables for easy restoration.
+    static float rps_per_v_cw_h[2], rps_per_v_ccw_h[2];
+#endif
 
     switch (calib_process.motor_calib_mode) {
       case MOTOR_CALIB_STAGE_INIT:
         p("\n\nstart motor calib!!\n\n");
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
-
         calib_process.motor_calib_mode = MOTOR_CALIB_STAGE_LOW_CW;
         calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_LOW;
         calib[0].rps_integral = 0;
@@ -403,12 +406,35 @@ void motorCalibrationMode(void)
           return;
         }
 
+#if 0
+        // Temporarily disable the transition to the +5V/-5V stages.
         calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
         calib_process.motor_calib_mode = MOTOR_CALIB_STAGE_HIGH_CW;
         calib_process.motor_calib_voltage = MOTOR_CALIB_VOLTAGE_HIGH;
         p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
+#endif
 
+        p("\n\nMotor Calib rps/v \n ");
+        p("M0 -%6.2f +%6.2f Diff %+6.2f\n ", rps_per_v_ccw_l[0], rps_per_v_cw_l[0],
+            rps_per_v_ccw_l[0] - rps_per_v_cw_l[0]);
+        p("M1 -%6.2f +%6.2f Diff %+6.2f \n", rps_per_v_ccw_l[1], rps_per_v_cw_l[1],
+            rps_per_v_ccw_l[1] - rps_per_v_cw_l[1]);
+        p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
+
+        // Save the 3V CW result as the speed-to-voltage coefficient.
+        writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
+
+        HAL_Delay(10);
+        p("enc data : %4.2f %4.2f\n", flash.calib[0], flash.calib[1]);
+        p("motor data : %4.2f %4.2f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
+
+        HAL_Delay(1000);
+        NVIC_SystemReset();
+        break;
+
+#if 0
+      // Temporarily disable the +5V/-5V stages.
       case MOTOR_CALIB_STAGE_HIGH_CW:
         rps_per_v_cw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         rps_per_v_cw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
@@ -426,18 +452,16 @@ void motorCalibrationMode(void)
         p("set output V = %f\n", calib_process.motor_calib_voltage);
         break;
 
-      default:
-
+      case MOTOR_CALIB_STAGE_HIGH_CCW:
         rps_per_v_ccw_h[0] = calib[0].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         rps_per_v_ccw_h[1] = calib[1].rps_integral / calib_process.motor_calib_voltage / MOTOR_CALIB_START_CNT;
         calib[0].rps_integral = 0;
         calib[1].rps_integral = 0;
         p("\n\nMotor Calib rps/v \n ");
-        float spd_diff[2] = {0};
-        spd_diff[0] = rps_per_v_ccw_h[0] - rps_per_v_cw_h[0];
-        spd_diff[1] = rps_per_v_ccw_h[1] - rps_per_v_cw_h[1];
-        p("M0 -%6.2f +%6.2f Diff %+6.2f\n ", rps_per_v_ccw_h[0], rps_per_v_cw_h[0], spd_diff[0]);
-        p("M0 -%6.2f +%6.2f Diff %+6.2f \n", rps_per_v_ccw_h[1], rps_per_v_cw_h[1], spd_diff[1]);
+        p("M0 -%6.2f +%6.2f Diff %+6.2f\n ", rps_per_v_ccw_h[0], rps_per_v_cw_h[0],
+            rps_per_v_ccw_h[0] - rps_per_v_cw_h[0]);
+        p("M1 -%6.2f +%6.2f Diff %+6.2f \n", rps_per_v_ccw_h[1], rps_per_v_cw_h[1],
+            rps_per_v_ccw_h[1] - rps_per_v_cw_h[1]);
         p("\n\n!!!!!!FINISH!!!!!!!!\n\n");
 
         if (checkMotorRpsError(rps_per_v_ccw_h[0], rps_per_v_ccw_h[1])) {
@@ -446,18 +470,19 @@ void motorCalibrationMode(void)
           return;
         }
 
-        // Keep the multi-point encoder zero calibration unchanged.
-        // The motor step only updates the speed-to-voltage coefficient.
         writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
-
         HAL_Delay(10);
         p("enc data : %4.2f %4.2f\n", flash.calib[0], flash.calib[1]);
         p("motor data : %4.2f %4.2f\n", flash.rps_per_v_cw[0], flash.rps_per_v_cw[1]);
-
         HAL_Delay(1000);
-
         NVIC_SystemReset();
+        break;
+#endif
 
+      default:
+        calib_process.motor_calib_mode = MOTOR_CALIB_STAGE_INIT;
+        calib_process.motor_calib_cnt = MOTOR_CALIB_INIT_CNT;
+        calib_process.motor_calib_voltage = 0.0f;
         break;
     }
   }
