@@ -3,7 +3,7 @@ param([ValidateSet("Debug","Release")][string]$Configuration="Debug",[string]$Pr
 $ErrorActionPreference="Stop"
 $root=Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path);$log=Join-Path $root ("Script\Logs\ota_install_"+(Get-Date -Format "yyyyMMdd_HHmmss"));New-Item -ItemType Directory -Path $log -Force|Out-Null
 $boot=Join-Path $root "Bootloader\Build\Orion_F303_BLDC_bootloader.bin";$app=Join-Path $root "$Configuration\Orion_F303_BLDC_app.bin";$meta=Join-Path $root "$Configuration\Orion_F303_BLDC_app.metadata.bin";foreach($p in @($ProgrammerPath,$boot,$app,$meta)){if(-not(Test-Path $p)){throw "Required file not found: $p"}}
-$connection="port=SWD mode=UR freq=4000";if($ProbeSerial){$connection+=" sn=$ProbeSerial"}
+$connection="port=SWD mode=UR freq=1000";if($ProbeSerial){$connection+=" sn=$ProbeSerial"}
 function Invoke-Programmer([object[]]$Arguments,[string]$Operation){
   for($attempt=1;$attempt -le 3;$attempt++){
     & $ProgrammerPath @Arguments

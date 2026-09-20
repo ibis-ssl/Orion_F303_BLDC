@@ -448,7 +448,7 @@ void motorCalibrationMode(void)
 
         // Keep the multi-point encoder zero calibration unchanged.
         // The motor step only updates the speed-to-voltage coefficient.
-        writeMotorCalibrationValue(rps_per_v_cw_h[0], rps_per_v_cw_h[1]);
+        writeMotorCalibrationValue(rps_per_v_cw_l[0], rps_per_v_cw_l[1]);
 
         HAL_Delay(10);
         p("enc data : %4.2f %4.2f\n", flash.calib[0], flash.calib[1]);

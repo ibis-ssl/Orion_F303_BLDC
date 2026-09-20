@@ -1,3 +1,4 @@
+# SWDを1 MHzに設定し、アプリとメタデータの書き込み・接続確認を行う。
 param(
   [ValidateSet("Debug", "Release")]
   [string]$Configuration = "Debug",
@@ -18,7 +19,7 @@ $appPath = Join-Path $repoRoot "$Configuration\Orion_F303_BLDC_app.bin"
 $metadataPath = Join-Path $repoRoot "$Configuration\Orion_F303_BLDC_app.metadata.bin"
 $logDir = Join-Path $repoRoot ("Script\Logs\app_flash_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
 $backupPath = Join-Path $logDir "flash_before.bin"
-$connection = "port=SWD mode=UR freq=4000"
+$connection = "port=SWD mode=UR freq=1000"
 
 if (-not (Test-Path $ProgrammerPath)) {
   throw "STM32_Programmer_CLI.exe not found: $ProgrammerPath"
@@ -33,7 +34,7 @@ if ($List) {
 }
 
 if ($ConnectOnly) {
-  & $ProgrammerPath "-c" "port=SWD mode=UR" "-rst"
+  & $ProgrammerPath "-c" $connection "-rst"
   if ($LASTEXITCODE -ne 0) {
     throw "Target connection failed"
   }

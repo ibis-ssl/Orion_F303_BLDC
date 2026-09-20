@@ -1,4 +1,4 @@
-﻿# Orion_F303_BLDC 改善方針
+# Orion_F303_BLDC 改善方針
 
 ## PC用CAN低層ドライバ
 
@@ -126,7 +126,7 @@ enc cal M0 zero_mrad +5796 pairs used/rej 72/0 hyst_mdeg avg/max +1/+4 samples 1
 enc cal done zero +5796/+3067 mrad
 ```
 
-速度係数校正は従来どおり `+3V`, `-3V`, `+5V`, `-5V` の順にM0/M1同時に測定し、5V正転側の `rps_per_v` をFlashへ保存する。モーター校正中のFOC電圧上限は固定5Vとし、未校正Flash値から計算される通常運転用 `output_voltage_limit` は使用しない。これにより、初回起動時にFlashのモーター係数が消去値（floatではNaN）でも校正電圧を正常に出力する。ゼロ電気角の精度を優先するため、速度係数校正の最後にCW/CCW速度差からエンコーダオフセットを再補正する処理は行わない。
+速度係数校正は `+3V`, `-3V`, `+5V`, `-5V` の順にM0/M1同時に測定し、通常運転域に近い3V正転側の `rps_per_v` をFlashへ保存する。5V測定値はモーター間および正逆転間の整合性検査に使用する。モーター校正中のFOC電圧上限は固定5Vとし、未校正Flash値から計算される通常運転用 `output_voltage_limit` は使用しない。これにより、初回起動時にFlashのモーター係数が消去値（floatではNaN）でも校正電圧を正常に出力する。ゼロ電気角の精度を優先するため、速度係数校正の最後にCW/CCW速度差からエンコーダオフセットを再補正する処理は行わない。
 
 ## 設計ルール
 - ISR と 1kHz ループの fast path では分岐/処理を増やしすぎない。
@@ -295,20 +295,22 @@ cd Release
 ```
 
 ## 書き込み手順（CLI）
+SWD接続の安定性確保のため、書き込みクロックは1 MHz（1000 kHz）に設定する。プロジェクト内のST-Link起動設定、OpenOCD設定、および書き込みスクリプト（接続確認・ブートローダー書き込みを含む）で統一する。
+
 ### 接続確認
 ```powershell
 & "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -l stlink
-& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -rst
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR freq=1000 -rst
 ```
 
 ### Debugを書き込み
 ```powershell
-& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -w "Debug\Orion_F303_BLDC.elf" -v -rst
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR freq=1000 -w "Debug\Orion_F303_BLDC.elf" -v -rst
 ```
 
 ### Releaseを書き込み
 ```powershell
-& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR -w "Release\Orion_F303_BLDC.elf" -v -rst
+& "C:\ST\STM32CubeCLT_1.21.0\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe" -c port=SWD mode=UR freq=1000 -w "Release\Orion_F303_BLDC.elf" -v -rst
 ```
 
 ### 補足
