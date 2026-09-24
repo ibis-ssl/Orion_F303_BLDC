@@ -1,26 +1,28 @@
 # Orion_F303_BLDC ハードウェア仕様
 
-本ドキュメントは、ハードウェア仕様を整理したものです。  
+本ドキュメントは、現行ファームウェアのハードウェア設定を整理したものです。
 
 
 ## MCU/クロック
 - MCU: STM32F303
 - コア: Cortex-M4F
-- システムクロック: 72MHz 構成
+- システムクロック: HSE 8MHz、PLL x12、SYSCLK/HCLK 96MHz
+- APB1: 24MHz、APB2: 48MHz
 - 主制御周期: 1ms
-- モーター制御周期: 40kHz(左右で交互に処理するため実質20kHz)
+- PWM/制御割り込み: 30kHz（M0/M1交互処理のため各モーター15kHz）
 
 ## モータ駆動
 - 対象: 2モータ（M0/M1）
 - PWM: TIM1 と TIM8 の 3相コンプリメンタリ出力（CH1-3 + CH1N-3N）
-- PWM 設定: `Period=1800`, `DeadTime=10`
-- PWM周波数: 40kHz
+- PWM 設定: `Prescaler=1`, `Period=1600`, `DeadTime=10`
+- PWM周波数: 30kHz
 - フリーウィール制御: CH/CHN の有効無効を直接切り替え
 
 ## エンコーダ
-- 種別: AS5047P（SPI1, 16bit フレームアクセス）
-- センサ数: 2個（CS: PB6/PB7 で個別選択）
-- 角度分解能扱い: 14bit 読み出し値を内部で 16bit スケールへ展開
+- 種別: MT6835（SPI1、21bit角度、3bit status、CRC-8）
+- センサ数: 2個（M0 CS: PB7、M1 CS: PB6）
+- SPI1: Mode 3、SCK 12MHz、8bit、MSB first
+- 角度: 21bit値を反転して制御に使用
 
 ## アナログ計測
 - ADC: ADC1/ADC2/ADC3 を併用
@@ -37,7 +39,7 @@
 
 ## 通信
 - CAN: 1ch 使用（PA11/PA12）
-  - 設定値: Prescaler=4, BS1=4TQ, BS2=4TQ（コード上）
+  - 設定値: Prescaler=3、BS1=5TQ、BS2=2TQ、SJW=1TQ、1Mbps
   - フィルタで速度指令、電源有効、キャリブ開始などを受信
 - UART1: 2,000,000 bps（PC4/PC5）
   - DMA送信バッファを使ったデバッグ出力

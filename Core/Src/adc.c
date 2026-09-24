@@ -548,10 +548,6 @@ bool isNotZeroCurrent()
   return getCurrentMotor(0) > 0.5f || getCurrentMotor(1) > 0.5f;
 }
 
-// legacy version
-// INA199   50V/V *  5m = 250mV/A : 1/4
-// ZXCT1084 25V/V * 10m = 250mV/A : 1/4
-
 // ZXCT1084 25V/V *  5m = 125mV/A : 1/8
 inline float getCurrentMotor(bool motor)
 {

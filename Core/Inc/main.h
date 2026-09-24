@@ -57,11 +57,6 @@ enum {
   BLDC_FET_OVER_HEAT = 0x0040,
 };
 
-// by manual tuned
-// +0.17 / -0.08で指示電圧からの想定回転数と同じになる
-//#define ROTATION_OFFSET_RADIAN (2.09)
-// 理論値は2/3 M_PIで2.09あたり、ただし、40rps以下で設定値どおりになるよう、手動調整で2.00を使用
-#define ROTATION_OFFSET_RADIAN (2.00)
 #define ENC_CNT_BITS (21)
 #define ENC_CNT_MAX (1 << ENC_CNT_BITS)
 #define ENC_CNT_MASK (ENC_CNT_MAX - 1)
@@ -70,7 +65,6 @@ enum {
 
 #define SPEED_CMD_LIMIT_RPS (20.0f)
 #define ENCODER_SPEED_JUMP_LIMIT_RPS (160.0f)
-// 40で7m/sぴったりぐらい、加速にはDIFF_VOLTAGE_LIMITぶんも必要
 
 typedef struct
 {

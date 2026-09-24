@@ -19,9 +19,8 @@
 void focMathInit(void)
 {
   /*
-   * No local sine table is allocated in this branch. tim.c already owns a large
-   * legacy table, and RAM is tight on STM32F303RBTx. FOC sine/cosine lookup uses
-   * that table through fast_sin().
+   * FOC sine/cosine lookup uses the table in tim.c through fast_sin() to limit
+   * RAM usage on STM32F303RBTx.
    */
 }
 
@@ -83,7 +82,7 @@ foc_phase_voltage_t focSetPhaseVoltageSine(float uq, float ud, float angle_el, f
   ud = focLimitSymmetric(ud, half_limit);
   focFastSinCos(angle_el, &sin_el, &cos_el);
 
-  /* Inverse Park + Clarke transform, with B/C phase order matching legacy PWM. */
+  /* Inverse Park + Clarke transform with the motor's B/C phase order. */
   ualpha = cos_el * ud - sin_el * uq;
   ubeta = sin_el * ud + cos_el * uq;
 

@@ -31,22 +31,15 @@ python -m pip install -r tools/orion_can/requirements.txt
 python -m tools.orion_can.qt_gui
 ```
 
-通常使用するGUIはPySide6 + PyQtGraph版の`qt_gui.py`とする。旧Tk Canvas版の`gui.py`は負荷比較とフォールバック用に残す。Qt版もCANドライバ、物理量復号、20 ms周期送信、500 ms GUI watchdog、停止時0 rps反復送信を共用する。プロットへはNumPy配列を渡し、線幅1 px、アンチエイリアス無効、OpenGL有効、表示範囲clip有効、downsampling無効として、直近10秒の全受信点を描画する。速度プロットにはCANへ周期送信しているMotor 0/1の指令速度を20 ms周期で記録し、現在速度を実線、指令速度を同系色の破線として同じ時間軸へ重ねる。別の「メイン基板指令」タブでは、対象Board IDの速度指令CAN（`0x100 + board_id * 2 + motor`、float32 little endian）を受信時刻付きで記録し、Motor 0/1を分けてプロットする。GUI自身の指令履歴とは分離して保持する。このタブを選択中はGUIの周期CAN送信をドライバ層でpauseし、watchdogによる0 rpsフレームも含めて送信しない。タブを離れたときだけ現在のスライダ値で周期送信を再開する。受信専用中の停止ボタンと切断もCANデータフレームを送信しない。
+GUIはPySide6 + PyQtGraph版の`qt_gui.py`を使用する。CANドライバ、物理量復号、20 ms周期送信、500 ms GUI watchdog、停止時0 rps反復送信を備える。プロットへはNumPy配列を渡し、線幅1 px、アンチエイリアス無効、OpenGL有効、表示範囲clip有効、downsampling無効として、直近10秒の全受信点を描画する。速度プロットにはCANへ周期送信しているMotor 0/1の指令速度を20 ms周期で記録し、現在速度を実線、指令速度を同系色の破線として同じ時間軸へ重ねる。別の「メイン基板指令」タブでは、対象Board IDの速度指令CAN（`0x100 + board_id * 2 + motor`、float32 little endian）を受信時刻付きで記録し、Motor 0/1を分けてプロットする。GUI自身の指令履歴とは分離して保持する。このタブを選択中はGUIの周期CAN送信をドライバ層でpauseし、watchdogによる0 rpsフレームも含めて送信しない。タブを離れたときだけ現在のスライダ値で周期送信を再開する。受信専用中の停止ボタンと切断もCANデータフレームを送信しない。
 
-GUIは接続成功時からMotor 0/1の速度スライダ値を自動送信し、以後は0.5 rps刻みの操作を即座に反映する。指定速度と受信した現在速度は別々に表示する。GUIから50 ms間隔で目標値を更新し、GUI用watchdogは全点プロット描画時の一時停止を許容する500 msとする。プロセス停止やCAN断ではファーム側の約100 ms timeoutが引き続き機能する。「停止（0 rps）」、切断、ウィンドウ終了時には両モーターへ0 rpsを反復送信する。入力可能範囲はファームの`SPEED_CMD_LIMIT_RPS`に合わせて-20～+20 rpsとする。CAN受信値は生パケットではなく、モーターごとの回転数、encoder raw、電圧、電流、モーター温度、FET温度へ復号して表示する。CAN上のencoder角度はradであるため、ファームのlegacy 16bit格納値へ逆変換したraw値を表示する。現在速度と電流は受信時刻付きで直近10秒分を保持し、期間内の受信データを間引かず全点プロットする。数値表示は100 ms周期、負荷の高い全点プロット描画は250 ms周期へ分離する。グラフは各450 px高とし、速度／電流タブで切り替える。
+GUIは接続成功時からMotor 0/1の速度スライダ値を自動送信し、以後は0.5 rps刻みの操作を即座に反映する。指定速度と受信した現在速度は別々に表示する。GUIから50 ms間隔で目標値を更新し、GUI用watchdogは全点プロット描画時の一時停止を許容する500 msとする。プロセス停止やCAN断ではファーム側の約100 ms timeoutが機能する。「停止（0 rps）」、切断、ウィンドウ終了時には両モーターへ0 rpsを反復送信する。入力可能範囲はファームの`SPEED_CMD_LIMIT_RPS`に合わせて-20～+20 rpsとする。CAN受信値はモーターごとの回転数、encoder raw、電圧、電流、モーター温度、FET温度へ復号して表示する。CAN上のencoder角度はradであるため、CAN送信スケールのraw値へ逆変換して表示する。現在速度と電流は受信時刻付きで直近10秒分を保持し、期間内の受信データを間引かず全点プロットする。数値表示は100 ms周期、全点プロット描画は250 ms周期へ分離する。グラフは各450 px高とし、速度／電流タブで切り替える。
 
 ### GUI全点プロット負荷の実機計測
 
 `tools/orion_can/load_test.py` はWindows native thread CPU時間を使い、実機運転中のGUIスレッド、CAN I/Oスレッド、全点描画時間、履歴点数、受信キューを1秒周期でCSVへ記録する。試験中にGUIが停止した場合にも、別スレッドの安全タイマーから速度0を送る。
 
-2026-08-03にBoard 1、Motor 0を10 rps、Motor 1を0 rpsとして表示ありGUIを15秒計測した。速度履歴が約7,100点/モーターに達した7.4秒でGUIスレッド98.5%、10秒以降は約97～100%となった。CAN I/Oスレッドは概ね1～5%で、受信キューは最大69 frame程度だった。0 rpsの12秒対照試験でも履歴は約9,700点/モーターに達したが、GUIスレッドは最大約14%だった。受信量ではなく、回転中に値が上下する約2万点の折れ線をTk Canvasが実画面へ描画する処理が主負荷である。`create_line()`呼び出し自体の計測は約11～13 msだが、実画面のラスタライズ処理を含むGUIスレッドは飽和する。水平に近い0 rps波形は描画負荷が小さい。
-
-計測ログ:
-
-- `Log/orion_gui_load_motor0_10rps_15s_visible.csv`: 10 rps、表示あり、15秒。
-- `Log/orion_gui_load_motor0_0rps_12s_visible.csv`: 0 rps、表示あり、12秒の対照条件。
-
-同条件をPySide6 + PyQtGraph版で15秒計測した結果、約9,900速度点/モーターを全点保持した状態でGUIスレッドは最大17.1%、10秒時6.2%、プロット更新は最大8.6 msだった。Tk版で7秒以降に発生したGUIスレッド約100%への飽和は発生しなかった。ログは`Log/orion_qt_gui_load_motor0_10rps_15s_visible.csv`に保存した。
+PySide6 + PyQtGraph版を15秒計測した結果、約9,900速度点/モーターを全点保持した状態でGUIスレッドは最大17.1%、10秒時6.2%、プロット更新は最大8.6 msだった。ログは`Log/orion_qt_gui_load_motor0_10rps_15s_visible.csv`に保存した。
 
 ## 目的
 - 可読性と保守性を上げる。
@@ -101,14 +94,13 @@ GUIは接続成功時からMotor 0/1の速度スライダ値を自動送信し�
 - `MOTOR_CALIB_STAGE_HIGH_CW`
 - `MOTOR_CALIB_STAGE_HIGH_CCW`
 
-従来の数値ステップを enum に置き換えて、状態遷移の意図を明確化している。
 
 ## キャリブレーション手順
 UART `c`、CAN `0x310`、起動時SW4で全キャリブレーションを開始する。校正中はCAN速度指令を無視し、エンコーダ校正が完了してから速度係数校正へ自動で進む。
 
 UART `m` は速度係数校正だけを開始する。既存のFlash上のエンコーダゼロ角を維持し、現在は `+3V`, `-3V` の速度係数測定だけを実行する。ゼロ電気角校正をやり直したくない実機確認では `m` を使う。
 
-ゼロ電気角校正は `dev/simple_foc` ブランチで実機精度が良かった多点固定角方式を使う。
+ゼロ電気角校正は多点固定角方式を使う。
 - 固定電気角は `6点/電気周期 * 12極対 = 72点`。
 - 正順と逆順の2パスを測定する。
 - 各点は250ms整定、100msサンプル。
@@ -150,22 +142,22 @@ cmd.speed
 
 `motor.c` は速度指令から出力電圧を作る。`foc_control.c` はMT6835 raw、エンコーダゼロ角、手動オフセット、q軸補正、位相進角からFOC電気角を作り、`foc_driver_hal.c` 経由で三相PWM CCRへ反映する。
 
-電源負荷を抑えるため、EMF推定値と指令電圧の差分上限は、高KVモーター（`voltage_per_rps < 0.25`）で `4/3 V`、低KVモーターで `2 V` とする。従来値の4 V／6 Vからそれぞれ1/3へ低減している。
+電源負荷を抑えるため、EMF推定値と指令電圧の差分上限は、高KVモーター（`voltage_per_rps < 0.25`）で `4/3 V`、低KVモーターで `2 V` とする。
 
-通常運転の速度指令は正逆転とも20 rps（1,200 rpm）を上限とする。CAN、UARTおよび基板スイッチからの指令に共通で適用する。エンコーダ値の異常飛び判定は速度指令上限とは独立させ、従来相当の160 rpsを維持する。
+通常運転の速度指令は正逆転とも20 rps（1,200 rpm）を上限とする。CAN、UARTおよび基板スイッチからの指令に共通で適用する。エンコーダ値の異常飛び判定は速度指令上限と独立した160 rpsとする。
 
-FOCの角度規約は `raw- + zero + manual + pi/2`、トルク方向係数は `-1.0` に固定する。正逆転は `Uq` 符号で表し、旧実装の `ROTATION_OFFSET_RADIAN = 2.00rad` は通常RUNと速度係数校正では使わない。周期ログでは手動オフセットとFOC q軸補正 `FocAxis` を出力する。
+FOCの角度規約は `raw- + zero + manual + pi/2`、トルク方向係数は `-1.0` に固定する。正逆転は `Uq` 符号で表す。周期ログでは手動オフセットとFOC q軸補正 `FocAxis` を出力する。
 
 ## FOC/SinePWM経路
-`dev/simple_foc` ブランチの実装を参考に、SimpleFOC相当の電圧FOC計算をCで追加した。通常RUN、FOC診断、速度係数校正は共通の `foc_control.c` を使う。
+通常RUN、FOC診断、速度係数校正は共通の `foc_control.c` で電圧FOC計算を行う。
 
 - `Core/Src/foc_math.c`: 角度正規化、電気角計算、逆Park/Clarke、相電圧からPWM CCRへの変換。
 - `Core/Src/foc_driver_hal.c`: FOC計算結果をTIM1/TIM8 CCRへ反映するHALブリッジ。
-- `runStartupSequence()` で `focMathInit()` を呼ぶ。ただし現ブランチではRAM節約のためFOC専用sinテーブルは持たず、診断用として `sinf()` / `cosf()` を直接使う。
+- `runStartupSequence()` で `focMathInit()` を呼ぶ。RAM節約のためFOC専用sinテーブルは持たず、診断用として `sinf()` / `cosf()` を直接使う。
 
-FOCの三相出力はlegacy PWMと同じ相順に合わせる。legacyは `A=sin(angle)`、`B=sin(angle+120deg)`、`C=sin(angle+240deg)` の順でCCRへ入れているため、FOC側の逆ClarkeもB/Cをlegacy相順に合わせる。標準的なClarke表記のままB/Cを逆にすると、実機配線に対して電圧ベクトルの回転方向が反転し、Uq指令で回転せずロックする可能性がある。
+FOCの三相出力は `A=sin(angle)`、`B=sin(angle+120deg)`、`C=sin(angle+240deg)` の相順でCCRへ入れる。逆Clarke変換のB/C符号は実機の相配線に合わせる。
 
-UART `v` でFOC角度状態を出力する。これはPWM出力を変更せず、現在のエンコーダraw、`raw+`、`raw-`、`zero_calib`、legacy角、FOCで使う基準角、進角適用後の角度、速度指令、実速度、`Uq` 符号をログ出力する。シミュレーションでFOC計算式と候補規約の比較は済んだため、FW側では実行時に実際に使う `raw- + zero + manual_offset` 規約の確認に絞る。
+UART `v` でFOC角度状態を出力する。これはPWM出力を変更せず、現在のエンコーダraw、正負方向のraw電気角、`zero_calib`、FOCで使う基準角、進角適用後の角度、速度指令、実速度、`Uq` 符号をログ出力する。
 
 進角ログでは `advM` が速度比例モデル由来、`advT` がUART調整トリム、`advU` が回転方向の符号まで含めて実際に電気角へ加えた値である。進角調整では同じ速度指令・同じ出力電圧で `RPS` が上がり、電流と `Eff` が悪化しない方向を探す。
 
@@ -173,13 +165,13 @@ UART `v` でFOC角度状態を出力する。これはPWM出力を変更せず�
 
 回転中に1kHzメインループを止めると、`calcMotorSpeed()` が1ms前提でraw差分をRPS換算するため、正常回転でも速度異常になる。`v` 診断では `HAL_Delay()` を使わず、スナップショットだけを出力する。
 
-UART `V` でFOC診断モードを開始/停止する。開始時は速度指令を0にし、PWMを有効化する。既存の `w` / `s` で速度指令を増減すると、1kHz側で速度-電圧変換を行った後、FOC診断用に `+/-2.0V` へ制限した `Uq` をTIM割り込み側でSinePWM出力する。
+UART `V` でFOC診断モードを開始/停止する。開始時は速度指令を0にし、PWMを有効化する。`w` / `s` で速度指令を増減すると、1kHz側で速度-電圧変換を行った後、FOC診断用に `+/-2.0V` へ制限した `Uq` をTIM割り込み側でSinePWM出力する。
 
-FOC診断モードでは、TIM割り込み内でMT6835 rawから `raw-` 電気角を作り、`enc_offset.zero_calib + manual_offset` を加えた角度を基準にする。実機確認とシミュレーションの結果から角度規約は `raw- + zero`、トルク方向係数は `-1.0` に固定する。FOCのトルク軸補正はlegacyの `ROTATION_OFFSET_RADIAN = 2.00rad` を流用せず、正逆共通の `pi/2 rad` とする。これにより、回転方向は `Uq` 符号で表し、角度補正はq軸への固定変換として扱う。候補比較用だった `B/X/Z/T/Y/H` コマンドは削除し、誤操作で規約を変えられないようにする。
+FOC診断モードでは、TIM割り込み内でMT6835 rawから `raw-` 電気角を作り、`enc_offset.zero_calib + manual_offset` を加えた角度を基準にする。トルク方向係数は `-1.0`、トルク軸補正は正逆共通の `pi/2 rad` とする。回転方向は `Uq` 符号で表し、角度補正はq軸への固定変換として扱う。
 
-FOC診断モードでは、実機調整に基づく速度比例の位相進角モデル `+0.00610865238 rad/rps`（約 `0.35deg/rps`）を入れる。実際に電気角へ加える進角は、速度指令の符号に応じて反転する。進角はモーター損失が増えすぎない範囲に抑えるため `20deg` で制限する。UART `[` / `]` で位相進角トリムを `1deg` ずつ、`{` / `}` で `0.1deg` ずつ調整し、`P` でトリムを0へ戻す。10/20/30/40rpsの実機確認では、旧モデル相当より正方向の進角でCS電流が下がり、40rpsでも `+12deg` 前後の実適用進角で停止せず回転したため、最大効率点を追い込まず内側の値としてこの係数を使う。
+FOC診断モードでは、実機調整に基づく速度比例の位相進角モデル `+0.00610865238 rad/rps`（約 `0.35deg/rps`）を入れる。実際に電気角へ加える進角は、速度指令の符号に応じて反転する。進角はモーター損失が増えすぎない範囲に抑えるため `20deg` で制限する。UART `[` / `]` で位相進角トリムを `1deg` ずつ、`{` / `}` で `0.1deg` ずつ調整し、`P` でトリムを0へ戻す。
 
-30kHz/96MHzオーバークロック設定へ移行した後の再調整では、20rps相当指令と40rps相当指令のどちらも追加トリム `0deg` 近傍が最小電流になった。1deg刻みでは、20rps相当は `trim 0deg` で `Avg +0.082/+0.090`、40rps相当は `trim 0deg` で `Avg +0.190/+0.197` 程度で、正負どちらへ1deg以上動かしても同等または悪化した。0.1deg刻みの再確認では、20rps相当は `-0.2..+0.5deg` が測定ノイズ内でほぼ同等、40rps相当は `+0.5deg` が `Avg +0.190/+0.193` で最小だったが、`0deg` との差は約 `0.004` と小さい。したがって30kHz条件では現行の速度比例モデルをそのまま使い、通常運用時のトリムは `0deg` とする。
+通常運用時の位相進角トリムは `0deg` とする。
 
 UART `n` は通常RUN復帰コマンドとして、キャリブレーション状態、速度指令、出力電圧、手動オフセット、freewheel、ゼロ出力スリープを解除し、PWMを再開する。FOC診断停止後はfreewheelカウンタが残るため、進角調整などで通常RUNへ戻す場合は `n` を使う。
 
@@ -194,12 +186,11 @@ UART `n` は通常RUN復帰コマンドとして、キャリブレーション�
 powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -SelfTest
 powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario conventions
 powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario step -AngleMode raw_neg_add -OutputCsv sim\out\step_raw_neg_add.csv
-powershell -ExecutionPolicy Bypass -File .\Script\run_sim.ps1 -Scenario snapshot -Raw 5108 -Zero 4.796 -LegacyElec 5.202 -UqV -2.0 -BatteryV 25.7
 ```
 
-角度モードは `raw_pos_add`、`raw_pos_sub`、`raw_neg_add`、`raw_neg_sub`、`legacy` を比較できる。CSVには `time_s`、実機械角、実電気角、エンコーダraw、指令電気角、速度、`uq_cmd_v`、`ud_eff_v`、`uq_eff_v`、三相電圧を出す。実機投入前に、正しい規約で `uq_eff` が期待方向に出ること、誤った規約でトルクが落ちること、位相進角トリムで傾向が変わることを確認する。
+角度モードは `raw_pos_add`、`raw_pos_sub`、`raw_neg_add`、`raw_neg_sub` を比較できる。CSVには `time_s`、実機械角、実電気角、エンコーダraw、指令電気角、速度、`uq_cmd_v`、`ud_eff_v`、`uq_eff_v`、三相電圧を出す。実機投入前に、`uq_eff` の方向と位相進角トリムの影響を確認する。
 
-`snapshot` シナリオは実機の `[FOC CHECK]` ログを入力し、各角度規約の指令電気角、legacy角との差分、CCR候補を出す。`-ActualElec` を指定した場合は、その実ロータ電気角に対する `ud_eff` / `uq_eff` も出力する。実機ログとシミュレータの角度候補が一致することを先に確認してから、機械モデルのステップ応答へ進む。
+`snapshot` シナリオは実機の `[FOC CHECK]` ログを入力し、各角度規約の指令電気角とCCR候補を出す。`-ActualElec` を指定した場合は、その実ロータ電気角に対する `ud_eff` / `uq_eff` も出力する。実機ログとシミュレータの角度候補が一致することを先に確認してから、機械モデルのステップ応答へ進む。
 
 シミュレーション環境は、実機ではマイコンの制約でデバッグ機能を使いにくく、実時間でしか動作しない問題を回避するためのものとして扱う。そのため、FOC数式だけでなく、モータのdq電気モデル、機械慣性・摩擦・負荷、エンコーダraw量子化・遅延、将来的には30kHz ISR/1kHz main loopの周期差も模擬する。`-Model simple` は符号と角度規約の確認用、`-Model dq` は電流応答、逆起電力、位相進角不足の確認用である。
 
@@ -216,18 +207,18 @@ GUIの `Live Start` は、実機30kHz ISR相当の `33.3us` ステップをGUI�
 シミュレータの動作確認は、`-Model dq`、MAD MOTOR 4006 200kV推定モデル、`-BatteryV 24`、`-AngleMode raw_neg_add`、`-Zero 0`、`-EncoderDirection -1`、`-EncoderDelaySteps 1`、`-PhaseTrimDeg 0` を標準条件にする。まず `±5rps` と `±20rps` で正逆差とM0/M1差を見て、次に角度規約、エンコーダ遅延、位相進角トリムを個別に振る。確認対象は `speed_rps`、`theta_mech_rad`、`theta_elec_actual_rad`、`Id/Iq`、`uq_eff_v`、`torque_nm` である。GUIではdq電流ベクトルと機械角/電気角ベクトルを合わせて見て、角度遅れ、逆起電力、`Id` 増加の関係を確認する。ゼロ角誤差は標準条件へ混ぜず、`-Zero 0.1`、`0.5`、`1.2` などを指定する感度試験として別枠で扱う。再現条件を残す場合はCSV出力付きCLIを使い、代表例として `rt_raw_neg_add_z0_p5/m5/p20/m20.csv` を保存する。
 
 ## クロック設定
-本ブランチでは常温評価用のオーバークロック設定として、HSE 8MHzからPLL x12でSYSCLK/HCLKを96MHzにする。APB1は24MHz、APB2は48MHzで動作させる。USART1はAPB2由来の2Mbpsで、APB2=48MHzでは分周が整数になりやすい。
+HSE 8MHzからPLL x12でSYSCLK/HCLKを96MHzにする。APB1は24MHz、APB2は48MHzで動作させる。USART1はAPB2由来の2Mbpsとする。
 
-TIM1/TIM8はHCLKをクロック源にし、Prescaler=1、Period=1600、`TIM_PWM_CENTER=800` とする。これによりPWM/制御割り込みは30kHzになり、M0/M1を交互に更新するため各モーターのFOC更新は15kHzになる。1kHzメインループの基準は `INTERRUPT_KHZ_1MS=30` とする。キャリブレーションのISRカウント値は20kHz時の実時間を維持するため1.5倍へ補正する。
+TIM1/TIM8はHCLKをクロック源にし、Prescaler=1、Period=1600、`TIM_PWM_CENTER=800` とする。これによりPWM/制御割り込みは30kHzになり、M0/M1を交互に更新するため各モーターのFOC更新は15kHzになる。1kHzメインループの基準は `INTERRUPT_KHZ_1MS=30` とする。
 
-SPI1はAPB2=48MHz、Prescaler=/4により12MHzで動作する。MT6835のSPI上限25MHz以内であり、Mode 3、8bitデータサイズ、MSB firstで使用する。1回の角度更新はburst command 2byteと角度/status/CRC 4byteの計6byteである。
+SPI1はAPB2=48MHz、Prescaler=/4によりSCK 12MHz（周期約83.3ns）で動作する。MT6835 Rev.1.3データシートのSPI最小クロック周期は60nsで、上限は約16.7MHz相当のため、この設定は周期条件を満たす。Mode 3、8bitデータサイズ、MSB firstで使用する。1回の角度更新はburst command 2byteと角度/status/CRC 4byteの計6byteである。データシート: https://www.magntek.com.cn/upload/pdf/202407/MT6835_Rev.1.3.pdf
 
-ADC34の非同期クロックはPLL直結を避け、PLL/2の48MHzにする。ADC1/2は従来通りPCLK同期/2で動作するため、APB2=48MHzでは24MHzになる。
+ADC34の非同期クロックはPLL/2の48MHzにする。ADC1/2はPCLK同期/2で動作し、APB2=48MHzでは24MHzになる。
 
-CANはAPB1=24MHzに合わせ、Prescaler=3、BS1=5TQ、BS2=2TQ、SJW=1TQで1Mbpsにする。旧72MHz設定はAPB1=36MHz、Prescaler=4、BS1=4TQ、BS2=4TQで1Mbpsだったため、CAN設定を戻すと96MHz設定では約667kbpsへ落ちる。
+CANはAPB1=24MHz、Prescaler=3、BS1=5TQ、BS2=2TQ、SJW=1TQで1Mbpsとする。
 
 ## TIM割り込み高速化
-30kHz制御周期への移行を見据え、TIM割り込み内の処理はHAL呼び出しを避ける。ADC injected結果は `JDRx` を直接読み、次回変換開始は `ISR` のJEOC/JEOSをクリアして `CR.JADSTART` を立てる。電流値は毎割り込み更新するが、温度、バッテリ電圧、ゲートドライバ電圧は `ADC_SLOW_SAMPLE_INTERVAL=8` で間引いてコピーし、電圧換算値はキャッシュする。
+30kHz制御周期のTIM割り込み内ではHAL呼び出しを避ける。ADC injected結果は `JDRx` を直接読み、次回変換開始は `ISR` のJEOC/JEOSをクリアして `CR.JADSTART` を立てる。電流値は毎割り込み更新するが、温度、バッテリ電圧、ゲートドライバ電圧は `ADC_SLOW_SAMPLE_INTERVAL=8` で間引いてコピーし、電圧換算値はキャッシュする。
 
 通常FOC出力は `ud=0` の電圧FOC専用パスを使う。汎用の相電圧構造体生成と角度正規化を通さず、`uq`、電気角、バッテリ電圧からPWM比較値を直接作る。`fast_sin()` は負角でもテーブルmaskで折り返せる実装にし、通常制御では `focNormalizeAngle()` を避ける。
 
@@ -240,18 +231,18 @@ UART出力関数 `p()` は `vsnprintf()` でバッファ境界を確認する。
 
 UARTログはUSART1 TX DMAの二重バッファで送る。送信完了割り込みと `p()` が重なった場合でも、DMA送信を開始する経路では必ず対応する `sending_first_buf` / `sending_second_buf` を立て、送信長はローカルへ退避してからバッファ長を0へ戻す。フラグと実DMA送信状態がずれると、次のログが送信中バッファへ追記され、改行欠落や行連結のような壊れ方になるため、この順序を崩さない。
 
-電流検出は `getCurrentMotor()` が従来通り瞬時値を返し、過電流保護や起動時チェックはこの値を使う。効率計算や調整ログ用には `getCurrentMotorAverage()` を追加し、ADC更新時に `alpha=0.001` のIIR平均を更新する。通常ログの `CS` は瞬時値、`Avg` はノイズを落とした平均値である。平均値は診断用途であり、保護判定へは使わない。
+電流検出は `getCurrentMotor()` が瞬時値を返し、過電流保護や起動時チェックはこの値を使う。効率計算や調整ログには `getCurrentMotorAverage()` を使い、ADC更新時に `alpha=0.001` のIIR平均を更新する。通常ログの `CS` は瞬時値、`Avg` はノイズを落とした平均値である。平均値は診断用途であり、保護判定へは使わない。
 
 MT6835は通常角度更新と診断更新のどちらもCRC付きburst readを使う。診断読み出し中は短時間だけ割り込みを止め、PWM ISR側のSPIアクセスと競合しないようにする。`last_frame`、受信CRC、計算CRC、status、CRCエラー数、statusエラー数、低電圧数を保持する。CRC不一致またはstatus非ゼロ時は角度を更新せず、直前の正常値を維持する。連続異常が30回に達した場合は `BLDC_ENC_ERROR` で保護停止する。
 
 ## MT6835エンコーダ
 
-- AS5047Pと同じSPI1配線（SCK/MISO/MOSIおよびM0/M1個別CS）へ接続する。通信プロトコルは互換ではないため、AS5047Pを同じSPIバスへ混在させない。
+- SPI1のSCK/MISO/MOSIとM0/M1個別CSへ接続する。
 - CSはPB7がM0、PB6がM1で、非選択時High、選択時Lowとする。
 - burst readはcommand `0xA0`、開始レジスタ`0x03`を送信し、21bit角度、3bit status、CRC-8を受信する。
 - CRC-8は多項式 `x^8 + x^2 + x + 1`（poly `0x07`）、初期値`0x00`で、角度/statusの3byteを対象とする。
-- 21bit角度は読み出し時に反転し、既存AS5047Pと同じ回転方向の`0..2097151`制御用rawとして使う。速度、CAN角度、FOC角度の符号規約は従来と同じである。
-- CAN角度は旧AS5047Pとの数値互換性を保つため、送信時だけ21bit rawを14bitへ量子化して2bit左シフトし、従来通り `legacy_raw * 2 * pi / 65535` でラジアンへ変換する。FOCと速度計算はMT6835の21bit精度を維持する。エンコーダ交換による絶対角度の原点差は補正しない。
+- 21bit角度は読み出し時に反転し、`0..2097151`の制御用rawとして使う。
+- CAN角度は送信時だけ21bit rawを14bitへ量子化して2bit左シフトし、`can_raw * 2 * pi / 65535` でラジアンへ変換する。FOCと速度計算はMT6835の21bit精度を維持する。エンコーダ交換による絶対角度の原点差は補正しない。
 - status bitはbit0=過速度、bit1=磁界弱、bit2=電源低電圧として保持する。status非ゼロ時は角度更新を拒否し、連続異常が30回に達した場合は保護停止する。
 - センサ交換後はエンコーダゼロ角が変わるため、回転指令を入れる前にUART `i` でraw変化、CRCエラー0、status 0を確認し、その後エンコーダ校正を再実行する。
 

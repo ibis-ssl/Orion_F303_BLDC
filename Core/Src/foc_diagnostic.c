@@ -1,6 +1,6 @@
 /**
  * @file foc_diagnostic.c
- * @brief Runs a low-voltage FOC/SinePWM diagnostic path without replacing legacy RUN.
+ * @brief Runs the low-voltage FOC/SinePWM diagnostic mode.
  */
 
 #include "foc_diagnostic.h"
